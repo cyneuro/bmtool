@@ -14,7 +14,7 @@ from mpl_toolkits.mplot3d import Axes3D
 use_description = """
 Plot BMTK models easily.
 
-python -m bmtool.plot 
+python -m bmtools.plot 
 """
 
 def conn_matrix(nodes=None,edges=None,title="Total Connections",populations=['hippocampus']):

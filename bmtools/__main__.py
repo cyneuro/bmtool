@@ -5,10 +5,10 @@ import sys
 use_description = """
 Build, plot or debug BMTK models easily.
 
-python -m bmtool.build
-python -m bmtool.plot 
-python -m bmtool.debug
-python -m bmtool.util
+python -m bmtools.build
+python -m bmtools.plot 
+python -m bmtools.debug
+python -m bmtools.util
 
 """
 

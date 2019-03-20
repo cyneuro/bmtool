@@ -25,7 +25,7 @@ def verify_parse(parser):
 use_description = """
 BMTK model utilties.
 
-python -m bmtool.util 
+python -m bmtools.util 
 """
 
 if __name__ == '__main__':

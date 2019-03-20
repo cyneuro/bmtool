@@ -5,14 +5,14 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(
-    name="bmtool",
+    name="bmtools",
     version="0.0.1",
     author="Tyler Banks",
     author_email="tbanks@mail.missouri.edu",
-    description="BMTool",
+    description="BMTools",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/tjbanks/bmtool",
+    url="https://github.com/tjbanks/bmtools",
     download_url='',
     license='MIT',
     install_requires=[],

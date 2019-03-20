@@ -3,7 +3,7 @@ from . import util
 use_description = """
 Build BMTK models easily.
 
-python -m bmtool.build
+python -m bmtools.build
 
 """
 

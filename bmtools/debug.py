@@ -3,7 +3,7 @@ from . import util
 use_description = """
 Debug BMTK models easily.
 
-python -m bmtool.debug
+python -m bmtools.debug
 
 """
 
