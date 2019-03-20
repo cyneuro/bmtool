@@ -8,6 +8,7 @@ Build, plot or debug BMTK models easily.
 python -m bmtool.build
 python -m bmtool.plot 
 python -m bmtool.debug
+python -m bmtool.util
 
 """
 
