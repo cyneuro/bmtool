@@ -90,7 +90,7 @@ def plot_connection_info(data, labels, title, save_file=None):
 
     return
     
-def plot_spikes(cells_file, cell_models_file, spikes_file, population=None):
+def plot_spikes(cells_file, cell_models_file, spikes_file, population=None,save_file=None):
     
     import h5py
     cm_df = pd.read_csv(cell_models_file, sep=' ')
@@ -154,6 +154,8 @@ def plot_spikes(cells_file, cell_models_file, spikes_file, population=None):
         leg.legendHandles[-i-1].set_color(c)
     
     plt.savefig('raster3_after_pycvode_fixes.png')
+    if save_file:
+        plt.savefig(save_file)
     
     plt.show()
     
