@@ -55,3 +55,4 @@ optional arguments:
 >
 > python -m bmtools.plot positions
 ```
+![bmtools](./figure.png "Positions Figure")
