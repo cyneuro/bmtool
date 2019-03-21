@@ -39,22 +39,50 @@ def load_config(fp):
         data = json.load(f)
     return data
     
-    
-def load_nodes(network_dir="network", show_virtual=False):
-    """
-        Glob all files for *_nodes.h5
-        Glob all files for *_edges.h5
 
+def nodes_edges_from_config(fp):
+    #nodes = load_nodes_from_config(fp)
+    #edges = load_nodes_from_config(fp)
+    return None, None
+
+def load_nodes(nodes_file, node_types_file):
+    #nodes_arr = [{"nodes_file":nodes_file,"node_types_file":node_types_file}]
+    #nodes = load_nodes_from_paths(nodes_arr)
+    return
+
+def load_nodes_from_config(config):
+    # load config
+    # pass circuit-networks-nodes section into load_nodes_from_paths    
+    return
+
+def load_nodes_from_paths(node_paths):
+    """
+        node_paths must be in the format in a circuit config file:
+        [
+            {
+            "nodes_file":"filepath",
+            "node_types_file":"filepath"
+            },...
+        ]
+        #Glob all files for *_nodes.h5
+        #Glob all files for *_edges.h5
+
+        Returns a dictionary indexed by population, of pandas tables in the following format:
+                 node_type_id   model_template morphology   model_type pop_name   pos_x   pos_y  pos_z
+        node_id
+        0                 100  hoc:IzhiCell_EC  blank.swc  biophysical       EC  1.5000  0.2500   10.0
+
+        Where pop_name was a user defined cell property
     """
     import h5py
     
-    nodes_regex = "_nodes.h5"
-    node_types_regex = "_node_types.csv"
+    #nodes_regex = "_nodes.h5"
+    #node_types_regex = "_node_types.csv"
 
-    nodes_h5_fpaths = glob.glob(os.path.join(network_dir,'*'+nodes_regex))
-    node_types_fpaths = glob.glob(os.path.join(network_dir,'*'+node_types_regex))
+    #nodes_h5_fpaths = glob.glob(os.path.join(network_dir,'*'+nodes_regex))
+    #node_types_fpaths = glob.glob(os.path.join(network_dir,'*'+node_types_regex))
 
-    regions = [re.findall('^[^_]+', os.path.basename(n))[0] for n in nodes_h5_fpaths]
+    #regions = [re.findall('^[^_]+', os.path.basename(n))[0] for n in nodes_h5_fpaths]
     region_dict = {}
 
     #Need to get all cell groups for each region
@@ -65,23 +93,39 @@ def load_nodes(network_dir="network", show_virtual=False):
         cells_h5 = h5py.File(cells_file, 'r')
         if population is None:
             if len(cells_h5['/nodes']) > 1:
-                raise Exception('Multiple populations in nodes file. Please specify one to plot using population param')
+                raise Exception('Multiple populations in nodes file. Not currently supported. Should be easy to implement when needed. Let Tyler know.')
             else:
                 population = list(cells_h5['/nodes'])[0]
 
         nodes_grp = cells_h5['/nodes'][population]
         c_df = pd.DataFrame({'node_id': nodes_grp['node_id'], 'node_type_id': nodes_grp['node_type_id']})
-
         c_df.set_index('node_id', inplace=True)
+
         nodes_df = pd.merge(left=c_df,
                             right=cm_df,
                             how='left',
                             left_on='node_type_id',
                             right_index=True)  # use 'model_id' key to merge, for right table the "model_id" is an index
+        
+        if 'positions' in list(nodes_grp['0']):
+            cpos = pd.DataFrame({'node_id': nodes_grp['node_id'],"pos_x":nodes_grp['0']['positions'][:,0],"pos_y":nodes_grp['0']['positions'][:,1],"pos_z":nodes_grp['0']['positions'][:,2]})
+            cpos.set_index('node_id', inplace=True)
+
+            nodes_df = pd.merge(left=nodes_df,
+                                right=cpos,
+                                how='left',
+                                left_index=True,
+                                right_index=True)
+
         return nodes_df
     
-    for region, cell_models_file, cells_file in zip(regions, node_types_fpaths, nodes_h5_fpaths):
-        region_dict[region] = get_node_table(cell_models_file,cells_file)
+    #for region, cell_models_file, cells_file in zip(regions, node_types_fpaths, nodes_h5_fpaths):
+    #    region_dict[region] = get_node_table(cell_models_file,cells_file,population=region)
+    for nodes in node_paths:
+        cell_models_file = nodes["nodes_file"]
+        cells_file = nodes["node_types_file"]
+        region, region_name = get_node_table(cell_models_file,cells_file)
+        region_dict[region_name] = region
 
     #cell_num = 2
     #print(region_dict["hippocampus"].iloc[cell_num]["node_type_id"])
@@ -89,9 +133,17 @@ def load_nodes(network_dir="network", show_virtual=False):
 
     return region_dict
     
-def load_connections(network_dir='network'):
+def load_edges_from_config(config):
+    return
+
+def load_edges(edges_file, edge_types_file):
+    return
+
+def load_edges_from_paths(network_dir='network'):
     """
     Returns: A dictionary of connections with filenames (minus _edges.h5) as keys
+
+    TODO there is an unhealthy reliance on filenames
     """
     import h5py
     
@@ -109,7 +161,7 @@ def load_connections(network_dir='network'):
         cm_df.set_index('edge_type_id', inplace=True)
 
         connections_h5 = h5py.File(connections_file, 'r')
-        # TODO: Use sonata api
+
         if population is None:
             if len(connections_h5['/edges']) > 1:
                 raise Exception('Multiple populations in edges file. Please specify one to plot using population param')
