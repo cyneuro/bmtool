@@ -1,6 +1,6 @@
 import argparse
 from argparse import RawTextHelpFormatter,SUPPRESS
-import glob, os, re, sys
+import glob, json, os, re, sys
 
 import numpy as np
 from numpy import genfromtxt
@@ -33,8 +33,11 @@ if __name__ == '__main__':
     verify_parse(parser)
     
     
-    
-    
+def load_config(fp):
+    data = None
+    with open(fp) as f:
+        data = json.load(f)
+    return data
     
     
 def load_nodes(network_dir="network", show_virtual=False):

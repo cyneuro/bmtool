@@ -55,7 +55,10 @@ def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populati
     plot_connection_info(data,labels,title, save_file=save_file)
     return
 
-    
+def raster(config=None,title=None,populations=['hippocampus']):
+    print(util.load_config(config))
+    return
+
 def plot_connection_info(data, labels, title, save_file=None):
     fig, ax = plt.subplots()
     im = ax.imshow(data)
@@ -267,12 +270,16 @@ if __name__ == '__main__':
         ]
     }
     functions["raster"] = {
-        "function":plot_spikes, 
+        "function":raster, 
         "description":"Plot the spike raster for a given set of populations",
         "args":[
             {
                 "dest":["--title"],
                 "help":"change the plot's title"
+            },
+            {
+                "dest":["--config"],
+                "required":True
             }
         ]
     }
