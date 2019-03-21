@@ -40,7 +40,7 @@ def load_config(fp):
     return data
     
 
-def nodes_edges_from_config(fp):
+def load_nodes_edges_from_config(fp):
     #nodes = load_nodes_from_config(fp)
     #edges = load_nodes_from_config(fp)
     return None, None
@@ -139,32 +139,39 @@ def load_edges_from_config(config):
 def load_edges(edges_file, edge_types_file):
     return
 
-def load_edges_from_paths(network_dir='network'):
+def load_edges_from_paths(edge_paths):#network_dir='network'):
     """
     Returns: A dictionary of connections with filenames (minus _edges.h5) as keys
 
-    TODO there is an unhealthy reliance on filenames
+    edge_paths must be in the format in a circuit config file:
+        [
+            {
+            "edges_file":"filepath", (csv)
+            "edge_types_file":"filepath" (h5)
+            },...
+        ]
+    util.load_edges_from_paths([{"edges_file":"network/hippocampus_hippocampus_edges.h5","edge_types_file":"network/hippocampus_hippocampus_edge_types.csv"}])
     """
     import h5py
     
-    edges_regex = "_edges.h5"
-    edge_types_regex = "_edge_types.csv"
+    #edges_regex = "_edges.h5"
+    #edge_types_regex = "_edge_types.csv"
 
-    edges_h5_fpaths = glob.glob(os.path.join(network_dir,'*'+edges_regex))
-    edge_types_fpaths = glob.glob(os.path.join(network_dir,'*'+edge_types_regex))
+    #edges_h5_fpaths = glob.glob(os.path.join(network_dir,'*'+edges_regex))
+    #edge_types_fpaths = glob.glob(os.path.join(network_dir,'*'+edge_types_regex))
 
-    connections = [re.findall('^[A-Za-z0-9]+_[A-Za-z0-9][^_]+', os.path.basename(n))[0] for n in edges_h5_fpaths]
-    connections_dict = {}
+    #connections = [re.findall('^[A-Za-z0-9]+_[A-Za-z0-9][^_]+', os.path.basename(n))[0] for n in edges_h5_fpaths]
+    edges_dict = {}
 
-    def get_connection_table(connection_models_file, connections_file,population=None):
-        cm_df = pd.read_csv(connection_models_file, sep=' ')
+    def get_edge_table(edges_file, edge_types_file,population=None):
+        cm_df = pd.read_csv(edge_types_file, sep=' ')
         cm_df.set_index('edge_type_id', inplace=True)
 
-        connections_h5 = h5py.File(connections_file, 'r')
+        connections_h5 = h5py.File(edges_file, 'r')
 
         if population is None:
             if len(connections_h5['/edges']) > 1:
-                raise Exception('Multiple populations in edges file. Please specify one to plot using population param')
+                raise Exception('Multiple populations in edges file. Not currently implemented, should not be hard to do, contact Tyler')
             else:
                 population = list(connections_h5['/edges'])[0]
 
@@ -178,13 +185,19 @@ def load_edges_from_paths(network_dir='network'):
                             right=cm_df,
                             how='left',
                             left_index=True,
-                            right_index=True)  # use 'model_id' key to merge, for right table the "model_id" is an index
-        return nodes_df
+                            right_index=True) 
+        return nodes_df, population
     
-    for connection, conn_models_file, conns_file in zip(connections, edge_types_fpaths, edges_h5_fpaths):
-        connections_dict[connection] = get_connection_table(conn_models_file,conns_file)
+    #for edges_dict, conn_models_file, conns_file in zip(connections, edge_types_fpaths, edges_h5_fpaths):
+    #    connections_dict[connection] = get_connection_table(conn_models_file,conns_file)
 
-    return connections_dict
+    for nodes in edge_paths:
+        edges_file = nodes["edges_file"]
+        edge_types_file = nodes["edge_types_file"]
+        region, region_name = get_edge_table(edges_file,edge_types_file)
+        edges_dict[region_name] = region
+
+    return edges_dict
 
 def connection_totals(nodes=None,edges=None,populations=[]):
     if not nodes:
