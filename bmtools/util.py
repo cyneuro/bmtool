@@ -14,8 +14,8 @@ def verify_parse(parser):
     try:
         if not len(sys.argv) > 1:
             raise
-        if sys.argv[1] in ['-h','--h','-help','--help','help']:
-            raise
+        #if sys.argv[1] in ['-h','--h','-help','--help','help']:
+        #    raise
         parser.parse_args()
     except:
         parser.print_help()

@@ -4,26 +4,59 @@ https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-p
 """
 from . import util
 
+import argparse,sys
+
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-
 import pandas as pd
 from mpl_toolkits.mplot3d import Axes3D
 
 use_description = """
+
 Plot BMTK models easily.
 
 python -m bmtools.plot 
 """
 
-def conn_matrix(nodes=None,edges=None,title="Total Connections",populations=['hippocampus']):
+def conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
     data, labels = util.connection_totals(nodes=None,edges=None,populations=populations)
-    plot_connection_info(data,labels,title)
+
+    if title == None or title=="":
+        title = "Total Connections"
+
+    plot_connection_info(data,labels,title, save_file=save_file)
     return
     
+def percent_conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
+    data, labels = util.percent_connectivity(nodes=None,edges=None,populations=populations)
+
+    if title == None or title=="":
+        title = "Percent Connectivity"
+
+    plot_connection_info(data,labels,title, save_file=save_file)
+    return
+
+def convergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
+    data, labels = util.connection_divergence_average(nodes=None,edges=None,populations=populations,convergence=True)
+
+    if title == None or title=="":
+        title = "Average Synaptic Convergence"
+
+    plot_connection_info(data,labels,title, save_file=save_file)
+    return
+
+def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
+    data, labels = util.connection_divergence_average(nodes=None,edges=None,populations=populations)
+
+    if title == None or title=="":
+        title = "Average Synaptic Divergence"
+
+    plot_connection_info(data,labels,title, save_file=save_file)
+    return
+
     
-def plot_connection_info(data, labels, title):
+def plot_connection_info(data, labels, title, save_file=None):
     fig, ax = plt.subplots()
     im = ax.imshow(data)
 
@@ -48,6 +81,10 @@ def plot_connection_info(data, labels, title):
     ax.set_title(title)
     fig.tight_layout()
     plt.draw()
+
+    if save_file:
+        plt.savefig(save_file)
+
     return
     
 def plot_spikes(cells_file, cell_models_file, spikes_file, population=None):
@@ -119,7 +156,7 @@ def plot_spikes(cells_file, cell_models_file, spikes_file, population=None):
     
     return
     
-def plot_3d_positions():
+def plot_3d_positions(**kwargs):
     import h5py
     #A = nodes_table(nodes_file='network/hippocampus_nodes.h5', population='hippocampus')
 
@@ -161,22 +198,108 @@ def plot_3d_positions():
     
 if __name__ == '__main__':
     parser = util.get_argparse(use_description)
-
+    
     functions = {}
-    functions["positions"] = {"func":conn_matrix, "description":"yeah"}
-    functions["con_matrix"] = {"func":plot_3d_positions, "description":"yeah"}
-    functions["raster"] = {"func":plot_spikes, "description":"yeah"
+    #TODO: Can add an interactive mode function that loads nodes and edges before hand to save time
+    functions["positions"] = {
+        "function":plot_3d_positions, 
+        "description":"Plot cell positions for a given set of populations",
+        "args":
+        [
+            {
+                "dest":["--title"],
+                "help":"change the plot's title"
+            },
+            {
+                "dest":["--populations"],
+                "nargs":"+",
+                "required":False
+            }
+        ]
+    }
+    functions["connection_total"] = {
+        "function":conn_matrix, 
+        "description":"Plot the total connection matrix for a given set of populations",
+        "args":
+        [
+            {
+                "dest":["--title"],
+                "help":"change the plot's title"
+            },
+            {
+                "dest":["--save_file"],
+                "help":"Save plot to path supplied",
+                "default":None
+            }
+        ]
+    }
+    functions["connection_percent"] = {
+        "function":percent_conn_matrix, 
+        "description":"Plot the connection percentage matrix for a given set of populations",
+        "args":
+        [
+            {
+                "dest":["--title"],
+                "help":"change the plot's title"
+            }
+        ]
+    }
+    functions["connection_divergence"] = {
+        "function":divergence_conn_matrix, 
+        "description":"Plot the connection percentage matrix for a given set of populations",
+        "args":
+        [
+            {
+                "dest":["--title"],
+                "help":"change the plot's title"
+            }            
+        ]
+    }
+    functions["connection_convergence"] = {
+        "function":convergence_conn_matrix, 
+        "description":"Plot the connection convergence matrix for a given set of populations",
+        "args":
+        [
+            {
+                "dest":["--title"],
+                "help":"change the plot's title"
+            }
+        ]
+    }
+    functions["raster"] = {
+        "function":plot_spikes, 
+        "description":"Plot the spike raster for a given set of populations",
+        "args":[
+            {
+                "dest":["--title"],
+                "help":"change the plot's title"
+            }
+        ]
+    }
     
-    parser.add_argument('--config',help='simulation config file (default: simulation_config.json)',default='simulation_config.json')
+    parser.add_argument('--config',help="simulation config file (default: simulation_config.json) [MUST be first argument]",default='simulation_config.json')
+    parser.add_argument('--no-display', action="store_true", default=False, help="When set there will be no plot displayed, useful for saving plots")
+    subparser = parser.add_subparsers()
     for k in list(functions):
-        parser.add_argument('--'+k,action='store_true',help=functions[k]["description"])
-    #parser.add_argument('--multiple', nargs='+', help='display multiple default plots quickly',choices=list(functions))
+        sp = subparser.add_parser(k,help=functions[k]["description"])
+        sp.add_argument('--handler', default=functions[k]["function"], help=argparse.SUPPRESS)
+        if functions[k].get("args"):
+            for a in functions[k]["args"]:
+                dest = a["dest"]
+                a.pop('dest',None)
+                sp.add_argument(*dest,**a)
+
+    #util.verify_parse(parser)
+    if not len(sys.argv) > 1:
+        parser.print_help()
+    else:
+        args = parser.parse_args() 
+        v = vars(args)
+        handling_func = v['handler']
+        no_display = v['no_display']
+        v.pop('handler', None)
+        v.pop('no_display',None)
+        handling_func(**v)
     
-    util.verify_parse(parser)
-    args = parser.parse_args()
-    
-    for key in list(functions):
-        if(eval("args."+key)):
-            functions[key]["func"]()
-                
-    plt.show()
+        if not no_display:
+            plt.show()
