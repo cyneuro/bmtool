@@ -281,62 +281,74 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
             if e_name not in list(edges):
                 continue
             if relation_func:
-                for s_type_ind,s_type in enumerate(source_uids[s]):
-                    for t_type_ind,t_type in enumerate(target_uids[t]): 
-                        source_index = int(s_type_ind+sources_start[s])
-                        target_index = int(t_type_ind+target_start[t])
-                
-                        value = relation_func(source_nodes=nodes[source], target_nodes=nodes[target], edges=edges[e_name], source=source,sid=sids[s], target=target,tid=tids[t],source_id=s_type,target_id=t_type)
-                        e_matrix[source_index,target_index]=value
-            
-            #for j, row in edges[e_name].iterrows():
-            #    source_id = row["source_node_id"]
-            #    target_id = row["target_node_id"]
-            #    source_node_type = nodes[source].iloc[source_id]["node_type_id"]
-            #    target_node_type = nodes[target].iloc[target_id]["node_type_id"]
-            #    
-            #    source_index = int(source_node_type - 100+sources_start[s])
-            #    target_index = int(target_node_type - 100+target_start[t])
-            #    e_matrix[source_index,target_index]+=1
+                source_nodes = nodes[source].add_prefix('source_')
+                target_nodes = nodes[target].add_prefix('target_')
 
-    return e_matrix, source_pop_names, target_pop_names
-
-def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
-    
-    def total_connection_relationship(**kwargs):#source_nodes=None, target_nodes=None, edges=None, sid=None, source=None, tid=None, target=None
-        edges = kwargs["edges"]
-        source_nodes = kwargs["source_nodes"]
-        target_nodes = kwargs["target_nodes"]
-        
-        #src_df = pd.DataFrame({'edge_node_id': source_nodes.index,'source_node_pop_name':source_nodes['pop_name'],'source_node_type_id':source_nodes['node_type_id']})
-        #tgt_df = pd.DataFrame({'edge_node_id': target_nodes.index,'target_node_pop_name':target_nodes['pop_name'],'target_node_type_id':target_nodes['node_type_id']})
-
-        #src_df.set_index('edge_node_id', inplace=True)
-        #tgt_df.set_index('edge_node_id', inplace=True)
-        source_nodes = source_nodes.add_prefix('source_')
-        target_nodes = target_nodes.add_prefix('target_')
-
-        edges = pd.merge(left=edges,
+                c_edges = pd.merge(left=edges[e_name],
                             right=source_nodes,
                             how='left',
                             left_on='source_node_id',
                             right_index=True)
 
-        edges = pd.merge(left=edges,
+                c_edges = pd.merge(left=c_edges,
                             right=target_nodes,
                             how='left',
                             left_on='target_node_id',
                             right_index=True)
 
+                for s_type_ind,s_type in enumerate(source_uids[s]):
+                    for t_type_ind,t_type in enumerate(target_uids[t]): 
+                        source_index = int(s_type_ind+sources_start[s])
+                        target_index = int(t_type_ind+target_start[t])
+                
+                        value = relation_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
+                        e_matrix[source_index,target_index]=value
+
+
+    return e_matrix, source_pop_names, target_pop_names
+
+def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
+    
+    def total_connection_relationship(**kwargs):
+        edges = kwargs["edges"]
         source_id_type = kwargs["sid"]
         target_id_type = kwargs["tid"]
         source_id = kwargs["source_id"]
         target_id = kwargs["target_id"]
-        total = edges[(edges["source_"+source_id_type] == source_id) & (edges["target_"+target_id_type]==target_id)].count()
+        
+        total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)].count()
         total = total.source_node_id # may not be the best way to pick
         return total
     
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
+
+def connection_divergence_average(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False):
+
+    def total_connection_relationship(**kwargs):
+        edges = kwargs["edges"]
+        source_id_type = kwargs["sid"]
+        target_id_type = kwargs["tid"]
+        source_id = kwargs["source_id"]
+        target_id = kwargs["target_id"]
+        t_list = kwargs["target_nodes"]
+        s_list = kwargs["source_nodes"]
+        count = 1
+
+        if convergence:
+            vc = t_list.apply(pd.Series.value_counts)
+            vc = vc[target_id_type].dropna().sort_index()
+            count = vc.ix[target_id]#t_list[t_list[target_id_type]==target_id]
+        else:
+            vc = t_list.apply(pd.Series.value_counts)
+            vc = vc[source_id_type].dropna().sort_index()
+            count = vc.ix[source_id]#count = s_list[s_list[source_id_type]==source_id]
+
+        total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)].count()
+        total = total.source_node_id # may not be the best way to pick
+        return round(total/count,1)
+
+    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
+
 
 def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None, pop_names=None,populations=[]):
     if not nodes and not edges:
@@ -371,7 +383,7 @@ def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None
 def connection_average_synapses():
     return
 
-def connection_divergence_average(config=None, nodes=None, edges=None,populations=[],convergence=False):
+def connection_divergence_average_old(config=None, nodes=None, edges=None,populations=[],convergence=False):
     """
     For each cell in source count # of connections in target and average
     """

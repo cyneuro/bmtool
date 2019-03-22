@@ -58,13 +58,31 @@ def convergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populat
     plot_connection_info(data,labels,title, save_file=save_file)
     return
 
-def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
-    data, labels = util.connection_divergence_average(config=config,nodes=nodes,edges=edges,populations=populations)
+def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False):
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
+    sources = sources.split(",")
+    targets = targets.split(",")
+    if sids:
+        sids = sids.split(",")
+    else:
+        sids = []
+    if tids:
+        tids = tids.split(",")
+    else:
+        tids = []
+    data, source_labels, target_labels = util.connection_divergence_average(nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,convergence=convergence)
+
+    
+    #data, labels = util.connection_divergence_average(config=config,nodes=nodes,edges=edges,populations=populations)
 
     if title == None or title=="":
-        title = "Average Synaptic Divergence"
+        if convergence:
+            title = "Average Synaptic Convergence"
+        else:
+            title = "Average Synaptic Divergence"
 
-    plot_connection_info(data,labels,title, save_file=save_file)
+    plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
     return
 
 def raster(config=None,title=None,populations=['hippocampus']):
@@ -201,6 +219,45 @@ if __name__ == '__main__':
     
     functions = {}
     #TODO: Can add an interactive mode function that loads nodes and edges before hand to save time
+
+    connection_params = [
+        {
+            "dest":["--title"],
+            "help":"change the plot's title"
+        },
+        {
+            "dest":["--save_file"],
+            "help":"save plot to path supplied",
+            "default":None
+        },
+        {
+            "dest":["--sources"],
+            "help":"comma separated list of source node types [default:all]",
+            "default":"all"
+        },
+        {
+            "dest":["--targets"],
+            "help":"comma separated list of target node types [default:all]",
+            "default":"all"
+        },
+        {
+            "dest":["--sids"],
+            "help":"comma separated list of source node identifiers [default:node_type_id]",
+            "default":None
+        },
+        {
+            "dest":["--tids"],
+            "help":"comma separated list of target node identifiers [default:node_type_id]",
+            "default":None
+        },
+        {
+            "dest":["--no_prepend_pop"],
+            "help":"When set don't prepend the population name to the unique ids [default:False]",
+            "action":"store_true",
+            "default":False
+        }
+    ]
+
     functions["positions"] = {
         "function":plot_3d_positions, 
         "description":"Plot cell positions for a given set of populations",
@@ -271,27 +328,24 @@ if __name__ == '__main__':
             }
         ]
     }
+    div_args = connection_params[:]
     functions["connection_divergence"] = {
         "function":divergence_conn_matrix, 
         "description":"Plot the connection percentage matrix for a given set of populations",
         "disabled":True,
-        "args":
-        [
-            {
-                "dest":["--title"],
-                "help":"change the plot's title"
-            }            
-        ]
+        "args": div_args       
     }
+    conv_args = connection_params[:]
     functions["connection_convergence"] = {
-        "function":convergence_conn_matrix, 
+        "function":divergence_conn_matrix, 
         "description":"Plot the connection convergence matrix for a given set of populations",
-        "disabled":True,
-        "args":
+        "disabled":False,
+        "args": conv_args +
         [
             {
-                "dest":["--title"],
-                "help":"change the plot's title"
+                "dest":["--convergence"],
+                "default":True,
+                "help":argparse.SUPPRESS
             }
         ]
     }
