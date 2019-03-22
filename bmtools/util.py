@@ -227,6 +227,8 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
 
     total_source_cell_types = 0
     total_target_cell_types = 0
+    source_uids = []
+    target_uids = []
     source_pop_names = []
     target_pop_names = []
     source_totals = []
@@ -243,6 +245,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
         total_source_cell_types = total_source_cell_types + len(list(set(nodes[source][sid])))
         nodes_src = pd.DataFrame(nodes[source])
         unique_ = nodes_src[sid].unique()
+        source_uids.append(unique_)
         prepend_str = ""
         if prepend_pop:
             prepend_str = str(source) +"_"
@@ -260,6 +263,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
         total_target_cell_types = total_target_cell_types + len(list(set(nodes[target][tid])))
         nodes_trg = pd.DataFrame(nodes[target])
         unique_ = nodes_trg[tid].unique()
+        target_uids.append(unique_)
         prepend_str = ""
         if prepend_pop:
             prepend_str = str(target) +"_"
@@ -277,11 +281,13 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
             if e_name not in list(edges):
                 continue
             if relation_func:
-                source_index = int(s+sources_start[s])
-                target_index = int(t+target_start[t])
-
-                value = relation_func(source_nodes=nodes[source], target_nodes=nodes[target], edges=edges[e_name], source=source,sid=sids[s], target=target,tid=tids[t])
-                e_matrix[source_index,target_index]=value
+                for s_type_ind,s_type in enumerate(source_uids[s]):
+                    for t_type_ind,t_type in enumerate(target_uids[t]): 
+                        source_index = int(s_type_ind+sources_start[s])
+                        target_index = int(t_type_ind+target_start[t])
+                
+                        value = relation_func(source_nodes=nodes[source], target_nodes=nodes[target], edges=edges[e_name], source=source,sid=sids[s], target=target,tid=tids[t],source_id=s_type,target_id=t_type)
+                        e_matrix[source_index,target_index]=value
             
             #for j, row in edges[e_name].iterrows():
             #    source_id = row["source_node_id"]
@@ -298,9 +304,37 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
 def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
     
     def total_connection_relationship(**kwargs):#source_nodes=None, target_nodes=None, edges=None, sid=None, source=None, tid=None, target=None
-        import pdb
-        pdb.set_trace()
-        return
+        edges = kwargs["edges"]
+        source_nodes = kwargs["source_nodes"]
+        target_nodes = kwargs["target_nodes"]
+        
+        #src_df = pd.DataFrame({'edge_node_id': source_nodes.index,'source_node_pop_name':source_nodes['pop_name'],'source_node_type_id':source_nodes['node_type_id']})
+        #tgt_df = pd.DataFrame({'edge_node_id': target_nodes.index,'target_node_pop_name':target_nodes['pop_name'],'target_node_type_id':target_nodes['node_type_id']})
+
+        #src_df.set_index('edge_node_id', inplace=True)
+        #tgt_df.set_index('edge_node_id', inplace=True)
+        source_nodes = source_nodes.add_prefix('source_')
+        target_nodes = target_nodes.add_prefix('target_')
+
+        edges = pd.merge(left=edges,
+                            right=source_nodes,
+                            how='left',
+                            left_on='source_node_id',
+                            right_index=True)
+
+        edges = pd.merge(left=edges,
+                            right=target_nodes,
+                            how='left',
+                            left_on='target_node_id',
+                            right_index=True)
+
+        source_id_type = kwargs["sid"]
+        target_id_type = kwargs["tid"]
+        source_id = kwargs["source_id"]
+        target_id = kwargs["target_id"]
+        total = edges[(edges["source_"+source_id_type] == source_id) & (edges["target_"+target_id_type]==target_id)].count()
+        total = total.source_node_id # may not be the best way to pick
+        return total
     
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
