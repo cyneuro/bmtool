@@ -208,15 +208,7 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
 
     return edges_dict
 
-def add_one_by_one(l):
-    new_l = []
-    cumsum = 0
-    for elt in l:
-        cumsum += elt
-        new_l.append(cumsum)
-    return new_l
-
-def connection_totals(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
+def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None):
     if not nodes and not edges:
         nodes,edges = load_nodes_edges_from_config(config)
     if not nodes:
@@ -284,21 +276,33 @@ def connection_totals(config=None, nodes=None,edges=None,sources=[],targets=[],s
             e_name = source+"_to_"+target
             if e_name not in list(edges):
                 continue
-            for j, row in edges[e_name].iterrows():
-                source_id = row["source_node_id"]
-                target_id = row["target_node_id"]
-                source_node_type = nodes[source].iloc[source_id]["node_type_id"]
-                target_node_type = nodes[target].iloc[target_id]["node_type_id"]
-                
-                source_index = int(source_node_type - 100+sources_start[s])
-                target_index = int(target_node_type - 100+target_start[t])
-                e_matrix[source_index,target_index]+=1
+            if relation_func:
+                source_index = int(s+sources_start[s])
+                target_index = int(t+target_start[t])
+
+                value = relation_func(source_nodes=nodes[source], target_nodes=nodes[target], edges=edges[e_name], source=source,sid=sids[s], target=target,tid=tids[t])
+                e_matrix[source_index,target_index]=value
+            
+            #for j, row in edges[e_name].iterrows():
+            #    source_id = row["source_node_id"]
+            #    target_id = row["target_node_id"]
+            #    source_node_type = nodes[source].iloc[source_id]["node_type_id"]
+            #    target_node_type = nodes[target].iloc[target_id]["node_type_id"]
+            #    
+            #    source_index = int(source_node_type - 100+sources_start[s])
+            #    target_index = int(target_node_type - 100+target_start[t])
+            #    e_matrix[source_index,target_index]+=1
 
     return e_matrix, source_pop_names, target_pop_names
 
-def matrix_connection_totals(source_nodes=None, target_nodes=None, edges=None, s=None, source=None, t=None, target=None):
+def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
     
-    return
+    def total_connection_relationship(**kwargs):#source_nodes=None, target_nodes=None, edges=None, sid=None, source=None, tid=None, target=None
+        import pdb
+        pdb.set_trace()
+        return
+    
+    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
 def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None, pop_names=None,populations=[]):
     if not nodes and not edges:
