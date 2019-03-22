@@ -339,7 +339,7 @@ def connection_divergence_average(config=None,nodes=None,edges=None,sources=[],t
             vc = vc[target_id_type].dropna().sort_index()
             count = vc.ix[target_id]#t_list[t_list[target_id_type]==target_id]
         else:
-            vc = t_list.apply(pd.Series.value_counts)
+            vc = s_list.apply(pd.Series.value_counts)
             vc = vc[source_id_type].dropna().sort_index()
             count = vc.ix[source_id]#count = s_list[s_list[source_id_type]==source_id]
 

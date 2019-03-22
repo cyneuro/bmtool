@@ -219,8 +219,20 @@ if __name__ == '__main__':
     
     functions = {}
     #TODO: Can add an interactive mode function that loads nodes and edges before hand to save time
-
-    connection_params = [
+    base_params = [
+        {
+            "dest":["--config"],
+            "help":"simulation config file (default: simulation_config.json)",
+            "default":"simulation_config.json"
+        },
+        {
+            "dest":["--no_display"],
+            "action":"store_true",
+            "help":"When set there will be no plot displayed, useful for saving plots",
+            "default":False
+        }
+    ]
+    connection_params = base_params + [
         {
             "dest":["--title"],
             "help":"change the plot's title"
@@ -274,65 +286,24 @@ if __name__ == '__main__':
             }
         ]
     }
+    conn_args = connection_params[:]
     functions["connection_total"] = {
         "function":conn_matrix, 
         "description":"Plot the total connection matrix for a given set of populations",
-        "args":
-        [
-            {
-                "dest":["--title"],
-                "help":"change the plot's title"
-            },
-            {
-                "dest":["--save_file"],
-                "help":"save plot to path supplied",
-                "default":None
-            },
-            {
-                "dest":["--sources"],
-                "help":"comma separated list of source node types [default:all]",
-                "default":"all"
-            },
-            {
-                "dest":["--targets"],
-                "help":"comma separated list of target node types [default:all]",
-                "default":"all"
-            },
-            {
-                "dest":["--sids"],
-                "help":"comma separated list of source node identifiers [default:node_type_id]",
-                "default":None
-            },
-            {
-                "dest":["--tids"],
-                "help":"comma separated list of target node identifiers [default:node_type_id]",
-                "default":None
-            },
-            {
-                "dest":["--no_prepend_pop"],
-                "help":"When set don't prepend the population name to the unique ids [default:False]",
-                "action":"store_true",
-                "default":False
-            }
-        ]
+        "args":conn_args
     }
+    perc_args = connection_params[:]
     functions["connection_percent"] = {
         "function":percent_conn_matrix, 
         "description":"Plot the connection percentage matrix for a given set of populations",
         "disabled":True,
-        "args":
-        [
-            {
-                "dest":["--title"],
-                "help":"change the plot's title"
-            }
-        ]
+        "args":perc_args
     }
     div_args = connection_params[:]
     functions["connection_divergence"] = {
         "function":divergence_conn_matrix, 
         "description":"Plot the connection percentage matrix for a given set of populations",
-        "disabled":True,
+        "disabled":False,
         "args": div_args       
     }
     conv_args = connection_params[:]
@@ -360,8 +331,8 @@ if __name__ == '__main__':
         ]
     }
     
-    parser.add_argument('--config',help="simulation config file (default: simulation_config.json) [MUST be first argument]",default='simulation_config.json')
-    parser.add_argument('--no-display', action="store_true", default=False, help="When set there will be no plot displayed, useful for saving plots")
+    #parser.add_argument('--config',help="simulation config file (default: simulation_config.json) [MUST be first argument]",default='simulation_config.json')
+    #parser.add_argument('--no-display', action="store_true", default=False, help="When set there will be no plot displayed, useful for saving plots")
     subparser = parser.add_subparsers()
     for k in list(functions):
         if functions[k].get("disabled") and functions[k]["disabled"]:
@@ -370,9 +341,12 @@ if __name__ == '__main__':
         sp.add_argument('--handler', default=functions[k]["function"], help=argparse.SUPPRESS)
         if functions[k].get("args"):
             for a in functions[k]["args"]:
+                #import pdb
+                #pdb.set_trace()
                 dest = a["dest"]
-                a.pop('dest',None)
-                sp.add_argument(*dest,**a)
+                #a.pop('dest',None)
+                b = {key:value for key, value in a.items() if key not in ["dest"]}
+                sp.add_argument(*dest,**b)
 
     if not len(sys.argv) > 1:
         parser.print_help()
