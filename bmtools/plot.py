@@ -4,7 +4,7 @@ https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-p
 """
 from . import util
 
-import argparse,sys
+import argparse,os,sys
 
 import numpy as np
 import matplotlib
@@ -19,13 +19,25 @@ Plot BMTK models easily.
 python -m bmtools.plot 
 """
 
-def conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
-    data, labels = util.connection_totals(nodes=None,edges=None,populations=populations)
+def conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None):
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
+    sources = sources.split(",")
+    targets = targets.split(",")
+    if sids:
+        sids = sids.split(",")
+    else:
+        sids = []
+    if tids:
+        tids = tids.split(",")
+    else:
+        tids = []
+    data, source_labels, target_labels = util.connection_totals(nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
 
     if title == None or title=="":
         title = "Total Connections"
 
-    plot_connection_info(data,labels,title, save_file=save_file)
+    plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
     return
     
 def percent_conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
@@ -38,7 +50,7 @@ def percent_conn_matrix(config=None,nodes=None,edges=None,title=None,populations
     return
 
 def convergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
-    data, labels = util.connection_divergence_average(nodes=None,edges=None,populations=populations,convergence=True)
+    data, labels = util.connection_divergence_average(config=config,nodes=nodes,edges=edges,populations=populations,convergence=True)
 
     if title == None or title=="":
         title = "Average Synaptic Convergence"
@@ -47,7 +59,7 @@ def convergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populat
     return
 
 def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
-    data, labels = util.connection_divergence_average(nodes=None,edges=None,populations=populations)
+    data, labels = util.connection_divergence_average(config=config,nodes=nodes,edges=edges,populations=populations)
 
     if title == None or title=="":
         title = "Average Synaptic Divergence"
@@ -56,27 +68,30 @@ def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populati
     return
 
 def raster(config=None,title=None,populations=['hippocampus']):
-    print(util.load_config(config))
+    conf = util.load_config(config)
+    spikes_path = os.path.join(conf["output"]["output_dir"],conf["output"]["spikes_file"])
+    nodes = util.load_nodes_from_config(config)
+    plot_spikes(nodes,spikes_path)
     return
 
-def plot_connection_info(data, labels, title, save_file=None):
+def plot_connection_info(data, source_labels,target_labels, title, save_file=None):
     fig, ax = plt.subplots()
     im = ax.imshow(data)
-
+    
     # We want to show all ticks...
-    ax.set_xticks(np.arange(len(labels)))
-    ax.set_yticks(np.arange(len(labels)))
+    ax.set_xticks(list(np.arange(len(target_labels))))
+    ax.set_yticks(list(np.arange(len(source_labels))))
     # ... and label them with the respective list entries
-    ax.set_xticklabels(labels)
-    ax.set_yticklabels(labels)
+    ax.set_xticklabels(target_labels)
+    ax.set_yticklabels(source_labels)
 
     # Rotate the tick labels and set their alignment.
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
             rotation_mode="anchor")
-
+    
     # Loop over data dimensions and create text annotations.
-    for i in range(len(labels)):
-        for j in range(len(labels)):
+    for i in range(len(source_labels)):
+        for j in range(len(target_labels)):
             text = ax.text(j, i, data[i, j],
                         ha="center", va="center", color="w")
     ax.set_ylabel('Source')
@@ -90,29 +105,9 @@ def plot_connection_info(data, labels, title, save_file=None):
 
     return
     
-def plot_spikes(cells_file, cell_models_file, spikes_file, population=None,save_file=None):
+def plot_spikes(nodes, spikes_file,save_file=None):
     
     import h5py
-    cm_df = pd.read_csv(cell_models_file, sep=' ')
-    cm_df.set_index('node_type_id', inplace=True)
-
-    cells_h5 = h5py.File(cells_file, 'r')
-    # TODO: Use sonata api
-    if population is None:
-        if len(cells_h5['/nodes']) > 1:
-            raise Exception('Multiple populations in nodes file. Please specify one to plot using population param')
-        else:
-            population = list(cells_h5['/nodes'])[0]
-
-    nodes_grp = cells_h5['/nodes'][population]
-    c_df = pd.DataFrame({'node_id': nodes_grp['node_id'], 'node_type_id': nodes_grp['node_type_id']})
-
-    c_df.set_index('node_id', inplace=True)
-    nodes_df = pd.merge(left=c_df,
-                        right=cm_df,
-                        how='left',
-                        left_on='node_type_id',
-                        right_index=True)  # use 'model_id' key to merge, for right table the "model_id" is an index
 
     spikes_h5 = h5py.File(spikes_file, 'r')
     spike_gids = np.array(spikes_h5['/spikes/gids'], dtype=np.uint)
@@ -233,14 +228,41 @@ if __name__ == '__main__':
             },
             {
                 "dest":["--save_file"],
-                "help":"Save plot to path supplied",
+                "help":"save plot to path supplied",
                 "default":None
+            },
+            {
+                "dest":["--sources"],
+                "help":"comma separated list of source node types [default:all]",
+                "default":"all"
+            },
+            {
+                "dest":["--targets"],
+                "help":"comma separated list of target node types [default:all]",
+                "default":"all"
+            },
+            {
+                "dest":["--sids"],
+                "help":"comma separated list of source node identifiers [default:node_type_id]",
+                "default":None
+            },
+            {
+                "dest":["--tids"],
+                "help":"comma separated list of target node identifiers [default:node_type_id]",
+                "default":None
+            },
+            {
+                "dest":["--no_prepend_pop"],
+                "help":"When set don't prepend the population name to the unique ids [default:False]",
+                "action":"store_true",
+                "default":False
             }
         ]
     }
     functions["connection_percent"] = {
         "function":percent_conn_matrix, 
         "description":"Plot the connection percentage matrix for a given set of populations",
+        "disabled":True,
         "args":
         [
             {
@@ -252,6 +274,7 @@ if __name__ == '__main__':
     functions["connection_divergence"] = {
         "function":divergence_conn_matrix, 
         "description":"Plot the connection percentage matrix for a given set of populations",
+        "disabled":True,
         "args":
         [
             {
@@ -263,6 +286,7 @@ if __name__ == '__main__':
     functions["connection_convergence"] = {
         "function":convergence_conn_matrix, 
         "description":"Plot the connection convergence matrix for a given set of populations",
+        "disabled":True,
         "args":
         [
             {
@@ -278,10 +302,6 @@ if __name__ == '__main__':
             {
                 "dest":["--title"],
                 "help":"change the plot's title"
-            },
-            {
-                "dest":["--config"],
-                "required":True
             }
         ]
     }
@@ -290,6 +310,8 @@ if __name__ == '__main__':
     parser.add_argument('--no-display', action="store_true", default=False, help="When set there will be no plot displayed, useful for saving plots")
     subparser = parser.add_subparsers()
     for k in list(functions):
+        if functions[k].get("disabled") and functions[k]["disabled"]:
+            continue
         sp = subparser.add_parser(k,help=functions[k]["description"])
         sp.add_argument('--handler', default=functions[k]["function"], help=argparse.SUPPRESS)
         if functions[k].get("args"):
@@ -298,7 +320,6 @@ if __name__ == '__main__':
                 a.pop('dest',None)
                 sp.add_argument(*dest,**a)
 
-    #util.verify_parse(parser)
     if not len(sys.argv) > 1:
         parser.print_help()
     else:

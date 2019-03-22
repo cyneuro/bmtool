@@ -6,6 +6,10 @@ import numpy as np
 from numpy import genfromtxt
 import pandas as pd
 
+import pdb
+
+from bmtk.simulator import bionet
+
 def get_argparse(use_description):
     parser = argparse.ArgumentParser(description=use_description, formatter_class=RawTextHelpFormatter,usage=SUPPRESS)
     return parser
@@ -33,27 +37,29 @@ if __name__ == '__main__':
     verify_parse(parser)
     
     
-def load_config(fp):
-    data = None
-    with open(fp) as f:
-        data = json.load(f)
-    return data
+def load_config(config_file):
+    conf = bionet.Config.from_json(config_file, validate=True)
+    return conf
     
 
 def load_nodes_edges_from_config(fp):
-    #nodes = load_nodes_from_config(fp)
-    #edges = load_nodes_from_config(fp)
-    return None, None
+    if fp is None:
+        fp = 'simulation_config.json'
+    config = load_config(fp)
+    nodes = load_nodes_from_paths(config['networks']['nodes'])
+    edges = load_edges_from_paths(config['networks']['edges'])
+    return nodes, edges
 
 def load_nodes(nodes_file, node_types_file):
-    #nodes_arr = [{"nodes_file":nodes_file,"node_types_file":node_types_file}]
-    #nodes = load_nodes_from_paths(nodes_arr)
-    return
+    nodes_arr = [{"nodes_file":nodes_file,"node_types_file":node_types_file}]
+    nodes = load_nodes_from_paths(nodes_arr)
+    return nodes
 
 def load_nodes_from_config(config):
-    # load config
-    # pass circuit-networks-nodes section into load_nodes_from_paths    
-    return
+    if config is None:
+        config = 'simulation_config.json'
+    networks = load_config('simulation_config.json')['networks']
+    return load_nodes_from_paths(networks['nodes'])
 
 def load_nodes_from_paths(node_paths):
     """
@@ -87,10 +93,10 @@ def load_nodes_from_paths(node_paths):
 
     #Need to get all cell groups for each region
     def get_node_table(cell_models_file, cells_file, population=None):
-        cm_df = pd.read_csv(cell_models_file, sep=' ')
+        cm_df = pd.read_csv(cells_file, sep=' ')
         cm_df.set_index('node_type_id', inplace=True)
 
-        cells_h5 = h5py.File(cells_file, 'r')
+        cells_h5 = h5py.File(cell_models_file, 'r')
         if population is None:
             if len(cells_h5['/nodes']) > 1:
                 raise Exception('Multiple populations in nodes file. Not currently supported. Should be easy to implement when needed. Let Tyler know.')
@@ -117,7 +123,7 @@ def load_nodes_from_paths(node_paths):
                                 left_index=True,
                                 right_index=True)
 
-        return nodes_df
+        return nodes_df, population
     
     #for region, cell_models_file, cells_file in zip(regions, node_types_fpaths, nodes_h5_fpaths):
     #    region_dict[region] = get_node_table(cell_models_file,cells_file,population=region)
@@ -133,11 +139,14 @@ def load_nodes_from_paths(node_paths):
 
     return region_dict
     
-def load_edges_from_config(config):
-    return
+def load_edges_from_config(config='simulation_config.json'):
+    networks = load_config(config)['networks']
+    return load_edges_from_paths(networks['edges'])
 
 def load_edges(edges_file, edge_types_file):
-    return
+    edges_arr = [{"edges_file":edges_file,"edge_types_file":edge_types_file}]
+    edges = load_edges_from_paths(edges_arr)
+    return edges
 
 def load_edges_from_paths(edge_paths):#network_dir='network'):
     """
@@ -199,40 +208,108 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
 
     return edges_dict
 
-def connection_totals(nodes=None,edges=None,populations=[]):
+def add_one_by_one(l):
+    new_l = []
+    cumsum = 0
+    for elt in l:
+        cumsum += elt
+        new_l.append(cumsum)
+    return new_l
+
+def connection_totals(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
+    if not nodes and not edges:
+        nodes,edges = load_nodes_edges_from_config(config)
     if not nodes:
-        nodes = load_nodes()
+        nodes = load_nodes_from_config(config)
     if not edges:
-        edges = load_connections()
+        edges = load_edges_from_config(config)
+    if not edges and not nodes and not config:
+        raise Exception("No information given to load nodes/edges")
+    
+    if 'all' in sources:
+        sources = list(nodes)
+    if 'all' in targets:
+        targets = list(nodes)
+    sids += (len(sources)-len(sids)) * ["node_type_id"] #Extend the array to default values if not enough given
+    tids += (len(targets)-len(tids)) * ["node_type_id"]
 
-    total_cell_types = len(list(set(nodes[populations[0]]["node_type_id"])))
-    nodes_hip = pd.DataFrame(nodes[populations[0]])
-    pop_names = nodes_hip.pop_name.unique()
+    total_source_cell_types = 0
+    total_target_cell_types = 0
+    source_pop_names = []
+    target_pop_names = []
+    source_totals = []
+    target_totals = []
 
-    e_matrix = np.zeros((total_cell_types,total_cell_types))
-
-    for i, key in enumerate(list(edges)):
-        if i==0:#TODO TAKE OUT FROM TESTING
+    for source,sid in zip(sources,sids):
+        do_process = False
+        for t, target in enumerate(targets):
+            e_name = source+"_to_"+target
+            if e_name in list(edges):
+                do_process=True
+        if not do_process: # This is not seen as an input, don't process it.
             continue
-        
-        for j, row in edges[key].iterrows():
-            source = row["source_node_id"]
-            target = row["target_node_id"]
-            source_node_type = nodes[populations[0]].iloc[source]["node_type_id"]
-            target_node_type = nodes[populations[0]].iloc[target]["node_type_id"]
+        total_source_cell_types = total_source_cell_types + len(list(set(nodes[source][sid])))
+        nodes_src = pd.DataFrame(nodes[source])
+        unique_ = nodes_src[sid].unique()
+        prepend_str = ""
+        if prepend_pop:
+            prepend_str = str(source) +"_"
+        unique_= list(np.array((prepend_str+ pd.DataFrame(unique_).astype(str)).values.tolist()).ravel())
+        source_pop_names = source_pop_names + unique_
+        source_totals.append(len(unique_))
+    for target,tid in zip(targets,tids):
+        do_process = False
+        for s, source in enumerate(sources):
+            e_name = source+"_to_"+target
+            if e_name in list(edges):
+                do_process=True
+        if not do_process:
+            continue
+        total_target_cell_types = total_target_cell_types + len(list(set(nodes[target][tid])))
+        nodes_trg = pd.DataFrame(nodes[target])
+        unique_ = nodes_trg[tid].unique()
+        prepend_str = ""
+        if prepend_pop:
+            prepend_str = str(target) +"_"
+        unique_ = list(np.array((prepend_str + pd.DataFrame(unique_).astype(str)).values.tolist()).ravel())
+        target_pop_names = target_pop_names + unique_
+        target_totals.append(len(unique_))
 
-            source_index = int(source_node_type - 100)
-            target_index = int(target_node_type - 100)
+    e_matrix = np.zeros((total_source_cell_types,total_target_cell_types))
+    sources_start =  np.cumsum(source_totals) -source_totals
+    target_start = np.cumsum(target_totals) -target_totals
 
-            e_matrix[source_index,target_index]+=1
-            
-    return e_matrix, pop_names
+    for s, source in enumerate(sources):
+        for t, target in enumerate(targets):
+            e_name = source+"_to_"+target
+            if e_name not in list(edges):
+                continue
+            for j, row in edges[e_name].iterrows():
+                source_id = row["source_node_id"]
+                target_id = row["target_node_id"]
+                source_node_type = nodes[source].iloc[source_id]["node_type_id"]
+                target_node_type = nodes[target].iloc[target_id]["node_type_id"]
+                
+                source_index = int(source_node_type - 100+sources_start[s])
+                target_index = int(target_node_type - 100+target_start[t])
+                e_matrix[source_index,target_index]+=1
 
-def percent_connectivity(nodes=None, edges=None, conn_totals=None, pop_names=None,populations=[]):
-    if nodes == None:
-        nodes = load_nodes()
-    if edges == None:
-        edges = load_connections()
+    return e_matrix, source_pop_names, target_pop_names
+
+def matrix_connection_totals(source_nodes=None, target_nodes=None, edges=None, s=None, source=None, t=None, target=None):
+    
+    return
+
+def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None, pop_names=None,populations=[]):
+    if not nodes and not edges:
+        nodes,edges = load_nodes_edges_from_config(config)
+    if not nodes:
+        nodes = load_nodes_from_config(config)
+    if not edges:
+        edges = load_edges_from_config(config)
+    if not edges and not nodes and not config:
+        raise Exception("No information given to load nodes/edges")
+
     if conn_totals == None:
         conn_totals,pop_names=connection_totals(nodes=nodes,edges=edges,populations=populations)
 
@@ -256,21 +333,25 @@ def percent_connectivity(nodes=None, edges=None, conn_totals=None, pop_names=Non
 def connection_average_synapses():
     return
 
-def connection_divergence_average(nodes=None, edges=None,populations=[],convergence=False):
+def connection_divergence_average(config=None, nodes=None, edges=None,populations=[],convergence=False):
     """
     For each cell in source count # of connections in target and average
     """
-    if nodes == None:
-        nodes = load_nodes()
-    if edges == None:
-        edges = load_connections()
+    if not nodes and not edges:
+        nodes,edges = load_nodes_edges_from_config(config)
+    if not nodes:
+        nodes = load_nodes_from_config(config)
+    if not edges:
+        edges = load_edges_from_config(config)
+    if not edges and not nodes and not config:
+        raise Exception("No information given to load nodes/edges")
 
     nodes_hip = pd.DataFrame(nodes[populations[0]])
     pop_names = nodes_hip.pop_name.unique()
 
     nodes = nodes[list(nodes)[1]]
     edges = edges[list(edges)[1]]
-
+    pdb.set_trace()
     src_df = pd.DataFrame({'edge_node_id': nodes.index,'source_node_pop_name':nodes['pop_name'],'source_node_type_id':nodes['node_type_id']})
     tgt_df = pd.DataFrame({'edge_node_id': nodes.index,'target_node_pop_name':nodes['pop_name'],'target_node_type_id':nodes['node_type_id']})
     
