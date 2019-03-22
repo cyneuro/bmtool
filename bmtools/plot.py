@@ -213,7 +213,10 @@ def plot_3d_positions(**kwargs):
     plt.legend(handles=[ec,ca3e,ca3o,ca3b,dgg,dgh,dgb])
     plt.draw()
     
+def new_plot_3d_positions(**kwargs):
     
+    return
+
 if __name__ == '__main__':
     parser = util.get_argparse(use_description)
     
@@ -354,7 +357,9 @@ if __name__ == '__main__':
         args = parser.parse_args() 
         v = vars(args)
         handling_func = v['handler']
-        no_display = v['no_display']
+        no_display = False 
+        if v.get('no_display'):
+            no_display = v['no_display']
         v.pop('handler', None)
         v.pop('no_display',None)
         handling_func(**v)

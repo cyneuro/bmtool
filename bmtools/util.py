@@ -6,9 +6,6 @@ import numpy as np
 from numpy import genfromtxt
 import pandas as pd
 
-import pdb
-
-from bmtk.simulator import bionet
 
 def get_argparse(use_description):
     parser = argparse.ArgumentParser(description=use_description, formatter_class=RawTextHelpFormatter,usage=SUPPRESS)
@@ -38,6 +35,7 @@ if __name__ == '__main__':
     
     
 def load_config(config_file):
+    from bmtk.simulator import bionet
     conf = bionet.Config.from_json(config_file, validate=True)
     return conf
     
@@ -207,6 +205,23 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
         edges_dict[region_name] = region
 
     return edges_dict
+
+def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], prepend_pop=True)
+    """
+    Returns a dictionary of arrays of arrays {"population_popid":[[1,2,3],[1,2,4]],...
+    """
+    if not nodes:
+        nodes = load_nodes_from_config(config)
+
+    if 'all' in populations:
+        sources = list(nodes)
+
+    popids += (len(populations)-len(popids)) * ["node_type_id"] #Extend the array to default values if not enough given
+
+    for population,pid in zip(populations,popids):
+        pass
+        
+    return
 
 def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None):
     if not nodes and not edges:
