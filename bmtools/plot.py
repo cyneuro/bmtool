@@ -178,6 +178,7 @@ def plot_3d_positions(**kwargs):
     pos = (f['nodes']['hippocampus']['0']['positions'])
     post = [list(i) for i in list(pos)]
     pos_ds = np.array(post)
+    #print(pos_ds[:30,:])
 
     #inpTotal = 30 # EC
     #excTotal = 63 # CA3 principal

@@ -213,15 +213,21 @@ def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], pre
     if not nodes:
         nodes = load_nodes_from_config(config)
 
-    if 'all' in populations:
-        sources = list(nodes)
+    import pdb
+
+    if 'all' in populations or not populations or not len(populations):
+        populations = list(nodes)
 
     popids += (len(populations)-len(popids)) * ["node_type_id"] #Extend the array to default values if not enough given
-
+    cells_by_id = {}
     for population,pid in zip(populations,popids):
-        pass
+        #get a list of unique cell types based on pid
+        pdb.set_trace()
+        cell_types = list(nodes[population][str(pid)].unique())
+        for ct in cell_types:
+            cells_by_id[population+'_'+ct] = 0
         
-    return
+    return cells_by_id
 
 def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None):
     if not nodes and not edges:
