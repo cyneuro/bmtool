@@ -206,7 +206,7 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
 
     return edges_dict
 
-def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], prepend_pop=True)
+def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], prepend_pop=True):
     """
     Returns a dictionary of arrays of arrays {"population_popid":[[1,2,3],[1,2,4]],...
     """

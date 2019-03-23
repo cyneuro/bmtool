@@ -49,14 +49,6 @@ def percent_conn_matrix(config=None,nodes=None,edges=None,title=None,populations
     plot_connection_info(data,labels,title, save_file=save_file)
     return
 
-def convergence_conn_matrix(config=None,nodes=None,edges=None,title=None,populations=['hippocampus'], save_file=None):
-    data, labels = util.connection_divergence_average(config=config,nodes=nodes,edges=edges,populations=populations,convergence=True)
-
-    if title == None or title=="":
-        title = "Average Synaptic Convergence"
-
-    plot_connection_info(data,labels,title, save_file=save_file)
-    return
 
 def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False):
     if not sources or not targets:
@@ -326,7 +318,7 @@ if __name__ == '__main__':
     functions["raster"] = {
         "function":raster, 
         "description":"Plot the spike raster for a given set of populations",
-        "args":[
+        "args": base_params + [
             {
                 "dest":["--title"],
                 "help":"change the plot's title"
