@@ -210,6 +210,53 @@ def new_plot_3d_positions(**kwargs):
     
     return
 
+def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,edge_property='model_template'):
+    
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
+    sources = sources.split(",")
+    targets = targets.split(",")
+    if sids:
+        sids = sids.split(",")
+    else:
+        sids = []
+    if tids:
+        tids = tids.split(",")
+    else:
+        tids = []
+    data, source_labels, target_labels = util.connection_graph_edge_types(nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,edge_property=edge_property)
+
+    if title == None or title=="":
+        title = "Network Graph"
+    
+    import networkx as nx
+
+    net_graph = nx.DiGraph() #or G = nx.MultiDiGraph()
+    
+    edges = []
+    edge_labels = {}
+    for node in list(set(source_labels+target_labels)):
+        net_graph.add_node(node)
+
+    for s, source in enumerate(source_labels):
+        for t, target in enumerate(target_labels):
+            relationship = data[s][t]
+            for i, relation in enumerate(relationship):
+                edge_labels[(source,target)]=relation
+                edges.append([source,target])
+
+    net_graph.add_edges_from(edges)
+    pos = nx.spring_layout(net_graph,k=0.50,iterations=20)
+    plt.figure()
+    nx.draw(net_graph,pos,edge_color='black', width=1,linewidths=1,\
+        node_size=500,node_color='pink',arrowstyle='->',alpha=0.9,\
+        labels={node:node for node in net_graph.nodes()})
+
+    nx.draw_networkx_edge_labels(net_graph,pos,edge_labels=edge_labels,font_color='red')
+    plt.show()
+
+    return
+
 if __name__ == '__main__':
     parser = util.get_argparse(use_description)
     
@@ -313,6 +360,20 @@ if __name__ == '__main__':
                 "dest":["--convergence"],
                 "default":True,
                 "help":argparse.SUPPRESS
+            }
+        ]
+    }
+    graph_args = connection_params[:]
+    functions["network_graph"] = {
+        "function":plot_network_graph, 
+        "description":"Plot the connection graph for supplied targets (default:all)",
+        "disabled":False,
+        "args": graph_args +
+        [
+            {
+                "dest":["--edge_property"],
+                "default":'model_template',
+                "help":"Edge property to define connections (default:model_template)"
             }
         ]
     }

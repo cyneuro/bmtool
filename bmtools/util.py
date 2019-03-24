@@ -229,7 +229,7 @@ def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], pre
         
     return cells_by_id
 
-def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None):
+def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None,return_type=float):
     if not nodes and not edges:
         nodes,edges = load_nodes_edges_from_config(config)
     if not nodes:
@@ -292,7 +292,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
         target_pop_names = target_pop_names + unique_
         target_totals.append(len(unique_))
 
-    e_matrix = np.zeros((total_source_cell_types,total_target_cell_types))
+    e_matrix = np.zeros((total_source_cell_types,total_target_cell_types),dtype=return_type)
     sources_start =  np.cumsum(source_totals) -source_totals
     target_start = np.cumsum(target_totals) -target_totals
 
@@ -369,6 +369,22 @@ def connection_divergence_average(config=None,nodes=None,edges=None,sources=[],t
         return round(total/count,1)
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
+
+def connection_graph_edge_types(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,edge_property='model_template'):
+
+    def synapse_type_relationship(**kwargs):
+        edges = kwargs["edges"]
+        source_id_type = kwargs["sid"]
+        target_id_type = kwargs["tid"]
+        source_id = kwargs["source_id"]
+        target_id = kwargs["target_id"]
+
+        connections = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+        
+        return list(connections[edge_property].unique())
+
+    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=synapse_type_relationship,return_type=object)
+
 
 
 def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None, pop_names=None,populations=[]):
