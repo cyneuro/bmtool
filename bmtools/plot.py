@@ -114,7 +114,16 @@ def plot_connection_info(data, source_labels,target_labels, title, save_file=Non
         plt.savefig(save_file)
 
     return
-    
+
+def plot_spikes_new(nodes,spikes_file,save_file=None):
+    import h5py
+    spikes_h5 = h5py.File(spikes_file, 'r')
+    spikes = pd.DataFrame({"gid":spikes_h5['/spikes/gids'],"timestamp":spikes_h5['/spikes/timestamps']})
+    import pdb
+    pdb.set_trace()
+    # need a list of spike times for each id
+    return
+
 def plot_spikes(nodes, spikes_file,save_file=None):
     
     import h5py
@@ -158,11 +167,11 @@ def plot_spikes(nodes, spikes_file,save_file=None):
     for i,c in enumerate(color_picker):
         leg.legendHandles[-i-1].set_color(c)
     
-    plt.savefig('raster3_after_pycvode_fixes.png')
+    #splt.savefig('raster3_after_pycvode_fixes.png')
     if save_file:
         plt.savefig(save_file)
     
-    plt.show()
+    plt.draw()
     
     return
     
@@ -231,7 +240,7 @@ def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None
     
     import networkx as nx
 
-    net_graph = nx.DiGraph() #or G = nx.MultiDiGraph()
+    net_graph = nx.MultiDiGraph() #or G = nx.MultiDiGraph()
     
     edges = []
     edge_labels = {}
@@ -246,10 +255,11 @@ def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None
                 edges.append([source,target])
 
     net_graph.add_edges_from(edges)
-    pos = nx.spring_layout(net_graph,k=0.50,iterations=20)
+    #pos = nx.spring_layout(net_graph,k=0.50,iterations=20)
+    pos = nx.shell_layout(net_graph)
     plt.figure()
     nx.draw(net_graph,pos,edge_color='black', width=1,linewidths=1,\
-        node_size=500,node_color='pink',arrowstyle='->',alpha=0.9,\
+        node_size=500,node_color='white',arrowstyle='->',alpha=0.9,\
         labels={node:node for node in net_graph.nodes()})
 
     nx.draw_networkx_edge_labels(net_graph,pos,edge_labels=edge_labels,font_color='red')
@@ -269,7 +279,7 @@ if __name__ == '__main__':
             "default":"simulation_config.json"
         },
         {
-            "dest":["--no_display"],
+            "dest":["--no-display"],
             "action":"store_true",
             "help":"When set there will be no plot displayed, useful for saving plots",
             "default":False
@@ -281,7 +291,7 @@ if __name__ == '__main__':
             "help":"change the plot's title"
         },
         {
-            "dest":["--save_file"],
+            "dest":["--save-file"],
             "help":"save plot to path supplied",
             "default":None
         },
@@ -306,7 +316,7 @@ if __name__ == '__main__':
             "default":None
         },
         {
-            "dest":["--no_prepend_pop"],
+            "dest":["--no-prepend-pop"],
             "help":"When set don't prepend the population name to the unique ids [default:False]",
             "action":"store_true",
             "default":False
@@ -330,27 +340,27 @@ if __name__ == '__main__':
         ]
     }
     conn_args = connection_params[:]
-    functions["connection_total"] = {
+    functions["connection-total"] = {
         "function":conn_matrix, 
         "description":"Plot the total connection matrix for a given set of populations",
         "args":conn_args
     }
     perc_args = connection_params[:]
-    functions["connection_percent"] = {
+    functions["connection-percent"] = {
         "function":percent_conn_matrix, 
         "description":"Plot the connection percentage matrix for a given set of populations",
         "disabled":True,
         "args":perc_args
     }
     div_args = connection_params[:]
-    functions["connection_divergence"] = {
+    functions["connection-divergence"] = {
         "function":divergence_conn_matrix, 
         "description":"Plot the connection percentage matrix for a given set of populations",
         "disabled":False,
         "args": div_args       
     }
     conv_args = connection_params[:]
-    functions["connection_convergence"] = {
+    functions["connection-convergence"] = {
         "function":divergence_conn_matrix, 
         "description":"Plot the connection convergence matrix for a given set of populations",
         "disabled":False,
@@ -364,14 +374,14 @@ if __name__ == '__main__':
         ]
     }
     graph_args = connection_params[:]
-    functions["network_graph"] = {
+    functions["network-graph"] = {
         "function":plot_network_graph, 
         "description":"Plot the connection graph for supplied targets (default:all)",
         "disabled":False,
         "args": graph_args +
         [
             {
-                "dest":["--edge_property"],
+                "dest":["--edge-property"],
                 "default":'model_template',
                 "help":"Edge property to define connections (default:model_template)"
             }
