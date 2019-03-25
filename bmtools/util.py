@@ -35,8 +35,10 @@ if __name__ == '__main__':
     
     
 def load_config(config_file):
-    from bmtk.simulator import bionet
-    conf = bionet.Config.from_json(config_file, validate=True)
+    import bmtk.simulator.utils.config as config
+    conf = config.from_json(config_file)
+    #from bmtk.simulator import bionet
+    #conf = bionet.Config.from_json(config_file, validate=True)
     return conf
     
 
