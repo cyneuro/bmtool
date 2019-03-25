@@ -9,6 +9,9 @@ import argparse,os,sys
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.cm as cmx
+import matplotlib.colors as colors
+import matplotlib.gridspec as gridspec
 import pandas as pd
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -77,13 +80,6 @@ def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=
     plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
     return
 
-def raster(config=None,title=None,populations=['hippocampus']):
-    conf = util.load_config(config)
-    spikes_path = os.path.join(conf["output"]["output_dir"],conf["output"]["spikes_file"])
-    nodes = util.load_nodes_from_config(config)
-    plot_spikes(nodes,spikes_path)
-    return
-
 def plot_connection_info(data, source_labels,target_labels, title, save_file=None):
     fig, ax = plt.subplots()
     im = ax.imshow(data)
@@ -115,17 +111,25 @@ def plot_connection_info(data, source_labels,target_labels, title, save_file=Non
 
     return
 
-def plot_spikes_new(nodes,spikes_file,save_file=None):
-    import h5py
-    spikes_h5 = h5py.File(spikes_file, 'r')
-    spikes = pd.DataFrame({"gid":spikes_h5['/spikes/gids'],"timestamp":spikes_h5['/spikes/timestamps']})
-    import pdb
-    pdb.set_trace()
-    # need a list of spike times for each id
+def raster_old(config=None,title=None,populations=['hippocampus']):
+    conf = util.load_config(config)
+    spikes_path = os.path.join(conf["output"]["output_dir"],conf["output"]["spikes_file"])
+    nodes = util.load_nodes_from_config(config)
+    plot_spikes(nodes,spikes_path)
     return
 
-def plot_spikes(nodes, spikes_file,save_file=None):
+def raster(config=None,title=None,population=None,group_key='pop_name'):
+    conf = util.load_config(config)
     
+    cells_file = conf["networks"]["nodes"][0]["nodes_file"]
+    cell_types_file = conf["networks"]["nodes"][0]["node_types_file"]
+    spikes_path = os.path.join(conf["output"]["output_dir"],conf["output"]["spikes_file"])
+
+    from bmtk.analyzer.visualization import spikes
+    spikes.plot_spikes(cells_file,cell_types_file,spikes_path,population=population,group_key=group_key)
+    return
+
+def plot_spikes(nodes, spikes_file,save_file=None):   
     import h5py
 
     spikes_h5 = h5py.File(spikes_file, 'r')
@@ -176,31 +180,70 @@ def plot_spikes(nodes, spikes_file,save_file=None):
     return
     
 def plot_3d_positions(**kwargs):
-    import h5py
-    #A = nodes_table(nodes_file='network/hippocampus_nodes.h5', population='hippocampus')
+    populations_list = kwargs["populations"]
+    config = kwargs["config"]
+    group_keys = kwargs["group_by"]
+    title = kwargs["title"]
+    save_file = kwargs["save_file"]
 
-    #dset = np.array(A['positions'].values)
-    #pos_df = pd.DataFrame(list(dset))
-    #pos_ds = pos_df.values
+    nodes = util.load_nodes_from_config(config)
+    
+    if 'all' in populations_list:
+        populations = list(nodes)
+    else:
+        populations = populations_list.split(",")
+
+    group_keys = group_keys.split(",")
+    group_keys += (len(populations)-len(group_keys)) * ["node_type_id"] #Extend the array to default values if not enough given
+
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    handles = []
+    for nodes_key,group_key in zip(list(nodes),group_keys):
+        if 'all' not in populations and nodes_key not in populations:
+            continue
+            
+        nodes_df = nodes[nodes_key]
+
+        if group_key is not None:
+            if group_key not in nodes_df:
+                raise Exception('Could not find column {}'.format(group_key))
+            groupings = nodes_df.groupby(group_key)
+
+            n_colors = nodes_df[group_key].nunique()
+            color_norm = colors.Normalize(vmin=0, vmax=(n_colors-1))
+            scalar_map = cmx.ScalarMappable(norm=color_norm, cmap='hsv')
+            color_map = [scalar_map.to_rgba(i) for i in range(0, n_colors)]
+        else:
+            groupings = [(None, nodes_df)]
+            color_map = ['blue']
+
+        for color, (group_name, group_df) in zip(color_map, groupings):
+            if "pos_x" not in group_df: #could also check model type == virtual
+                continue #can't plot them if there isn't an xy coordinate (may be virtual)
+            h = ax.scatter(group_df["pos_x"],group_df["pos_y"],group_df["pos_z"],color=color,label=group_name)
+            handles.append(h)
+    
+    plt.title(title)
+    plt.legend(handles=handles)
+    plt.draw()
+
+    if save_file:
+        plt.savefig(save_file)
+
+    return
+
+def plot_3d_positions_old(**kwargs):
+    import h5py
 
     f = h5py.File('network/hippocampus_nodes.h5')
     pos = (f['nodes']['hippocampus']['0']['positions'])
     post = [list(i) for i in list(pos)]
     pos_ds = np.array(post)
-    #print(pos_ds[:30,:])
-
-    #inpTotal = 30 # EC
-    #excTotal = 63 # CA3 principal
-    #CA3oTotal = 8
-    #CA3bTotal  = 8
-    #DGexcTotal = 384 
-    #DGbTotal = 32
-    #DGhTotal = 32
 
     fig = plt.figure()
     ax = Axes3D(fig)
-    #ax.scatter(pos_ds[0:599,0],pos_ds[0:599,1],pos_ds[0:599,2],color='red')
-    #ax.scatter(pos_ds[600:699,0],pos_ds[600:699,1],pos_ds[600:699,2],color='blue')
+
     ec = ax.scatter(pos_ds[0:29,0],pos_ds[0:29,1],pos_ds[0:29,2],color='red',label='EC')
 
     ca3e = ax.scatter(pos_ds[30:92,0],pos_ds[30:92,1],pos_ds[30:92,2],color='blue',label='CA3e')
@@ -214,10 +257,6 @@ def plot_3d_positions(**kwargs):
     plt.title('Hippocampus')
     plt.legend(handles=[ec,ca3e,ca3o,ca3b,dgg,dgh,dgb])
     plt.draw()
-    
-def new_plot_3d_positions(**kwargs):
-    
-    return
 
 def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,edge_property='model_template'):
     
@@ -326,6 +365,35 @@ if __name__ == '__main__':
     functions["positions"] = {
         "function":plot_3d_positions, 
         "description":"Plot cell positions for a given set of populations",
+        "args": base_params + 
+        [
+            {
+                "dest":["--title"],
+                "help":"change the plot's title",
+                "default":"Cell 3D Positions"
+            },
+            {
+                "dest":["--populations"],
+                "help":"comma separated list of populations to plot (default:all)",
+                "default":"all",
+                "required":False
+            },
+            {
+                "dest":["--group-by"],
+                "default":"node_type_id",
+                "help":"comma separated list of identifiers (default: node_type_id) (pop_name is a good one)",
+                "required":False
+            },
+            {
+                "dest":["--save-file"],
+                "help":"save plot to path supplied (default:None)",
+                "default":None
+            }
+        ]
+    }
+    functions["positions-old"] = {
+        "function":plot_3d_positions_old, 
+        "description":"Plot cell positions for hipp model",
         "args":
         [
             {
@@ -389,7 +457,26 @@ if __name__ == '__main__':
     }
     functions["raster"] = {
         "function":raster, 
-        "description":"Plot the spike raster for a given set of populations",
+        "description":"Plot the spike raster for a given population",
+        "args": base_params + [
+            {
+                "dest":["--title"],
+                "help":"change the plot's title"
+            },
+            {
+                "dest":["--population"],
+                "help":"population name"
+            },
+            {
+                "dest":["--group-key"],
+                "help":"change key to group cells by (default: pop_name)",
+                "default":"pop_name"
+            }
+        ]
+    }
+    functions["raster-old"] = {
+        "function":raster_old, 
+        "description":"Plot the spike raster for hipp model",
         "args": base_params + [
             {
                 "dest":["--title"],
