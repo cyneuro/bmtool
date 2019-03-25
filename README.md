@@ -38,21 +38,39 @@ Plot BMTK models easily.
 python -m bmtools.plot
 
 positional arguments:
-  {positions,connection_total,connection_percent,connection_divergence,connection_convergence,raster}
+  {positions,positions-old,connection-total,connection-divergence,connection-convergence,network-graph,raster,raster-old}
     positions           Plot cell positions for a given set of populations
-    connection_total    Plot the total connection matrix for a given set of populations
-    connection_percent  Plot the connection percentage matrix for a given set of populations
-    connection_divergence
+    positions-old       Plot cell positions for hipp model (to be removed/model specific for testing)
+    connection-total    Plot the total connection matrix for a given set of populations
+    connection-divergence
                         Plot the connection percentage matrix for a given set of populations
-    connection_convergence
+    connection-convergence
                         Plot the connection convergence matrix for a given set of populations
-    raster              Plot the spike raster for a given set of populations
+    network-graph       Plot the connection graph for supplied targets (default:all)
+    raster              Plot the spike raster for a given population
+    raster-old          Plot the spike raster for hipp model (to be removed/model specific for testing)
 
 optional arguments:
   -h, --help            show this help message and exit
-  --config CONFIG       simulation config file (default: simulation_config.json) [MUST be first argument]
-  --no-display          When set there will be no plot displayed, useful for saving plots
 >
 > python -m bmtools.plot positions
 ```
 ![bmtools](./figure.png "Positions Figure")
+
+## Planned future features
+```
+python -m bmtools.build
+    Create a starting point network
+    Download sample networks
+
+python -m bmtools.plot
+    Plot variable traces
+    Plot spike rasters
+    Plot cell positions
+    Plot connection matricies
+    
+python -m bmtools.debug 
+    list cell types available for single debug
+    Run a single cell in the network
+    Isolate a single cell in the network
+```
