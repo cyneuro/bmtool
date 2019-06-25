@@ -387,6 +387,20 @@ def connection_graph_edge_types(config=None,nodes=None,edges=None,sources=[],tar
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=synapse_type_relationship,return_type=object)
 
+def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
+     
+    def weight_hist_relationship(**kwargs):
+        edges = kwargs["edges"]
+        source_id_type = kwargs["sid"]
+        target_id_type = kwargs["tid"]
+        source_id = kwargs["source_id"]
+        target_id = kwargs["target_id"]
+
+        connections = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+
+        return list(connections[edge_property])
+
+    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=weight_hist_relationship,return_type=object)
 
 
 def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None, pop_names=None,populations=[]):

@@ -80,6 +80,59 @@ def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=
     plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
     return
 
+def edge_histogram_matrix(**kwargs):
+    config = kwargs["config"]
+    sources = kwargs["sources"]
+    targets = kwargs["targets"]
+    sids = kwargs["sids"]
+    tids = kwargs["tids"]
+    no_prepend_pop = kwargs["no_prepend_pop"]
+    edge_property = kwargs["edge_property"]
+
+    title = kwargs["title"]
+
+    save_file = kwargs["save_file"] 
+    
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
+    sources = sources.split(",")
+    targets = targets.split(",")
+    if sids:
+        sids = sids.split(",")
+    else:
+        sids = []
+    if tids:
+        tids = tids.split(",")
+    else:
+        tids = []
+
+
+    data, source_labels, target_labels = util.edge_property_matrix(edge_property,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
+
+    # Fantastic resource
+    # https://stackoverflow.com/questions/7941207/is-there-a-function-to-make-scatterplot-matrices-in-matplotlib 
+    num_src, num_tar = data.shape
+    fig, axes = plt.subplots(nrows=num_src, ncols=num_tar, figsize=(12,12))
+    fig.subplots_adjust(hspace=0.5, wspace=0.5)
+
+    for x in range(num_src):
+        for y in range(num_tar):
+            axes[x,y].hist(data[x][y])
+
+            if x == num_src-1:
+                axes[x,y].set_xlabel(target_labels[y])
+            if y == 0:
+                axes[x,y].set_ylabel(source_labels[x])
+
+    tt = edge_property + " Histogram Matrix"
+    if title:
+        tt = title
+    st = fig.suptitle(tt, fontsize=14)
+    fig.text(0.5, 0.04, 'Target', ha='center')
+    fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
+    plt.draw()
+
+
 def plot_connection_info(data, source_labels,target_labels, title, save_file=None):
     fig, ax = plt.subplots()
     im = ax.imshow(data)
@@ -327,6 +380,7 @@ if __name__ == '__main__':
     connection_params = base_params + [
         {
             "dest":["--title"],
+            "default":None,
             "help":"change the plot's title"
         },
         {
@@ -427,6 +481,21 @@ if __name__ == '__main__':
         "disabled":False,
         "args": div_args       
     }
+    edge_hist_args = connection_params[:]
+    functions["edge-histogram-matrix"] = {
+        "function":edge_histogram_matrix,
+        "description":"Plot the connection weight matrix for a given set of populations",
+        "disabled":False,
+        "args": edge_hist_args +
+        [
+            {
+                "dest":["--edge-property"],
+                "default":"syn_weight",
+                "help":"Parameter you want to plot (default:syn_weight)"
+            }
+        ]
+    }
+
     conv_args = connection_params[:]
     functions["connection-convergence"] = {
         "function":divergence_conn_matrix, 
@@ -495,10 +564,7 @@ if __name__ == '__main__':
         sp.add_argument('--handler', default=functions[k]["function"], help=argparse.SUPPRESS)
         if functions[k].get("args"):
             for a in functions[k]["args"]:
-                #import pdb
-                #pdb.set_trace()
                 dest = a["dest"]
-                #a.pop('dest',None)
                 b = {key:value for key, value in a.items() if key not in ["dest"]}
                 sp.add_argument(*dest,**b)
 
