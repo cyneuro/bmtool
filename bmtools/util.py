@@ -187,6 +187,10 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
         conn_grp = connections_h5['/edges'][population]
         c_df = pd.DataFrame({'edge_type_id': conn_grp['edge_type_id'], 'source_node_id': conn_grp['source_node_id'],
                              'target_node_id': conn_grp['target_node_id']})
+        if conn_grp.get('0'):
+            custom_props = conn_grp['0']
+            for prop in custom_props:
+                c_df[prop] = list(conn_grp['0'][prop])
 
         c_df.set_index('edge_type_id', inplace=True)
 
@@ -397,8 +401,13 @@ def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sou
         target_id = kwargs["target_id"]
 
         connections = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+        #import pdb
+        #pdb.set_trace()
+        ret = []
+        if connections.get(edge_property) is not None:
+            ret = list(connections[edge_property])
 
-        return list(connections[edge_property])
+        return ret
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=weight_hist_relationship,return_type=object)
 
