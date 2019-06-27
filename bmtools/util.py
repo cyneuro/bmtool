@@ -6,6 +6,9 @@ import numpy as np
 from numpy import genfromtxt
 import pandas as pd
 
+from bmtk.utils.cell_vars import CellVarsFile
+from bmtk.analyzer.cell_vars import _get_cell_report
+from bmtk.analyzer.io_tools import load_config
 
 def get_argparse(use_description):
     parser = argparse.ArgumentParser(description=use_description, formatter_class=RawTextHelpFormatter,usage=SUPPRESS)
@@ -510,3 +513,53 @@ def connection_divergence_average_old(config=None, nodes=None, edges=None,popula
     ret = np.around(e_matrix, decimals=1)
 
     return ret, pop_names
+
+
+class EdgeVarsFile(CellVarsFile):
+    def __init__(self, filename, mode='r', **params):
+        super().__init__(filename, mode, **params)
+        self._var_src_ids = []
+        self._var_trg_ids = []
+        for var_name in self._h5_root['mapping'].keys():
+            if var_name == 'src_ids':
+                self._var_src_ids = list(self._h5_root['mapping']['src_ids'])
+            if var_name == 'trg_ids':
+                self._var_trg_ids = list(self._h5_root['mapping']['trg_ids'])
+    def sources(self,target_gid=None):
+        if target_gid:
+            tb = self._gid2data_table[target_gid]
+            return self._h5_root['mapping']['src_ids'][tb[0]:tb[1]]
+        else:
+            return self._var_src_ids
+    def targets(self):
+        return self._var_trg_ids
+    def data(self,gid,var_name=CellVarsFile.VAR_UNKNOWN,time_window=None,compartments='origin',sources=None):
+        d = super().data(gid,var_name,time_window,compartments)
+        if not sources:
+            return d
+        else:
+            if type(sources) is int:
+                sources = [sources]
+            d_new = None
+            for dl, s in zip(d, self.sources()):
+                if s in sources:
+                    if d_new is None:
+                        d_new = np.array([dl])
+                    else:
+                        d_new = np.append(d_new, [dl],axis=0)
+            if d_new is None:
+                d_new = np.array([])            
+            return d_new
+
+
+def get_synapse_vars(config,report,var_name,target_gid,compartments='all',var_report=None):
+    """
+    Ex: data, sources = get_synapse_vars('9999_simulation_config.json', 'syn_report', 'W_ampa', 31)
+    """
+    cfg = load_config(config)
+    report_name, report_file = _get_cell_report(config,report)
+    var_report = EdgeVarsFile(os.path.join(cfg['output']['output_dir'],report_file+'.h5'))
+    data = var_report.data(gid=target_gid, var_name=var_name, compartments=compartments)
+    sources = var_report.sources(target_gid=target_gid)
+    return data, sources
+
