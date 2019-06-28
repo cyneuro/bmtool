@@ -563,3 +563,4 @@ def get_synapse_vars(config,report,var_name,target_gid,compartments='all',var_re
     sources = var_report.sources(target_gid=target_gid)
     return data, sources
 
+

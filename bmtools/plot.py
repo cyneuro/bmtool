@@ -15,6 +15,9 @@ import matplotlib.gridspec as gridspec
 import pandas as pd
 from mpl_toolkits.mplot3d import Axes3D
 
+from bmtk.analyzer.cell_vars import CellVarsFile, missing_units
+from bmtk.analyzer.utils import listify
+
 use_description = """
 
 Plot BMTK models easily.
@@ -359,6 +362,63 @@ def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None
 
     return
 
+def plot_report(config_file=None, report_file=None, report_name=None, variables=None, gids=None):
+    if report_file is None:
+        report_name, report_file = _get_cell_report(config_file, report_name)
+
+    var_report = CellVarsFile(report_file)
+    variables = listify(variables) if variables is not None else var_report.variables
+    gids = listify(gids) if gids is not None else var_report.gids
+    time_steps = var_report.time_trace
+
+    def __units_str(var):
+        units = var_report.units(var)
+        if units == CellVarsFile.UNITS_UNKNOWN:
+            units = missing_units.get(var, '')
+        return '({})'.format(units) if units else ''
+
+    n_plots = len(variables)
+    if n_plots > 1:
+        # If more than one variale to plot do so in different subplots
+        f, axarr = plt.subplots(n_plots, 1)
+        for i, var in enumerate(variables):
+            for gid in gids:
+                axarr[i].plot(time_steps, var_report.data(gid=gid, var_name=var), label='gid {}'.format(gid))
+
+            axarr[i].legend()
+            axarr[i].set_ylabel('{} {}'.format(var, __units_str(var)))
+            if i < n_plots - 1:
+                axarr[i].set_xticklabels([])
+
+        axarr[i].set_xlabel('time (ms)')
+
+    elif n_plots == 1:
+        # For plotting a single variable
+        plt.figure()
+        for gid in gids:
+            plt.plot(time_steps, var_report.data(gid=gid, var_name=variables[0]), label='gid {}'.format(gid))
+        plt.ylabel('{} {}'.format(variables[0], __units_str(variables[0])))
+        plt.xlabel('time (ms)')
+        plt.legend()
+    else:
+        return
+
+    plt.show()
+
+def plot_report_default(config, report_name, variables, gids):
+
+    if variables:
+        variables = variables.split(',')
+    if gids:
+        gids = [int(i) for i in gids.split(',')]    
+
+    if report_name:
+         cfg = util.load_config(config)
+         report_file = os.path.join(cfg['output']['output_dir'],report_name+'.h5')
+    plot_report(config_file=config, report_file=report_file, report_name=report_name, variables=variables, gids=gids);
+    
+    return
+
 if __name__ == '__main__':
     parser = util.get_argparse(use_description)
     
@@ -448,6 +508,7 @@ if __name__ == '__main__':
     functions["positions-old"] = {
         "function":plot_3d_positions_old, 
         "description":"Plot cell positions for hipp model",
+        "disabled":True,
         "args":
         [
             {
@@ -481,6 +542,20 @@ if __name__ == '__main__':
         "disabled":False,
         "args": div_args       
     }
+    conv_args = connection_params[:]
+    functions["connection-convergence"] = {
+        "function":divergence_conn_matrix,
+        "description":"Plot the connection convergence matrix for a given set of populations",
+        "disabled":False,
+        "args": conv_args +
+        [
+            {
+                "dest":["--convergence"],
+                "default":True,
+                "help":argparse.SUPPRESS
+            }
+        ]
+    }
     edge_hist_args = connection_params[:]
     functions["edge-histogram-matrix"] = {
         "function":edge_histogram_matrix,
@@ -496,20 +571,6 @@ if __name__ == '__main__':
         ]
     }
 
-    conv_args = connection_params[:]
-    functions["connection-convergence"] = {
-        "function":divergence_conn_matrix, 
-        "description":"Plot the connection convergence matrix for a given set of populations",
-        "disabled":False,
-        "args": conv_args +
-        [
-            {
-                "dest":["--convergence"],
-                "default":True,
-                "help":argparse.SUPPRESS
-            }
-        ]
-    }
     graph_args = connection_params[:]
     functions["network-graph"] = {
         "function":plot_network_graph, 
@@ -544,7 +605,8 @@ if __name__ == '__main__':
         ]
     }
     functions["raster-old"] = {
-        "function":raster_old, 
+        "function":raster_old,
+        "disabled":True, 
         "description":"Plot the spike raster for hipp model",
         "args": base_params + [
             {
@@ -553,7 +615,27 @@ if __name__ == '__main__':
             }
         ]
     }
-    
+    functions["report"] = {
+        "function":plot_report_default,
+        "description":"Plot the specified report using BMTK's default report plotter",
+        "args": base_params + [
+            {
+                "dest":["--report-name"],
+                "help":"Name of the report specified in your simulation config you want to consider",
+                "default":None
+            },
+            {
+                "dest":["--variables"],
+                "help":"Comma separated list of variables to plot",
+                "default":None
+            },
+            {
+                "dest":["--gids"],
+                "help":"Cell numbers you want to plot",
+                "default":None
+            }
+        ]
+    }
     #parser.add_argument('--config',help="simulation config file (default: simulation_config.json) [MUST be first argument]",default='simulation_config.json')
     #parser.add_argument('--no-display', action="store_true", default=False, help="When set there will be no plot displayed, useful for saving plots")
     subparser = parser.add_subparsers()
