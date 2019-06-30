@@ -394,8 +394,14 @@ def connection_graph_edge_types(config=None,nodes=None,edges=None,sources=[],tar
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=synapse_type_relationship,return_type=object)
 
-def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
-     
+def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sources=[],targets=[],sids=[],tids=[],prepend_pop=True,report=None,time=-1):
+    
+    var_report = None
+    if time>=0 and report:
+        cfg = load_config(config)
+        report_full, report_file = _get_cell_report(config,report)
+        var_report = EdgeVarsFile(os.path.join(cfg['output']['output_dir'],report_file+'.h5'))
+
     def weight_hist_relationship(**kwargs):
         edges = kwargs["edges"]
         source_id_type = kwargs["sid"]
@@ -404,10 +410,18 @@ def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sou
         target_id = kwargs["target_id"]
 
         connections = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
-        #import pdb
-        #pdb.set_trace()
+        nonlocal time, report, var_report
         ret = []
-        if connections.get(edge_property) is not None:
+
+        if time>=0 and report:
+            sources = list(connections['source_node_id'].unique())
+            sources.sort()
+            targets = list(connections['target_node_id'].unique())
+            targets.sort() 
+            data,_,_ = get_synapse_vars(None,None,edge_property,targets,source_gids=sources,compartments='all',var_report=var_report)
+            
+        else:
+            #if connections.get(edge_property) is not None: #Maybe we should fail if we can't find the variable...
             ret = list(connections[edge_property])
 
         return ret
@@ -552,15 +566,47 @@ class EdgeVarsFile(CellVarsFile):
             return d_new
 
 
-def get_synapse_vars(config,report,var_name,target_gid,compartments='all',var_report=None):
+def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compartments='all',var_report=None):
     """
     Ex: data, sources = get_synapse_vars('9999_simulation_config.json', 'syn_report', 'W_ampa', 31)
     """
-    cfg = load_config(config)
-    report_name, report_file = _get_cell_report(config,report)
-    var_report = EdgeVarsFile(os.path.join(cfg['output']['output_dir'],report_file+'.h5'))
-    data = var_report.data(gid=target_gid, var_name=var_name, compartments=compartments)
-    sources = var_report.sources(target_gid=target_gid)
-    return data, sources
+    if not var_report:
+        cfg = load_config(config)
+        report, report_file = _get_cell_report(config,report)
+        var_report = EdgeVarsFile(os.path.join(cfg['output']['output_dir'],report_file+'.h5'))
+
+    if type(target_gids) is int:
+        target_gids = [target_gids]
+    
+    data_ret = None
+    sources_ret = None
+    targets_ret = None
+    
+    for target_gid in target_gids:
+        data = var_report.data(gid=target_gid, var_name=var_name, compartments=compartments)
+        sources = var_report.sources(target_gid=target_gid)
+        if source_gids:
+            if type(source_gids) is int:
+                source_gids = [source_gids]
+            data = [d for d,s in zip(data,sources) if s in source_gids]
+            sources = [s for s in sources if s in source_gids]
+            
+        targets = np.zeros(len(sources))
+        targets.fill(target_gid)
+
+        if data_ret is None or data_ret is not None and len(data_ret)==0:
+            data_ret = data
+        else:
+            data_ret = np.append(data_ret, [data],axis=0)
+        if sources_ret is None or sources_ret is not None and len(sources_ret)==0:
+            sources_ret = sources
+        else:
+            sources_ret = np.append(sources_ret, sources,axis=0)
+        if targets_ret is None or targets_ret is not None and len(targets_ret)==0:
+            targets_ret = targets
+        else:
+            targets_ret = np.append(targets_ret, targets,axis=0)
+
+    return data_ret, sources_ret, targets_ret
 
 
