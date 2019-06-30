@@ -264,6 +264,9 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
     source_totals = []
     target_totals = []
 
+    source_map = {}#Sometimes we don't add the item to sources or targets, need to keep track of the index
+    target_map = {}#Or change to be a dictionary sometime
+
     for source,sid in zip(sources,sids):
         do_process = False
         for t, target in enumerate(targets):
@@ -282,6 +285,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
         unique_= list(np.array((prepend_str+ pd.DataFrame(unique_).astype(str)).values.tolist()).ravel())
         source_pop_names = source_pop_names + unique_
         source_totals.append(len(unique_))
+        source_map[source] = len(source_uids)-1
     for target,tid in zip(targets,tids):
         do_process = False
         for s, source in enumerate(sources):
@@ -300,6 +304,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
         unique_ = list(np.array((prepend_str + pd.DataFrame(unique_).astype(str)).values.tolist()).ravel())
         target_pop_names = target_pop_names + unique_
         target_totals.append(len(unique_))
+        target_map[target] = len(target_uids) -1
 
     e_matrix = np.zeros((total_source_cell_types,total_target_cell_types),dtype=return_type)
     sources_start =  np.cumsum(source_totals) -source_totals
@@ -326,14 +331,15 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                             left_on='target_node_id',
                             right_index=True)
 
-                for s_type_ind,s_type in enumerate(source_uids[s]):
-                    for t_type_ind,t_type in enumerate(target_uids[t]): 
-                        source_index = int(s_type_ind+sources_start[s])
-                        target_index = int(t_type_ind+target_start[t])
+                sm = source_map[source]
+                tm = target_map[target]
+                for s_type_ind,s_type in enumerate(source_uids[sm]):
+                    for t_type_ind,t_type in enumerate(target_uids[tm]): 
+                        source_index = int(s_type_ind+sources_start[sm])
+                        target_index = int(t_type_ind+target_start[tm])
                 
                         value = relation_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
                         e_matrix[source_index,target_index]=value
-
 
     return e_matrix, source_pop_names, target_pop_names
 
@@ -418,8 +424,11 @@ def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sou
             sources.sort()
             targets = list(connections['target_node_id'].unique())
             targets.sort() 
-            data,_,_ = get_synapse_vars(None,None,edge_property,targets,source_gids=sources,compartments='all',var_report=var_report)
-            
+            data,sources,targets = get_synapse_vars(None,None,edge_property,targets,source_gids=sources,compartments='all',var_report=var_report)
+            if len(data.shape) and data.shape[0]!=0:
+                ret = data[:,time]
+            else:
+                ret = []
         else:
             #if connections.get(edge_property) is not None: #Maybe we should fail if we can't find the variable...
             ret = list(connections[edge_property])
@@ -583,7 +592,11 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
     targets_ret = None
     
     for target_gid in target_gids:
+        if not var_report._gid2data_table.get(target_gid):#This cell was not reported
+            continue
         data = var_report.data(gid=target_gid, var_name=var_name, compartments=compartments)
+        if(len(data.shape)==1):
+            data = data.reshape(1,-1)
         sources = var_report.sources(target_gid=target_gid)
         if source_gids:
             if type(source_gids) is int:
@@ -597,7 +610,7 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
         if data_ret is None or data_ret is not None and len(data_ret)==0:
             data_ret = data
         else:
-            data_ret = np.append(data_ret, [data],axis=0)
+            data_ret = np.append(data_ret, data,axis=0)
         if sources_ret is None or sources_ret is not None and len(sources_ret)==0:
             sources_ret = sources
         else:
@@ -607,6 +620,6 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
         else:
             targets_ret = np.append(targets_ret, targets,axis=0)
 
-    return data_ret, sources_ret, targets_ret
+    return np.array(data_ret), np.array(sources_ret), np.array(targets_ret)
 
 
