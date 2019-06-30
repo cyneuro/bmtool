@@ -424,9 +424,10 @@ def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sou
             sources.sort()
             targets = list(connections['target_node_id'].unique())
             targets.sort() 
-            data,sources,targets = get_synapse_vars(None,None,edge_property,targets,source_gids=sources,compartments='all',var_report=var_report)
+                
+            data,sources,targets = get_synapse_vars(None,None,edge_property,targets,source_gids=sources,compartments='all',var_report=var_report,time=time)
             if len(data.shape) and data.shape[0]!=0:
-                ret = data[:,time]
+                ret = data[:,0]
             else:
                 ret = []
         else:
@@ -575,7 +576,7 @@ class EdgeVarsFile(CellVarsFile):
             return d_new
 
 
-def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compartments='all',var_report=None):
+def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compartments='all',var_report=None,time=None):
     """
     Ex: data, sources = get_synapse_vars('9999_simulation_config.json', 'syn_report', 'W_ampa', 31)
     """
@@ -597,6 +598,11 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
         data = var_report.data(gid=target_gid, var_name=var_name, compartments=compartments)
         if(len(data.shape)==1):
             data = data.reshape(1,-1)
+        #if time is not None:
+            #import pdb
+            #pdb.set_trace()
+        #    data = data[:,:time].reshape(-1,1)
+        data = data[:,-10:]
         sources = var_report.sources(target_gid=target_gid)
         if source_gids:
             if type(source_gids) is int:
