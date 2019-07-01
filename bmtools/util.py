@@ -400,7 +400,7 @@ def connection_graph_edge_types(config=None,nodes=None,edges=None,sources=[],tar
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=synapse_type_relationship,return_type=object)
 
-def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sources=[],targets=[],sids=[],tids=[],prepend_pop=True,report=None,time=-1):
+def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sources=[],targets=[],sids=[],tids=[],prepend_pop=True,report=None,time=-1,time_compare=None):
     
     var_report = None
     if time>=0 and report:
@@ -425,7 +425,7 @@ def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sou
             targets = list(connections['target_node_id'].unique())
             targets.sort() 
                 
-            data,sources,targets = get_synapse_vars(None,None,edge_property,targets,source_gids=sources,compartments='all',var_report=var_report,time=time)
+            data,sources,targets = get_synapse_vars(None,None,edge_property,targets,source_gids=sources,compartments='all',var_report=var_report,time=time,time_compare=time_compare)
             if len(data.shape) and data.shape[0]!=0:
                 ret = data[:,0]
             else:
@@ -576,7 +576,7 @@ class EdgeVarsFile(CellVarsFile):
             return d_new
 
 
-def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compartments='all',var_report=None,time=None):
+def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compartments='all',var_report=None,time=None,time_compare=None):
     """
     Ex: data, sources = get_synapse_vars('9999_simulation_config.json', 'syn_report', 'W_ampa', 31)
     """
@@ -598,11 +598,10 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
         data = var_report.data(gid=target_gid, var_name=var_name, compartments=compartments)
         if(len(data.shape)==1):
             data = data.reshape(1,-1)
-        if time is not None:
-            #import pdb
-            #pdb.set_trace()
-            #data = data[:,:time].reshape(-1,1)
-            #data = data[:,-10:]
+
+        if time is not None and time_compare is not None:
+            data = np.array(data[:,time_compare] - data[:,time]).reshape(-1,1)
+        elif time is not None:
             data = np.delete(data,np.s_[time+1:],1)
             data = np.delete(data,np.s_[:time],1)
 

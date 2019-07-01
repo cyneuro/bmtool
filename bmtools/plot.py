@@ -92,6 +92,7 @@ def edge_histogram_matrix(**kwargs):
     no_prepend_pop = kwargs["no_prepend_pop"]
     edge_property = kwargs["edge_property"]
     time = int(kwargs["time"])
+    time_compare = kwargs["time_compare"]
     report = kwargs["report"]
 
     title = kwargs["title"]
@@ -111,8 +112,10 @@ def edge_histogram_matrix(**kwargs):
     else:
         tids = []
 
+    if time_compare:
+        time_compare = int(time_compare)
 
-    data, source_labels, target_labels = util.edge_property_matrix(edge_property,nodes=None,edges=None,config=config,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,report=report,time=time)
+    data, source_labels, target_labels = util.edge_property_matrix(edge_property,nodes=None,edges=None,config=config,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,report=report,time=time,time_compare=time_compare)
 
     # Fantastic resource
     # https://stackoverflow.com/questions/7941207/is-there-a-function-to-make-scatterplot-matrices-in-matplotlib 
@@ -572,13 +575,18 @@ if __name__ == '__main__':
             },
             {
                 "dest":["--report"],
-                "default":"None",
+                "default":None,
                 "help":"For variables that were collected post simulation run, specify the report the variable is contained in, specified in your simulation config (default:None)"
             },
             {
                 "dest":["--time"],
-                "default":"-1",
+                "default":-1,
                 "help":"Time in (ms) that you want the data point to be collected from. Only used in conjunction with the --report parameter."
+            },
+            {
+                "dest":["--time-compare"],
+                "default":None,
+                "help":"Time in (ms) that you want to compare with the --time parameter. Requires --time and --report parameters."
             }
         ]
     }
