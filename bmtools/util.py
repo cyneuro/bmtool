@@ -598,11 +598,14 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
         data = var_report.data(gid=target_gid, var_name=var_name, compartments=compartments)
         if(len(data.shape)==1):
             data = data.reshape(1,-1)
-        #if time is not None:
+        if time is not None:
             #import pdb
             #pdb.set_trace()
-        #    data = data[:,:time].reshape(-1,1)
-        data = data[:,-10:]
+            #data = data[:,:time].reshape(-1,1)
+            #data = data[:,-10:]
+            data = np.delete(data,np.s_[time+1:],1)
+            data = np.delete(data,np.s_[:time],1)
+
         sources = var_report.sources(target_gid=target_gid)
         if source_gids:
             if type(source_gids) is int:
