@@ -38,7 +38,7 @@ def conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targe
         tids = tids.split(",")
     else:
         tids = []
-    data, source_labels, target_labels = util.connection_totals(nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
+    data, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
 
     if title == None or title=="":
         title = "Total Connections"
