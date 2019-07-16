@@ -117,9 +117,20 @@ def load_nodes_from_paths(node_paths):
                             right_index=True)  # use 'model_id' key to merge, for right table the "model_id" is an index
         
         if 'positions' in list(nodes_grp['0']):
-            cpos = pd.DataFrame({'node_id': nodes_grp['node_id'],"pos_x":nodes_grp['0']['positions'][:,0],"pos_y":nodes_grp['0']['positions'][:,1],"pos_z":nodes_grp['0']['positions'][:,2]})
-            cpos.set_index('node_id', inplace=True)
+            #cpos = pd.DataFrame({'node_id': nodes_grp['node_id'],"pos_x":nodes_grp['0']['positions'][:,0],"pos_y":nodes_grp['0']['positions'][:,1],"pos_z":nodes_grp['0']['positions'][:,2]})
 
+            #Possibly a problem when not all nodes have positions. Those without positions 
+            #should be placed at the end of your simulation (point processes)
+            di = pd.DataFrame({'node_id': nodes_grp['node_id']})
+            dx = pd.DataFrame({"pos_x":nodes_grp['0']['positions'][:,0]})
+            dy = pd.DataFrame({"pos_y":nodes_grp['0']['positions'][:,1]})
+            dz = pd.DataFrame({"pos_z":nodes_grp['0']['positions'][:,2]})
+            cpos = pd.concat([di,dx,dy,dz],ignore_index=True,axis=1)
+            cpos.rename(index=str,columns={0:di.columns[0],1:dx.columns[0],2:dy.columns[0],3:dz.columns[0]},inplace=True)
+            #End
+
+            cpos.set_index('node_id', inplace=True)            
+            
             nodes_df = pd.merge(left=nodes_df,
                                 right=cpos,
                                 how='left',
