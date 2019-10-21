@@ -15,7 +15,7 @@ import matplotlib.gridspec as gridspec
 import pandas as pd
 from mpl_toolkits.mplot3d import Axes3D
 
-from bmtk.analyzer.cell_vars import CellVarsFile, missing_units
+from .util import CellVarsFile#, missing_units
 from bmtk.analyzer.utils import listify
 
 use_description = """
