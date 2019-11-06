@@ -2,7 +2,7 @@
 Want to be able to take multiple plot names in and plot them all at the same time, to save time
 https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-plots-so-that-the-computation-can-continue
 """
-from . import util
+from ..util import util
 
 import argparse,os,sys
 
@@ -12,10 +12,9 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
 import matplotlib.gridspec as gridspec
-import pandas as pd
 from mpl_toolkits.mplot3d import Axes3D
 
-from .util import CellVarsFile#, missing_units
+from ..util.util import CellVarsFile#, missing_units
 from bmtk.analyzer.utils import listify
 
 use_description = """

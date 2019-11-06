@@ -15,7 +15,14 @@ setup(
     url="https://github.com/tjbanks/bmtools",
     download_url='',
     license='MIT',
-    install_requires=[],
+    install_requires=[
+        'bmtk',
+        'clint',
+        'h5py',
+        'matplotlib',
+        'numpy',
+        'pandas'
+    ],
     classifiers=[
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
@@ -27,5 +34,10 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         "Operating System :: OS Independent",
     ],
-    packages=find_packages(),
+    packages=find_packages(exclude=['tests']),
+    entry_points={
+        'console_scripts': [
+            'bmtools = bmtools.cli.manage:cli'
+        ]
+    }
 )

@@ -4,7 +4,6 @@ import glob, json, os, re, sys
 
 import numpy as np
 from numpy import genfromtxt
-import pandas as pd
 
 #from bmtk.utils.io.cell_vars import CellVarsFile
 from bmtk.analyzer.cell_vars import _get_cell_report
@@ -36,14 +35,14 @@ if __name__ == '__main__':
     parser = get_argparse(use_description)
     verify_parse(parser)
     
-import h5py
-
 
 class CellVarsFile(object):
     VAR_UNKNOWN = 'Unknown'
     UNITS_UNKNOWN = 'NA'
 
     def __init__(self, filename, mode='r', **params):
+        
+        import h5py
         self._h5_handle = h5py.File(filename, 'r')
         self._h5_root = self._h5_handle[params['h5_root']] if 'h5_root' in params else self._h5_handle['/']
         self._var_data = {}
@@ -217,6 +216,7 @@ def load_nodes_from_paths(node_paths):
         Where pop_name was a user defined cell property
     """
     import h5py
+    import pandas as pd
     
     #nodes_regex = "_nodes.h5"
     #node_types_regex = "_node_types.csv"
@@ -309,7 +309,7 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
     util.load_edges_from_paths([{"edges_file":"network/hippocampus_hippocampus_edges.h5","edge_types_file":"network/hippocampus_hippocampus_edge_types.csv"}])
     """
     import h5py
-    
+    import pandas as pd
     #edges_regex = "_edges.h5"
     #edge_types_regex = "_edge_types.csv"
 
@@ -320,6 +320,7 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
     edges_dict = {}
 
     def get_edge_table(edges_file, edge_types_file,population=None):
+        
         cm_df = pd.read_csv(edge_types_file, sep=' ')
         cm_df.set_index('edge_type_id', inplace=True)
 
@@ -383,6 +384,9 @@ def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], pre
     return cells_by_id
 
 def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None,return_type=float):
+    
+    import pandas as pd
+    
     if not nodes and not edges:
         nodes,edges = load_nodes_edges_from_config(config)
     if not nodes:
@@ -503,6 +507,8 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
 def connection_divergence_average(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False):
+    
+    import pandas as pd
 
     def total_connection_relationship(**kwargs):
         edges = kwargs["edges"]
@@ -584,6 +590,9 @@ def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sou
 
 
 def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None, pop_names=None,populations=[]):
+    
+    import pandas as pd
+    
     if not nodes and not edges:
         nodes,edges = load_nodes_edges_from_config(config)
     if not nodes:
@@ -620,6 +629,9 @@ def connection_divergence_average_old(config=None, nodes=None, edges=None,popula
     """
     For each cell in source count # of connections in target and average
     """
+
+    import pandas as pd
+    
     if not nodes and not edges:
         nodes,edges = load_nodes_edges_from_config(config)
     if not nodes:
