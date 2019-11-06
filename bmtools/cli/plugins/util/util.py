@@ -588,7 +588,7 @@ def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sou
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=weight_hist_relationship,return_type=object)
 
 
-def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None, pop_names=None,populations=[]):
+def percent_connectivity(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
     
     import pandas as pd
     
@@ -601,11 +601,10 @@ def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None
     if not edges and not nodes and not config:
         raise Exception("No information given to load nodes/edges")
 
-    if conn_totals == None:
-        conn_totals,pop_names=connection_totals(nodes=nodes,edges=edges,populations=populations)
+    data, source_labels, target_labels = connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=prepend_pop)
 
     #total_cell_types = len(list(set(nodes[populations[0]]["node_type_id"])))
-    vc = nodes[populations[0]].apply(pd.Series.value_counts)
+    vc = nodes[sources[0]].apply(pd.Series.value_counts)
     vc = vc["node_type_id"].dropna().sort_index()
     vc = list(vc)
 
@@ -614,11 +613,11 @@ def percent_connectivity(config = None, nodes=None, edges=None, conn_totals=None
     for a, i in enumerate(vc):
         for b, j in enumerate(vc):
             max_connect[a,b] = i*j
-    ret = conn_totals/max_connect
+    ret = data/max_connect
     ret = ret*100
     ret = np.around(ret, decimals=1)
 
-    return ret, pop_names
+    return ret, source_labels, target_labels
     
     
 def connection_average_synapses():

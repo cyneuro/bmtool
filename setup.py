@@ -21,6 +21,7 @@ setup(
         'clint',
         'h5py',
         'matplotlib',
+        'networkx',
         'numpy',
         'pandas'
     ],
