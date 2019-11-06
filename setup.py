@@ -17,6 +17,7 @@ setup(
     license='MIT',
     install_requires=[
         'bmtk',
+        'click',
         'clint',
         'h5py',
         'matplotlib',

@@ -4,6 +4,7 @@ import os
 
 from clint.textui import puts, colored, indent
 from .plot import conn_matrix, percent_conn_matrix, divergence_conn_matrix
+import matplotlib.pyplot as plt
 
 @click.group('plot')
 @click.option('--config', type=click.Path(), default='./simulation_config.json', help='Configuration file to use, default: "simulation_config.json"')
@@ -44,22 +45,29 @@ def connection(ctx, title,save_file,sources,targets,sids,tids,no_prepend_pop):
 @click.pass_context
 def connection_total(ctx):
     conn_matrix(ctx.obj['config'],*ctx.obj['connection'])
+    if ctx.obj['display']:
+        plt.show()
 
 @connection.command('percent',help="Plot the connection percentage matrix for a given set of populations")
 @click.pass_context
 def connection_percent(ctx):
     percent_conn_matrix(ctx.obj['config'],*ctx.obj['connection'])
+    if ctx.obj['display']:
+        plt.show()
 
 @connection.command('divergence',help="Plot the connection divergence matrix for a given set of populations")
 @click.pass_context
 def connection_divergence(ctx):
     divergence_conn_matrix(ctx.obj['config'],*ctx.obj['connection'])
+    if ctx.obj['display']:
+        plt.show()
 
 @connection.command('convergence',help="Plot the connection convergence matrix for a given set of populations")
 @click.pass_context
 def connection_convergence(ctx):
     divergence_conn_matrix(ctx.obj['config'],*ctx.obj['connection'],convergence=True)
-
+    if ctx.obj['display']:
+        plt.show()
 
 cli.add_command(connection)
 
