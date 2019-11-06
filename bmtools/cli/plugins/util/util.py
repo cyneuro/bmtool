@@ -503,7 +503,6 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
         total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)].count()
         total = total.source_node_id # may not be the best way to pick
         return total
-    
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
 def connection_divergence_average(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False):
