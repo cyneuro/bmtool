@@ -21,55 +21,51 @@ python setup.py develop
 
 ```bash
 > cd your_bmtk_model_directory
-> python -m bmtools
-Build, plot or debug BMTK models easily.
+> bmtools
+Usage: bmtools [OPTIONS] COMMAND [ARGS]...
 
-python -m bmtools.build
-python -m bmtools.plot
-python -m bmtools.debug
-python -m bmtools.util
+Options:
+  --verbose  Verbose printing
+  --help     Show this message and exit.
 
-optional arguments:
-  -h, --help  show this help message and exit
+Commands:
+  debug
+  plot
+  util
+
 >  
-> python -m bmtools.plot
-Plot BMTK models easily.
+> bmtools plot 
+Usage: bmtools plot [OPTIONS] COMMAND [ARGS]...
 
-python -m bmtools.plot
+Options:
+  --config PATH  Configuration file to use, default: "simulation_config.json"
+  --no-display   When set there will be no plot displayed, useful for saving
+                 plots
+  --help         Show this message and exit.
 
-positional arguments:
-  {positions,positions-old,connection-total,connection-divergence,connection-convergence,network-graph,raster,raster-old}
-    positions           Plot cell positions for a given set of populations
-    positions-old       Plot cell positions for hipp model (to be removed/model specific for testing)
-    connection-total    Plot the total connection matrix for a given set of populations
-    connection-divergence
-                        Plot the connection percentage matrix for a given set of populations
-    connection-convergence
-                        Plot the connection convergence matrix for a given set of populations
-    network-graph       Plot the connection graph for supplied targets (default:all)
-    raster              Plot the spike raster for a given population
-    raster-old          Plot the spike raster for hipp model (to be removed/model specific for testing)
-
-optional arguments:
-  -h, --help            show this help message and exit
+Commands:
+  connection  Display information related to neuron connections
+  positions   Plot cell positions for a given set of populations
+  raster      Plot the spike raster for a given population
+  report      Plot the specified report using BMTK's default report plotter
 >
-> python -m bmtools.plot positions
+> bmtools plot positions
 ```
 ![bmtools](./figure.png "Positions Figure")
 
 ## Planned future features
 ```
-python -m bmtools.build
+bmtools build
     Create a starting point network
     Download sample networks
 
-python -m bmtools.plot
+bmtools plot
     Plot variable traces
     Plot spike rasters
     Plot cell positions
     Plot connection matricies
     
-python -m bmtools.debug 
+bmtools debug 
     list cell types available for single debug
     Run a single cell in the network
     Isolate a single cell in the network
