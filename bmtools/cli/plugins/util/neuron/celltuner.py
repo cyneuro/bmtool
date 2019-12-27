@@ -3,6 +3,48 @@ import neuron
 import os
 import glob
 
+class Widget:
+    def __init__():
+        return
+
+    def execute():
+        raise NotImplementedError
+
+    def hoc_str():
+        raise NotImplementedError
+
+class PlotWidget(Widget):
+
+    def __init__(self):
+        super()
+        return
+
+    def add_expr(self):
+        return
+    
+    def execute(self):
+        h.Graph()
+        return
+
+    def hoc_str(self):
+        return ""
+
+class ControlMenuWidget(Widget):
+
+    def __init__(self):
+        super()
+        return
+
+    def add_expr(self):
+        return
+    
+    def execute(self):
+        h.nrncontrolmenu()
+        return
+
+    def hoc_str(self):
+        return ""
+
 class CellTunerGUI:
     """
     Notes:
@@ -57,12 +99,67 @@ class CellTunerGUI:
         self.title = title
         self.templates = None
 
+        self.display = [] # Don't feel like dealing with classes
+
         self.template = None #Template file used for GUI
         self.sections = []
         return 
 
+    def add_window(self,title="BMTools NEURON Cell Tuner",width=1000,height=600):
+        window = {
+            'title':title,
+            'width':width,
+            'height':height,
+            'columns':[],
+            '_column_objs':[]
+            }
+        self.display.append(window)
+
+        window_index = len(self.display) - 1
+        return window_index
+
+    def add_column(self,window_index):
+        column = {
+            'widgets' : []
+        }
+        self.display[window_index]['columns'].append(column)
+        column_index = len(self.display[window_index]['columns']) - 1
+        return column_index
+
+    def add_widget(self,window_index,column_index,widget):
+        self.display[window_index]['columns'][column_index]['widgets'].append(widget)
+        return 
+
+
     def show(self):
-        h.HBox()
+        """
+        Thread blocking.
+        """
+
+        from neuron import gui
+        for window_index,window in enumerate(self.display):
+            hBoxObj = h.HBox()
+            # Instance for each column
+            window['_column_objs'] = [h.VBox() for _ in range(len(window['columns']))]
+
+            for column_index, col_vbox_obj in enumerate(window['_column_objs']):
+                col_vbox_obj.intercept(True)
+                column = window['columns'][column_index]
+                for widget in column['widgets']:
+                    widget.execute()
+                col_vbox_obj.intercept(False)
+
+            hBoxObj.intercept(True)
+            for col in window['_column_objs']:
+                col.map()
+            hBoxObj.intercept(False)
+            hBoxObj.map(window['title'],0,0,window['width'],window['height'])
+            print("Press enter to close the GUI window and continue...")
+            input()
+        return
+
+    def write_hoc(self, filename):
+        print("Writing hoc file to " + filename)
         return
 
     def load_template(self,template_name):
