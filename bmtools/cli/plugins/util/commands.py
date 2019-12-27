@@ -4,7 +4,6 @@ import os
 import questionary
 
 from clint.textui import puts, colored, indent
-from .neuron.celltuner import CellTunerGUI
 
 from .util import load_config
 
@@ -19,6 +18,15 @@ def cli(ctx, config):
     if not os.path.exists(config_path):
         click.echo(colored.red("Config file not found: " + config))
 
+def check_neuron_installed(confirm=True):
+    try:
+        import neuron
+    except ModuleNotFoundError as e:
+        print("Error: Python NEURON was not found.")
+        if not confirm or not questionary.confirm("Do you want to continue anyway? ").ask():
+            return False
+    return True
+
 @cli.command('celltune', help="Plot cell positions for a given set of populations")
 @click.option('--hoc-folder', type=click.STRING, default=None, help="override the default cell picker from the simulation config hoc location")
 @click.option('--mod-folder', type=click.STRING, default=None, help="override the default simulation config mod file location")
@@ -32,6 +40,12 @@ def cell_tune(ctx,hoc_folder,mod_folder,title):#, title, populations, group_by, 
     #                save_file=save_file)
     #if ctx.obj['display']:
     #    plt.show()
+
+    if not check_neuron_installed():
+        return
+
+    from .neuron.celltuner import CellTunerGUI
+
     if not hoc_folder or not mod_folder:
         cfg = load_config(ctx.obj['config'])
         if not hoc_folder:
@@ -42,25 +56,30 @@ def cell_tune(ctx,hoc_folder,mod_folder,title):#, title, populations, group_by, 
     ctg = CellTunerGUI(hoc_folder,mod_folder,title=title)
     hoc_templates = ctg.get_templates()
     
-    hoc = questionary.rawselect(
+    # Cell selector
+    hoc = questionary.select(
     "Select a cell:",
     choices=hoc_templates).ask()
 
     ctg.load_template(hoc)
 
+    # Mode selector
+    easy_mode = questionary.confirm("Use pre-built interface? (no for advanced mode) ").ask()
+
+    # Section selector
     section_names = ctg.get_section_names()
 
     sections_selected = questionary.checkbox(
     'Select sections you want to configure (each will recieve a window):',
     choices=section_names).ask()
 
+    # Display selector
     displays_available = ['Voltages', 'Currents', 'Conductances', 'FIR']
     inputs_available = ['Current Clamp', 'Spike Input']
     configuration_available = ['Parameter']
 
     #Do you want to select which currents to plot?
     ctg.show()
-    import pdb;pdb.set_trace()
     return
 
 if __name__ == "__main__":

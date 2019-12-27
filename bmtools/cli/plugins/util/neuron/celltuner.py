@@ -71,7 +71,7 @@ class CellTunerGUI:
             raise Exception("NEURON template not found")
         
         self.template = eval('h.'+template_name+'()')
-        self.sections = [sec for sec in self.template.allsec()]
+        self.sections = [sec for sec in self.template.all]
         return
 
     def get_sections(self):
