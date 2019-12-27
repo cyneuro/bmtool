@@ -7,23 +7,77 @@ class Widget:
     def __init__():
         return
 
-    def execute():
+    def execute(self):
         raise NotImplementedError
 
-    def hoc_str():
+    def hoc_str(self):
         raise NotImplementedError
 
-class PlotWidget(Widget):
-
-    def __init__(self):
+class PointMenuWidget(Widget):
+    def __init__(self,pointprocess):
         super()
-        return
-
-    def add_expr(self):
+        self.pointprocess = pointprocess
         return
     
     def execute(self):
-        h.Graph()
+        h.nrnpointmenu(self.pointprocess)
+        return
+
+    def hoc_str(self):
+        return ""
+    
+class PlotWidget(Widget):
+
+    def __init__(self, tstart=0,tstop=50,miny=-80,maxy=50):
+        super()
+        self.tstart = tstart
+        self.tstop = tstop
+        self.miny = miny
+        self.maxy = maxy
+        self.graph = None
+        self.current_index = 0
+        self.color = 1
+        self.expressions = {}
+        return
+
+    def advance_color(self):
+        #https://www.neuron.yale.edu/neuron/static/py_doc/visualization/graph.html#Graph.color
+        self.color = self.color + 1
+        if self.color == 10:
+            self.color = 1
+        self.graph.color(self.color)
+
+    def add_expr(self,variable,text):
+        self.expressions[text] = variable
+        return
+    
+    def execute(self):
+        self.graph = h.Graph()
+        for text, variable in self.expressions.items():
+            #self.graph.addvar('soma(0.5).v', my_cell.soma(0.5)._ref_v)
+            self.graph.addvar(text,variable)
+            self.advance_color()
+        self.graph.size(self.tstart,self.tstop,self.miny,self.maxy)
+        h.graphList[0].append(self.graph)
+        return
+
+    def hoc_str(self):
+        return ""
+
+class SecMenuWidget(Widget):
+    def __init__(self, sec, x=0.5, vartype=1):
+        """
+        vartype=1,2,3 shows parameters, assigned, or states respectively.
+        0 < x < 1 shows variables at segment containing x changing these variables changes only the values in that segment eg. equivalent to section.v(.2) = -65
+        """
+
+        self.x = x
+        self.vartype = vartype
+        self.sec = sec
+        return
+
+    def execute(self):
+        h.nrnsecmenu(self.x,self.vartype,self.sec)
         return
 
     def hoc_str(self):
@@ -44,6 +98,8 @@ class ControlMenuWidget(Widget):
 
     def hoc_str(self):
         return ""
+
+
 
 class CellTunerGUI:
     """
@@ -103,6 +159,10 @@ class CellTunerGUI:
 
         self.template = None #Template file used for GUI
         self.sections = []
+
+        self.setup_hoc_text = []
+        
+        self.tstop = 250
         return 
 
     def add_window(self,title="BMTools NEURON Cell Tuner",width=1000,height=600):
@@ -130,6 +190,16 @@ class CellTunerGUI:
         self.display[window_index]['columns'][column_index]['widgets'].append(widget)
         return 
 
+    def new_IClamp_Widget(self,sec,dur,amp,delay):
+        """
+        Safely handles hoc output
+        """
+        iclamp = h.IClamp(sec)
+        iclamp.dur = dur
+        iclamp.amp = amp
+        iclamp.delay = delay
+        self.setup_hoc_text.append("")
+        return PointMenuWidget(iclamp), iclamp
 
     def show(self):
         """
@@ -137,6 +207,7 @@ class CellTunerGUI:
         """
 
         from neuron import gui
+        h.tstop = self.tstop
         for window_index,window in enumerate(self.display):
             hBoxObj = h.HBox()
             # Instance for each column
@@ -160,6 +231,8 @@ class CellTunerGUI:
 
     def write_hoc(self, filename):
         print("Writing hoc file to " + filename)
+        for text in self.setup_hoc_text:
+            pass
         return
 
     def load_template(self,template_name):
