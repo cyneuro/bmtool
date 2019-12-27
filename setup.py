@@ -23,7 +23,8 @@ setup(
         'matplotlib',
         'networkx',
         'numpy',
-        'pandas'
+        'pandas',
+        'questionary'
     ],
     classifiers=[
         'Intended Audience :: Developers',
