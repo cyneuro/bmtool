@@ -3,7 +3,6 @@ import neuron
 import os
 import glob
 import numpy as np
-from neuron import gui
 
 class Widget:
     def __init__(self):
@@ -96,13 +95,13 @@ class PlotWidget(Widget):
         return ""
 
 class FICurveWidget(Widget):
-    def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=0,tstop=250):
+    def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=50,tstop=250):
         super()
         self.template_name = template_name
-        self.i_increment = i_increment
-        self.i_start = i_start
-        self.i_stop = i_stop
-        self.tstart = tstart
+        self.i_increment = float(i_increment)/1000
+        self.i_start = float(i_start)/1000
+        self.i_stop = float(i_stop)/1000
+        self.tstart = tstart/1000
         self.tstop = tstop
         self.graph = None
         self.cells = []
@@ -323,7 +322,7 @@ class CellTunerGUI:
         return PointMenuWidget(iclamp), iclamp
 
     def show(self,auto_run=False, on_complete=None):
-
+        from neuron import gui
         fih_commands = []
         h.tstop = self.tstop
         for window_index,window in enumerate(self.display):
@@ -353,6 +352,7 @@ class CellTunerGUI:
                 fih.append(h.FInitializeHandler(0, commands))
             if on_complete:
                 tstop = self.tstop
+                cvode = h.CVode()
                 def commands_complete():
                     nonlocal tstop
                     cvode.event(tstop,on_complete)
@@ -360,8 +360,6 @@ class CellTunerGUI:
                 fih.append(h.FInitializeHandler(0, commands_complete))
                 #on_complete()
 
-                cvode = h.CVode()
-                
             h.stdinit()
             h.run()
         

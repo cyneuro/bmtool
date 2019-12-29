@@ -138,9 +138,12 @@ def cell_tune(ctx,easy,write_hoc,hide,title,tstop):#, title, populations, group_
 #@click.option('--write-hoc', type=click.STRING, default=None, help="write a standalone hoc file for your GUI, supply filename")
 #@click.option('--hide', type=click.BOOL, default=False, is_flag=True, help="hide the interface that shows automatically after building the GUI")
 @click.option('--title',type=click.STRING,default=None)
+@click.option('--min-pa',type=click.INT,default=0,help="Min pA for injection")
+@click.option('--max-pa',type=click.INT,default=1000,help="Max pA for injection")
+@click.option('--increment',type=click.FLOAT,default=100,help="Increment the injection by [i] pA")
 #@click.option('--tstop',type=click.INT,default=250)
 @click.pass_context
-def cell_fir(ctx,title):#, title, populations, group_by, save_file):
+def cell_fir(ctx,title,min_pa,max_pa,increment):#, title, populations, group_by, save_file):
     
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget
 
@@ -164,10 +167,10 @@ def cell_fir(ctx,title):#, title, populations, group_by, save_file):
     
 
     #Window 1
-    window_index = ctg.add_window(title=title)
+    window_index = ctg.add_window(title=title,width=750)
     #Column 1
     column_index = ctg.add_column(window_index)
-    fir_widget = FICurveWidget(template)
+    fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa)
 
     
     plot_widget = PlotWidget(tstop=ctg.tstop)
@@ -178,9 +181,9 @@ def cell_fir(ctx,title):#, title, populations, group_by, save_file):
     ctg.add_widget(window_index,column_index,plot_widget)
 
     #Column 2
-    column_index = ctg.add_column(window_index)
-    control_widget = ControlMenuWidget()
-    ctg.add_widget(window_index,column_index,control_widget)
+    #column_index = ctg.add_column(window_index)
+    #control_widget = ControlMenuWidget()
+    #ctg.add_widget(window_index,column_index,control_widget)
 
     text_widget = TextWidget(label='PASSIVE PROPERTIES:\n')
     text_widget.add_text("V_rest: ")
@@ -188,7 +191,7 @@ def cell_fir(ctx,title):#, title, populations, group_by, save_file):
     text_widget.add_text("Tau: ")
     text_widget.add_text("")
     text_widget.add_text("")
-    text_widget.add_text("FICurve spikes ([nA]:#): ")
+    text_widget.add_text("FICurve ([nA]:#): ")
     text_widget.add_text("")
     ctg.add_widget(window_index, column_index, text_widget)
 
