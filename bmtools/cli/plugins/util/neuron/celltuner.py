@@ -2,9 +2,11 @@ from neuron import h
 import neuron
 import os
 import glob
+import numpy as np
+from neuron import gui
 
 class Widget:
-    def __init__():
+    def __init__(self):
         return
 
     def execute(self):
@@ -13,6 +15,35 @@ class Widget:
     def hoc_str(self):
         raise NotImplementedError
 
+class TextWidget(Widget):
+    def __init__(self,label=""):
+        super()
+        self.label = label
+        self.mystrs = []
+        return
+    
+    def add_text(self, text):
+        """
+        Returns the index for the string you want to set
+        Easier way to do newlines
+        """
+        self.mystrs.append(h.ref(''))
+        i = len(self.mystrs)-1
+        self.mystrs[i][0] = text
+        return i
+
+    def set_text(self, index, text):
+        self.mystrs[index][0] = text
+        return
+
+    def execute(self):
+        h.xpanel('xvarlabel demo')
+        h.xlabel(self.label)
+        for mystr in self.mystrs:
+            h.xvarlabel(mystr)
+        h.xpanel()
+        return
+        
 class PointMenuWidget(Widget):
     def __init__(self,pointprocess):
         super()
@@ -60,6 +91,93 @@ class PlotWidget(Widget):
         self.graph.size(self.tstart,self.tstop,self.miny,self.maxy)
         h.graphList[0].append(self.graph)
         return
+
+    def hoc_str(self):
+        return ""
+
+class FICurveWidget(Widget):
+    def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=0,tstop=250):
+        super()
+        self.template_name = template_name
+        self.i_increment = i_increment
+        self.i_start = i_start
+        self.i_stop = i_stop
+        self.tstart = tstart
+        self.tstop = tstop
+        self.graph = None
+        self.cells = []
+        self.sources = []
+        self.ncs = []
+        self.vectors = []
+        self.t_vec = h.Vector()
+        self.plenvec = []
+
+        self.amps = np.arange(self.i_start,self.i_stop,self.i_increment)
+        for _ in self.amps:
+            #Cell definition
+            cell = eval('h.'+self.template_name+'()')
+            self.cells.append(cell)
+
+        self.lenvec = None
+        self.ampvec = h.Vector(self.amps)
+
+        self.v_rest = 0.0
+        self.r_in = 0.0
+        self.tau = 0.0
+
+    def execute(self):
+        self.graph = h.Graph()
+        self.t_vec.record(h._ref_t)
+
+        for i, amp in enumerate(self.amps):
+            #Injection
+            cell = self.cells[i]
+
+            src = h.IClamp(cell.soma[0](0.5))
+            src.delay = self.tstart
+            src.dur = self.tstop-self.tstart
+            src.amp = amp
+            self.sources.append(src)
+
+            #Recording
+            nc = h.NetCon(cell.soma[0](0.5)._ref_v,None,sec=cell.soma[0])
+            nc.threshold = 0
+            spvec = h.Vector()
+            nc.record(spvec)
+            self.ncs.append(nc)
+            self.vectors.append(spvec)
+
+        ctstop = self.tstop
+        cvgraph = self.graph
+        cvectors = self.vectors
+        ctemplate_name = self.template_name
+        lenvec = self.lenvec
+        ampvec = self.ampvec
+        camps = self.amps
+        plenvec = self.plenvec
+
+        cvode = h.CVode()
+        def commands():
+            def start_event():
+                return
+            cvode.event(0 , start_event)
+
+            def stop_event():
+                nonlocal ctstop, cvectors, cvgraph, ctemplate_name, ampvec, lenvec,camps,plenvec
+                tplenvec = [len(cvec) for cvec in cvectors]
+                for vec in tplenvec:
+                    plenvec.append(vec)
+                lenvec = h.Vector(plenvec)
+                cvgraph.label(ctemplate_name + " FI Curve")
+                plot = lenvec.plot(cvgraph,ampvec)
+                cvgraph.size(0,max(camps),0,max(lenvec)+1)
+                return
+            
+            cvode.event(ctstop, stop_event)
+        
+        h.graphList[0].append(self.graph)
+
+        return commands
 
     def hoc_str(self):
         return ""
@@ -149,7 +267,7 @@ class CellTunerGUI:
     https://github.com/tjbanks/two-cell-hco/blob/master/graphic_library.hoc
 
     """
-    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI'):
+    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI', tstop=250):
         self.template_dir = template_dir
         self.mechanism_dir = mechanism_dir
         self.title = title
@@ -162,8 +280,11 @@ class CellTunerGUI:
 
         self.setup_hoc_text = []
         
-        self.tstop = 250
+        self.tstop = tstop
         return 
+
+    def set_title(self,title):
+        self.title = title
 
     def add_window(self,title="BMTools NEURON Cell Tuner",width=1000,height=600):
         window = {
@@ -201,12 +322,9 @@ class CellTunerGUI:
         self.setup_hoc_text.append("")
         return PointMenuWidget(iclamp), iclamp
 
-    def show(self):
-        """
-        Thread blocking.
-        """
+    def show(self,auto_run=False, on_complete=None):
 
-        from neuron import gui
+        fih_commands = []
         h.tstop = self.tstop
         for window_index,window in enumerate(self.display):
             hBoxObj = h.HBox()
@@ -217,7 +335,9 @@ class CellTunerGUI:
                 col_vbox_obj.intercept(True)
                 column = window['columns'][column_index]
                 for widget in column['widgets']:
-                    widget.execute()
+                    ret = widget.execute()
+                    if ret:
+                        fih_commands.append(ret)
                 col_vbox_obj.intercept(False)
 
             hBoxObj.intercept(True)
@@ -225,10 +345,30 @@ class CellTunerGUI:
                 col.map()
             hBoxObj.intercept(False)
             hBoxObj.map(window['title'],0,0,window['width'],window['height'])
-            print("Press enter to close the GUI window and continue...")
-            input()
-        return
 
+        if auto_run:
+            #https://www.neuron.yale.edu/phpbb/viewtopic.php?f=2&t=2236
+            fih = []
+            for commands in fih_commands:
+                fih.append(h.FInitializeHandler(0, commands))
+            if on_complete:
+                tstop = self.tstop
+                def commands_complete():
+                    nonlocal tstop
+                    cvode.event(tstop,on_complete)
+                    
+                fih.append(h.FInitializeHandler(0, commands_complete))
+                #on_complete()
+
+                cvode = h.CVode()
+                
+            h.stdinit()
+            h.run()
+        
+        print("Press enter to close the GUI window and continue...")
+        input()
+        return
+        
     def write_hoc(self, filename):
         print("Writing hoc file to " + filename)
         for text in self.setup_hoc_text:
