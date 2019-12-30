@@ -95,7 +95,9 @@ class PlotWidget(Widget):
         return ""
 
 class FICurveWidget(Widget):
-    def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=50,tdur=1000,passive_amp=-0.1,passive_delay=200):
+    def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=50,
+            tdur=1000,passive_amp=-0.1,passive_delay=200, record_sec="soma[0]", record_loc="0.5",
+            inj_sec="soma[0]", inj_loc="0.5"):
         super()
         self.template_name = template_name
         self.i_increment = float(i_increment)/1000
@@ -103,6 +105,12 @@ class FICurveWidget(Widget):
         self.i_stop = float(i_stop)/1000
         self.tstart = tstart
         self.tdur = tdur
+
+        self.record_sec = record_sec
+        self.record_loc = record_loc
+        self.inj_sec = inj_sec
+        self.inj_loc = inj_loc
+
         self.tstop = tstart+tdur
         self.graph = None
         self.cells = []
@@ -140,28 +148,31 @@ class FICurveWidget(Widget):
         self.graph = h.Graph()
         self.t_vec.record(h._ref_t)
 
-        self.passive_src = h.IClamp(self.passive_cell.soma[0](0.5))
+        self.passive_src = h.IClamp(eval("self.passive_cell." + self.inj_sec + "(" + self.inj_loc + ")"))
         self.passive_src.delay = self.tstart
         self.passive_src.dur = self.tdur
         self.passive_src.amp = self.passive_amp
         
-        self.passive_nc = h.NetCon(self.passive_cell.soma[0](0.5)._ref_v,None,sec=self.passive_cell.soma[0]) 
+        rec_str = "self.passive_cell." + self.record_sec + "(" + self.record_loc + ")._ref_v"
+        self.passive_nc = h.NetCon(eval(rec_str),None,sec=eval("self.passive_cell." + self.record_sec)) 
         self.passive_nc.threshold = 0
         self.passive_vec = h.Vector()
-        self.passive_vec.record(self.passive_cell.soma[0](0.5)._ref_v)
+        self.passive_vec.record(eval(rec_str))
 
         for i, amp in enumerate(self.amps):
             #Injection
             cell = self.cells[i]
 
-            src = h.IClamp(cell.soma[0](0.5))
+            inj_str = "cell." + self.inj_sec + "(" + self.inj_loc + ")"
+            src = h.IClamp(eval(inj_str))
             src.delay = self.tstart
             src.dur = self.tdur
             src.amp = amp
             self.sources.append(src)
 
             #Recording
-            nc = h.NetCon(cell.soma[0](0.5)._ref_v,None,sec=cell.soma[0])
+            rec_str = "cell." + self.record_sec + "(" + self.record_loc + ")._ref_v"
+            nc = h.NetCon(eval(rec_str),None,sec=eval("cell."+self.record_sec))
             nc.threshold = 0
             spvec = h.Vector()
             nc.record(spvec)
@@ -321,6 +332,7 @@ class CellTunerGUI:
         self.display = [] # Don't feel like dealing with classes
 
         self.template = None #Template file used for GUI
+        self.root_sec = None
         self.sections = []
 
         self.setup_hoc_text = []
@@ -426,7 +438,10 @@ class CellTunerGUI:
             raise Exception("NEURON template not found")
         
         self.template = eval('h.'+template_name+'()')
-        self.sections = [sec for sec in self.template.all]
+        self.sections = [sec for sec in h.allsec()]
+        root_sec = [sec for sec in h.allsec() if sec.parentseg() is None]
+        assert len(root_sec) is 1
+        self.root_sec = root_sec[0]
         return
 
     def get_sections(self):
@@ -435,18 +450,21 @@ class CellTunerGUI:
     def get_section_names(self):
         return [sec.name() for sec in self.get_sections()]
 
-    def get_templates(self):
+    def get_templates(self,hoc_template_file=None):
         if self.templates is None: # Can really only do this once
-            neuron.load_mechanisms(self.mechanism_dir)
+            ##import pdb;pdb.set_trace()
+            if self.mechanism_dir != './' and self.mechanism_dir != '.':
+                neuron.load_mechanisms(self.mechanism_dir)
             h_base = dir(h)
-
+            
             cwd = os.getcwd()
             os.chdir(self.template_dir)
-
-            hoc_templates = glob.glob("*.hoc")
-
-            for hoc_template in hoc_templates:
-                h.load_file(str(hoc_template))
+            if not hoc_template_file:
+                hoc_templates = glob.glob("*.hoc")
+                for hoc_template in hoc_templates:
+                    h.load_file(str(hoc_template))
+            else:
+                h.load_file(hoc_template_file)
 
             os.chdir(cwd)
 
