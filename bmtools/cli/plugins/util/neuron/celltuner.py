@@ -95,14 +95,15 @@ class PlotWidget(Widget):
         return ""
 
 class FICurveWidget(Widget):
-    def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=50,tstop=250):
+    def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=50,tdur=1000,passive_amp=-0.1,passive_delay=200):
         super()
         self.template_name = template_name
         self.i_increment = float(i_increment)/1000
         self.i_start = float(i_start)/1000
         self.i_stop = float(i_stop)/1000
-        self.tstart = tstart/1000
-        self.tstop = tstop
+        self.tstart = tstart
+        self.tdur = tdur
+        self.tstop = tstart+tdur
         self.graph = None
         self.cells = []
         self.sources = []
@@ -120,6 +121,17 @@ class FICurveWidget(Widget):
         self.lenvec = None
         self.ampvec = h.Vector(self.amps)
 
+        self.passive_amp = passive_amp
+        self.passive_cell = eval('h.'+self.template_name+'()')
+        self.passive_src = None
+        self.passive_vec = None
+        self.passive_delay = passive_delay #use x ms after start of inj to calculate r_in, etc
+        self.passive_v_final = 0
+        self.v_t_const = 0
+
+        self.v_rest_time = 0.0
+        self.v_final_time = 0.0
+
         self.v_rest = 0.0
         self.r_in = 0.0
         self.tau = 0.0
@@ -128,13 +140,23 @@ class FICurveWidget(Widget):
         self.graph = h.Graph()
         self.t_vec.record(h._ref_t)
 
+        self.passive_src = h.IClamp(self.passive_cell.soma[0](0.5))
+        self.passive_src.delay = self.tstart
+        self.passive_src.dur = self.tdur
+        self.passive_src.amp = self.passive_amp
+        
+        self.passive_nc = h.NetCon(self.passive_cell.soma[0](0.5)._ref_v,None,sec=self.passive_cell.soma[0]) 
+        self.passive_nc.threshold = 0
+        self.passive_vec = h.Vector()
+        self.passive_vec.record(self.passive_cell.soma[0](0.5)._ref_v)
+
         for i, amp in enumerate(self.amps):
             #Injection
             cell = self.cells[i]
 
             src = h.IClamp(cell.soma[0](0.5))
             src.delay = self.tstart
-            src.dur = self.tstop-self.tstart
+            src.dur = self.tdur
             src.amp = amp
             self.sources.append(src)
 
@@ -146,7 +168,7 @@ class FICurveWidget(Widget):
             self.ncs.append(nc)
             self.vectors.append(spvec)
 
-        ctstop = self.tstop
+        ctstop = self.tstart+self.tdur
         cvgraph = self.graph
         cvectors = self.vectors
         ctemplate_name = self.template_name
@@ -154,7 +176,8 @@ class FICurveWidget(Widget):
         ampvec = self.ampvec
         camps = self.amps
         plenvec = self.plenvec
-
+        cdur = self.tdur
+        cfir_widget = self
         cvode = h.CVode()
         def commands():
             def start_event():
@@ -163,13 +186,36 @@ class FICurveWidget(Widget):
 
             def stop_event():
                 nonlocal ctstop, cvectors, cvgraph, ctemplate_name, ampvec, lenvec,camps,plenvec
+                nonlocal cfir_widget
                 tplenvec = [len(cvec) for cvec in cvectors]
-                for vec in tplenvec:
+                hzlenvec = [i * (1000/cdur) for i in tplenvec]
+                for vec in hzlenvec:
                     plenvec.append(vec)
                 lenvec = h.Vector(plenvec)
                 cvgraph.label(ctemplate_name + " FI Curve")
                 plot = lenvec.plot(cvgraph,ampvec)
                 cvgraph.size(0,max(camps),0,max(lenvec)+1)
+                
+                #cfir_widget.passive_vec[int(cfir_widget.tstop)-20]
+                index_v_rest = int(((1000/h.dt)/1000 * cfir_widget.tstart))
+                index_v_final = int(((1000/h.dt)/1000 * (cfir_widget.tstart+cfir_widget.passive_delay)))
+                
+                cfir_widget.v_rest = cfir_widget.passive_vec[index_v_rest]
+                cfir_widget.v_rest_time = index_v_rest / (1/h.dt)
+
+                cfir_widget.passive_v_final = cfir_widget.passive_vec[index_v_final]
+                cfir_widget.v_final_time = index_v_final / (1/h.dt)
+
+                v_diff = cfir_widget.v_rest - cfir_widget.passive_v_final
+
+                cfir_widget.v_t_const = cfir_widget.v_rest - (v_diff *.632)
+                #Find index of first occurance where
+                #index_v_tau = list(filter(lambda i: i < v_t_const, cfir_widget.passive_vec))[0]
+                index_v_tau = next(x for x, val in enumerate(list(cfir_widget.passive_vec)) if val < cfir_widget.v_t_const) 
+                time_tau = (index_v_tau / ((1000/h.dt)/1000)) - cfir_widget.tstart
+                cfir_widget.tau = time_tau / 1000
+                cfir_widget.r_in = (v_diff)/(0-cfir_widget.passive_amp) #MegaOhms
+                
                 return
             
             cvode.event(ctstop, stop_event)

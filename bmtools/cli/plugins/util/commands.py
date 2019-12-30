@@ -141,9 +141,10 @@ def cell_tune(ctx,easy,write_hoc,hide,title,tstop):#, title, populations, group_
 @click.option('--min-pa',type=click.INT,default=0,help="Min pA for injection")
 @click.option('--max-pa',type=click.INT,default=1000,help="Max pA for injection")
 @click.option('--increment',type=click.FLOAT,default=100,help="Increment the injection by [i] pA")
-#@click.option('--tstop',type=click.INT,default=250)
+@click.option('--tstart',type=click.INT,default=50, help="Injection start time")
+@click.option('--tdur',type=click.INT,default=1000,help="Duration of injection default:1000ms")
 @click.pass_context
-def cell_fir(ctx,title,min_pa,max_pa,increment):#, title, populations, group_by, save_file):
+def cell_fir(ctx,title,min_pa,max_pa,increment,tstart,tdur):#, title, populations, group_by, save_file):
     
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget
 
@@ -151,7 +152,9 @@ def cell_fir(ctx,title,min_pa,max_pa,increment):#, title, populations, group_by,
     mod_folder = ctx.obj["mod_folder"]
     template = ctx.obj["cell_template"]
 
-    ctg = CellTunerGUI(hoc_folder,mod_folder)
+    tstop = tstart+tdur
+
+    ctg = CellTunerGUI(hoc_folder,mod_folder,tstop=tstop)
     hoc_templates = ctg.get_templates()
     
     # Cell selector
@@ -167,13 +170,14 @@ def cell_fir(ctx,title,min_pa,max_pa,increment):#, title, populations, group_by,
     
 
     #Window 1
-    window_index = ctg.add_window(title=title,width=750)
+    window_index = ctg.add_window(title=title,width=800,height=650)
     #Column 1
     column_index = ctg.add_column(window_index)
-    fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa)
+    fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa,tstart=tstart,tdur=tdur)
 
     
     plot_widget = PlotWidget(tstop=ctg.tstop)
+    plot_widget.add_expr(fir_widget.passive_cell.soma[0](0.5)._ref_v,str(round(float(fir_widget.passive_amp),2)))
     for cell,amp in zip(fir_widget.cells, fir_widget.amps):
         plot_widget.add_expr(cell.soma[0](0.5)._ref_v,str(round(float(amp),2)))
 
@@ -190,18 +194,41 @@ def cell_fir(ctx,title,min_pa,max_pa,increment):#, title, populations, group_by,
     text_widget.add_text("R_in: ")
     text_widget.add_text("Tau: ")
     text_widget.add_text("")
+    text_widget.add_text("V_rest Calculation: ")
+    text_widget.add_text("R_in Calculation: ")
     text_widget.add_text("")
-    text_widget.add_text("FICurve ([nA]:#): ")
+    text_widget.add_text("Tau Calculation: ")
+    text_widget.add_text("")
+    text_widget.add_text("")
+    text_widget.add_text("FICurve ([nA]:Hz): ")
     text_widget.add_text("")
     ctg.add_widget(window_index, column_index, text_widget)
 
     def set_text():
-        text_widget.set_text(0,"V_rest: " + str(round(fir_widget.v_rest,2)))
-        text_widget.set_text(1,"R_in: " + str(round(fir_widget.r_in,2)))
-        text_widget.set_text(2,"Tau: " + str(round(fir_widget.tau,2)))
-        spikes = [str(i) for i in fir_widget.plenvec]
+        nonlocal fir_widget
+        v_rest_calc = "V_rest Calculation: Taken at time " + str(fir_widget.v_rest_time) + "(ms) on negative injection cell"
+        rin_calc = "R_in Calculation: [(dV/dI)] = (v_start-v_final)/(i_start-i_final) = " + str(round(fir_widget.v_rest,2)) + \
+                "-(" + str(round(fir_widget.passive_v_final,2))+"))/(0-(" + str(fir_widget.passive_amp) + "))" + \
+                " = (" + str(round(fir_widget.v_rest-fir_widget.passive_v_final,2))+ " (mV) /" + str(0-fir_widget.passive_amp) + " (nA))" + \
+                " = ("+ str(round(((fir_widget.v_rest-fir_widget.passive_v_final)/(0-fir_widget.passive_amp)),2)) + " (MOhms))"
+        tau_calc = "Tau Calculation: [(s) until 63.2% change in mV] = " + \
+                "(mV at inj_start_time (" + str(fir_widget.tstart) + ")) - ((mV at inj_time  - mV at inj_final (" + str(fir_widget.tstart+fir_widget.passive_delay) + ")) * 0.632) = " + \
+                "(" + str(round(fir_widget.v_rest,2)) + ") - (" + str(round(fir_widget.v_rest,2)) +"-" +str(round(fir_widget.passive_v_final,2))+")*0.632 = " + str(round(fir_widget.v_rest - ((fir_widget.v_rest - fir_widget.passive_v_final)*0.632),2))
+        tau_calc2 = "Time where mV == " + str(round(fir_widget.v_t_const,2)) + " = " + str(fir_widget.tstart+fir_widget.tau*1000) + "(ms) | (" + str(fir_widget.tstart+fir_widget.tau*1000) + " - v_start_time (" + str(fir_widget.tstart) +"))/1000 = " + str(round(fir_widget.tau,4))
+        text_widget.set_text(0,"V_rest: " + str(round(fir_widget.v_rest,2)) + " (mV) ")
+        text_widget.set_text(1,"R_in: " + str(round(fir_widget.r_in,2)) + " (MOhms) ")
+        text_widget.set_text(2,"Tau: " + str(round(fir_widget.tau,4)) + " (s) ")
+
+        text_widget.set_text(4,v_rest_calc)
+        text_widget.set_text(5,rin_calc)
+        text_widget.set_text(6,"v_start time: " + str(fir_widget.v_rest_time) + "(ms) | v_final time: " + str(fir_widget.v_final_time) + "(ms)")
+        text_widget.set_text(7,tau_calc)
+        text_widget.set_text(8,tau_calc2)
+
+        spikes = [str(round(i,0)) for i in fir_widget.plenvec]
         amps = fir_widget.amps
-        text_widget.set_text(6," | ".join("["+str(round(a,2))+"]:"+n for a,n in zip(amps,spikes)))
+        text_widget.set_text(11," | ".join("["+str(round(a,2))+"]:"+n for a,n in zip(amps,spikes)))
+        
         return
 
     #ctg.std_init()
