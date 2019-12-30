@@ -312,7 +312,7 @@ class CellTunerGUI:
     https://github.com/tjbanks/two-cell-hco/blob/master/graphic_library.hoc
 
     """
-    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI', tstop=250):
+    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI', tstop=250, dt=.1):
         self.template_dir = template_dir
         self.mechanism_dir = mechanism_dir
         self.title = title
@@ -326,6 +326,7 @@ class CellTunerGUI:
         self.setup_hoc_text = []
         
         self.tstop = tstop
+        h.dt = dt
         return 
 
     def set_title(self,title):
