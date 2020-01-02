@@ -251,7 +251,7 @@ class SecMenuWidget(Widget):
         return
 
     def execute(self):
-        h.nrnsecmenu(self.x,self.vartype,self.sec)
+        h.nrnsecmenu(self.x,self.vartype,sec=self.sec)
         return
 
     def hoc_str(self):
@@ -341,8 +341,10 @@ class CellTunerGUI:
         h.dt = dt
         return 
 
-    def set_title(self,title):
-        self.title = title
+    def set_title(self,window_index,title):
+        self.display[window_index]['title'] = title
+    def get_title(self,window_index):
+        return self.display[window_index]['title']
 
     def add_window(self,title="BMTools NEURON Cell Tuner",width=1000,height=600):
         window = {
