@@ -3,6 +3,7 @@ import neuron
 import os
 import glob
 import numpy as np
+from datetime import datetime
 
 class Widget:
     def __init__(self):
@@ -328,6 +329,7 @@ class CellTunerGUI:
         self.mechanism_dir = mechanism_dir
         self.title = title
         self.templates = None
+        self.template_name = ""
 
         self.display = [] # Don't feel like dealing with classes
 
@@ -369,7 +371,7 @@ class CellTunerGUI:
 
     def add_widget(self,window_index,column_index,widget):
         self.display[window_index]['columns'][column_index]['widgets'].append(widget)
-        return 
+        return len(self.display[window_index]['columns'][column_index]['widgets'])
 
     def new_IClamp_Widget(self,sec,dur,amp,delay):
         """
@@ -430,11 +432,99 @@ class CellTunerGUI:
         
     def write_hoc(self, filename):
         print("Writing hoc file to " + filename)
-        for text in self.setup_hoc_text:
-            pass
+        if os.path.exists(filename):
+            try:
+                os.remove(filename)
+            except Exception as e:
+                print("Error removing " + filename + ". Continuing but issues may arrise.")
+        with open(filename, 'a+') as f:
+            now = datetime.now()
+            now_str = now.strftime("%m/%d/%Y %H:%M:%S")
+            extra_sp = 49-len(now_str)
+            f.write("//################################################################//\n")
+            f.write("//# GUI Built using BMTools (https://github.com/tjbanks/bmtools) #//\n")
+            f.write("//# Tyler Banks (tyler@tylerbanks.net)                           #//\n")
+            f.write("//# Neural Engineering Laboratory (Prof. Satish Nair)            #//\n")
+            f.write("//# University of Missouri, Columbia                             #//\n")
+            f.write("//# Build time: " + now_str + ' '*extra_sp + "#//\n")
+            f.write("//################################################################//\n")
+            f.write("\n")
+            #IMPORT STATEMENTS
+            f.write("{load_file(\"stdrun.hoc\")}\n")
+            f.write("{load_file(\"nrngui.hoc\")}\n")
+            f.write("\n")
+            
+            #LOAD MECHANISMS
+            if self.mechanism_dir != './' and self.mechanism_dir != '.':
+                f.write("//Loading mechanisms in other folder\n")
+                f.write("nrn_load_dll(\""+self.mechanism_dir+"\")\n")
+                f.write("nrn_load_dll(\""+self.mechanism_dir+"/nrnmech.dll\")\n")
+            f.write("\n")
+
+            #LOAD TEMPLATES
+            cwd = os.getcwd()
+            f.write("// Load Templates (some may not be needed and may cause problems)\n")
+            os.chdir(self.template_dir)
+            hoc_templates = glob.glob("*.hoc")
+            os.chdir(cwd)
+            for hoc_template in hoc_templates:
+                f.write("{load_file(\"" + os.path.join(self.template_dir,hoc_template).replace('\\','/') + "\")}\n")
+
+            f.write("\n")
+            f.write("tstop = " + str(self.tstop) + "\n")
+            f.write("objref Cell // declare the cell object\n")
+            f.write("Cell = new " + self.template_name + "() // build the neuron from template\n")
+            for text in self.setup_hoc_text:
+                f.write(text + "\n")
+            
+            f.write("\n\n")
+            f.write("strdef tstr0, tstr1,tstr2,tstr3\n")
+            f.write("\n")
+            for window_index, window in enumerate(self.display):
+                f.write("//Window " + str(window_index+1) + " variables\n")
+                var_prefix = "Window"+str(window_index+1)
+
+                f.write("strdef "+var_prefix+"BoxTitle\n")
+                f.write(var_prefix+"SubVBoxNum = " + str(len(window["columns"])) + "\n")
+                f.write("objref "+var_prefix+"HBoxObj,"+var_prefix+"SubVBoxObj["+var_prefix+"SubVBoxNum]\n")
+
+                f.write("\n")
+                
+            f.write("\n")
+            window_method_name = "DisplayGUI"
+            f.write("proc " + window_method_name + "() { local i\n")
+            f.write("\n")           
+
+            for window_index, window in enumerate(self.display):
+                var_prefix = "Window"+str(window_index+1)
+                f.write("    "+var_prefix+"BoxTitle = \"" + window["title"] + "\"\n")
+                f.write("    "+var_prefix+"HBoxObj = new HBox()\n")
+                f.write("    for i=0,"+var_prefix+"SubVBoxNum-1 "+var_prefix+"SubVBoxObj[i] = new VBox()\n")
+                f.write("\n")
+            f.write("\n")
+            for window_index, window in enumerate(self.display):
+                var_prefix = "Window"+str(window_index+1)
+                f.write("    // " + var_prefix + "\n")
+                for column_index, column in enumerate(window["columns"]):
+                    f.write("    // Column" + str(column_index+1) + "\n")
+                    f.write("    "+var_prefix+"SubVBoxObj["+str(column_index)+"].intercept(1)\n")
+                    for widget_index, widget in enumerate(column["widgets"]):
+                        f.write("        // Widget"+str(widget_index+1) + "\n")
+                    f.write("    "+var_prefix+"SubVBoxObj["+str(column_index)+"].intercept(0)\n")
+                    
+
+
+
+            
+            f.write("}// end " + window_method_name + "()\n")
+
+            f.write("\n\n")
+            f.write(window_method_name + "()")
+
         return
 
     def load_template(self,template_name):
+        self.template_name = template_name
         templates = self.get_templates() #also serves to load templates
         if template_name not in templates:
             raise Exception("NEURON template not found")

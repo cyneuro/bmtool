@@ -65,66 +65,177 @@ cli.add_command(cell)
 
 class Builder():
     def __init__(self):
+        self.title = ""
+        self._options = {}
+        self._exit_option = {}
+        return
+
+    def run(self):
+        def clear(): 
+            # for windows 
+            if name == 'nt': 
+                _ = system('cls') 
+            # for mac and linux(here, os.name is 'posix') 
+            else: 
+                _ = system('clear') 
+                
+        prompter = self
+        while prompter:
+            clear()
+            prompter = prompter.prompt()
+        clear()
+
         return
 
     def prompt(self):
-        raise NotImplementedError 
+        options = list(self._options.keys()) 
+        options_ind = [str(i+1)+") "+op for i,op in enumerate(options)]
+        if bool(self._exit_option):
+            exit_option = list(self._exit_option.keys()) 
+            exit_option_ind = [str(i)+") "+op for i,op in enumerate(exit_option)]#should only be one
+            options = options + exit_option
+            options_ind = options_ind + exit_option_ind
+        
+        selected = questionary.select(
+        self.title,
+        choices=options_ind).ask()
+
+        selected = options[options_ind.index(selected)]
+        
+        if self._exit_option.get(selected):
+            _prompt = self._exit_option[selected][0]()
+        else:
+            _prompt = self._options[selected][0]()
+        return _prompt
+
+    def register(self, text, handler,args=None,is_exit=False):
+        if is_exit:
+            self._exit_option.clear()
+            self._exit_option[text] = (handler,args) 
+        else:
+            self._options[text] = (handler,args)
+        return
+
+
 
 class BaseBuilder(Builder):
     def __init__(self, ctg):
+        super(BaseBuilder, self).__init__()
+        self.title = "Main Menu"
         self.ctg = ctg
+        self.register_all()
         return
 
-    def prompt(self):
-        selected = questionary.select(
-        "Main Menu",
-        choices=[
-            "1) New Window",
-            "2) Display Current Setup",
-            "0) Finish"
-        ]).ask()
+    def register_all(self):
 
-        if selected == "1) New Window":
+        def new_window():
             return WindowBuilder(self,self.ctg)
-        elif selected == "2) Display Current Setup":
+        
+        def print_ctx():
             print("Not currently implemented")
             print("Press enter to continue...")
             input()
             return self
-        elif selected == "0) Finish":
-            return None
-        return None 
+        
+        def write_to_hoc():
+            print("Enter the name of the file you wish to write: (eg: cellgui.hoc)")
+            filename = input()
+            self.ctg.write_hoc(filename)
+            print("Done. Press enter to continue...")
+            return self
 
+        def finished():
+            return None
+
+        self.register("New Window", new_window)
+        self.register("Display Current Setup", print_ctx)
+        self.register("Write to HOC executable", write_to_hoc)
+        self.register("Done", finished ,is_exit=True)
+ 
 class WindowBuilder(Builder):
     def __init__(self, parent, ctg):
+        super(WindowBuilder, self).__init__()
         self.parent = parent
         self.ctg = ctg
         self.window_index = ctg.add_window()
+        self.title = self.ctg.get_title(self.window_index)
+        self.register_all()
         return
-    
-    def prompt(self):
-        selected = questionary.select(
-        "Window #" + str(self.window_index+1) + " - " + self.ctg.get_title(self.window_index),
-        choices=[
-            "1) Set Title",
-            "2) New Widget",
-            "0) Finish Window"
-        ]).ask()
 
-        if selected == "1) Set Title":
+    def register_all(self):
+
+        def set_title():
             print("Type the new title for this window")
             self.ctg.set_title(self.window_index,input())
+            self.title = self.ctg.get_title(self.window_index)
             return self
-            #return WindowBuilder(self,self.ctg)
-        elif selected == "2) New Widget":
+        
+        def new_column():
+            return ColumnBuilder(self,self.ctg)
+        
+        def finished():
+            return self.parent
+
+        self.register("Add Column", new_column)
+        self.register("Set Window Title", set_title)
+        self.register("Finish Window", finished ,is_exit=True)
+
+class ColumnBuilder(Builder):
+    def __init__(self, parent, ctg):
+        super(ColumnBuilder, self).__init__()
+        self.parent = parent
+        self.ctg = ctg
+        self.column_index = ctg.add_column(self.parent.window_index)
+        self.title = "Window " + str(self.parent.window_index) + " Column " + str(self.column_index)
+        self.register_all()
+        return
+
+    def register_all(self):
+        
+        def new_widget():
             print("Not currently implemented")
             print("Press enter to continue...")
             input()
             return self
-            #return WindowBuilder(self,self.ctg)
-        elif selected == "0) Finish Window":
+        
+        def new_plot_widget():
+            return PlotWidgetBuilder(self,self.ctg)
+        
+        def finished():
             return self.parent
-        return None 
+
+        self.register("Add Widget", new_widget)
+        self.register("Add Plot Widget", new_plot_widget)
+        self.register("Finish Column", finished ,is_exit=True)
+
+class PlotWidgetBuilder(Builder):
+    def __init__(self, parent, ctg):
+        super(PlotWidgetBuilder, self).__init__()
+
+        from .neuron.celltuner import PlotWidget
+
+        self.parent = parent
+        self.ctg = ctg
+        self.widget = PlotWidget()
+        self.widget_index = ctg.add_widget(self.parent.parent.window_index, self.parent.column_index,self.widget)
+        self.title = "Window " + str(self.parent.parent.window_index + 1) + " Column " + \
+            str(self.parent.column_index + 1) + " Widget " + str(self.widget_index) + " (Plot Widget)"
+        self.register_all()
+        return
+
+    def register_all(self):
+            
+        def new_expression():
+            print("Not currently implemented")
+            print("Press enter to continue...")
+            input()
+            return self
+        
+        def finished():
+            return self.parent
+
+        self.register("Add Expression", new_expression)
+        self.register("Finish Widget", finished ,is_exit=True)
 
 @cell.command('tune', help="Creates a NEURON GUI window with everything you need to tune a cell")
 @click.option('--easy', type=click.BOOL, default=None, is_flag=True, help="Builds a simple GUI with no walkthrough")
@@ -192,20 +303,8 @@ def cell_tune(ctx,easy,builder,write_hoc,hide,title,tstop):#, title, populations
         ctg.add_widget(window_index,column_index,iclamp_widget)
         
     else:
-        def clear(): 
-            # for windows 
-            if name == 'nt': 
-                _ = system('cls') 
-            # for mac and linux(here, os.name is 'posix') 
-            else: 
-                _ = system('clear') 
-                
         cmd_builder = BaseBuilder(ctg)
-        prompter = cmd_builder
-        while prompter:
-            clear()
-            prompter = prompter.prompt()
-        clear()
+        cmd_builder.run()
         
 
     # Section selector
