@@ -142,6 +142,7 @@ class BaseBuilder(Builder):
             filename = input()
             self.ctg.write_hoc(filename)
             print("Done. Press enter to continue...")
+            input()
             return self
 
         def finished():
@@ -201,11 +202,20 @@ class ColumnBuilder(Builder):
         def new_plot_widget():
             return PlotWidgetBuilder(self,self.ctg)
         
+        def new_controlmenu_widget():
+            from .neuron.celltuner import ControlMenuWidget
+            widget = ControlMenuWidget()
+            self.ctg.add_widget(self.parent.window_index, self.column_index,widget)
+            print("Done. Press enter to continue...")
+            input()
+            return self
+
         def finished():
             return self.parent
 
         self.register("Add Widget", new_widget)
         self.register("Add Plot Widget", new_plot_widget)
+        self.register("Add NEURON Control Menu Widget", new_controlmenu_widget)
         self.register("Finish Column", finished ,is_exit=True)
 
 class PlotWidgetBuilder(Builder):

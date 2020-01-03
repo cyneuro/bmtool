@@ -12,8 +12,11 @@ class Widget:
     def execute(self):
         raise NotImplementedError
 
-    def hoc_str(self):
-        raise NotImplementedError
+    def hoc_declaration_str_list(self,**kwargs):
+        return []
+
+    def hoc_display_str_list(self,**kwargs):
+        return []
 
 class TextWidget(Widget):
     def __init__(self,label=""):
@@ -37,7 +40,7 @@ class TextWidget(Widget):
         return
 
     def execute(self):
-        h.xpanel('xvarlabel demo')
+        h.xpanel('xvarlabel')
         h.xlabel(self.label)
         for mystr in self.mystrs:
             h.xvarlabel(mystr)
@@ -54,8 +57,8 @@ class PointMenuWidget(Widget):
         h.nrnpointmenu(self.pointprocess)
         return
 
-    def hoc_str(self):
-        return ""
+    def hoc_display_str_list(self):
+        return []
     
 class PlotWidget(Widget):
 
@@ -92,8 +95,8 @@ class PlotWidget(Widget):
         h.graphList[0].append(self.graph)
         return
 
-    def hoc_str(self):
-        return ""
+    def hoc_display_str_list(self):
+        return []
 
 class FICurveWidget(Widget):
     def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=50,
@@ -236,8 +239,8 @@ class FICurveWidget(Widget):
 
         return commands
 
-    def hoc_str(self):
-        return ""
+    def hoc_display_str_list(self):
+        return []
 
 class SecMenuWidget(Widget):
     def __init__(self, sec, x=0.5, vartype=1):
@@ -255,8 +258,8 @@ class SecMenuWidget(Widget):
         h.nrnsecmenu(self.x,self.vartype,sec=self.sec)
         return
 
-    def hoc_str(self):
-        return ""
+    def hoc_display_str_list(self):
+        return []
 
 class ControlMenuWidget(Widget):
 
@@ -271,8 +274,10 @@ class ControlMenuWidget(Widget):
         h.nrncontrolmenu()
         return
 
-    def hoc_str(self):
-        return ""
+    def hoc_display_str_list(self):
+        ret = []
+        ret.append("nrncontrolmenu()")
+        return ret
 
 
 
@@ -328,6 +333,7 @@ class CellTunerGUI:
         self.template_dir = template_dir
         self.mechanism_dir = mechanism_dir
         self.title = title
+        self.hoc_templates = []
         self.templates = None
         self.template_name = ""
 
@@ -457,17 +463,17 @@ class CellTunerGUI:
             #LOAD MECHANISMS
             if self.mechanism_dir != './' and self.mechanism_dir != '.':
                 f.write("//Loading mechanisms in other folder\n")
-                f.write("nrn_load_dll(\""+self.mechanism_dir+"\")\n")
-                f.write("nrn_load_dll(\""+self.mechanism_dir+"/nrnmech.dll\")\n")
+                f.write("nrn_load_dll(\""+self.mechanism_dir+"/x86_64/.libs/libnrnmech.so\")\n")#UNIX
+                f.write("nrn_load_dll(\""+self.mechanism_dir+"/nrnmech.dll\")\n")#WINDOWS
             f.write("\n")
 
             #LOAD TEMPLATES
             cwd = os.getcwd()
-            f.write("// Load Templates (some may not be needed and may cause problems)\n")
-            os.chdir(self.template_dir)
-            hoc_templates = glob.glob("*.hoc")
-            os.chdir(cwd)
-            for hoc_template in hoc_templates:
+            f.write("// Load Template(s) (some may not be needed if a folder was specified and may cause problems, remove as needed)\n")
+            #os.chdir(self.template_dir)
+            #hoc_templates = glob.glob("*.hoc")
+            #os.chdir(cwd)
+            for hoc_template in self.hoc_templates:
                 f.write("{load_file(\"" + os.path.join(self.template_dir,hoc_template).replace('\\','/') + "\")}\n")
 
             f.write("\n")
@@ -491,35 +497,41 @@ class CellTunerGUI:
                 f.write("\n")
                 
             f.write("\n")
-            window_method_name = "DisplayGUI"
-            f.write("proc " + window_method_name + "() { local i\n")
-            f.write("\n")           
+                     
 
             for window_index, window in enumerate(self.display):
+                window_method_prefix = "DisplayWindow"
+                f.write("proc " + window_method_prefix + str(window_index+1) + "() { local i\n")
+                f.write("\n")  
                 var_prefix = "Window"+str(window_index+1)
                 f.write("    "+var_prefix+"BoxTitle = \"" + window["title"] + "\"\n")
                 f.write("    "+var_prefix+"HBoxObj = new HBox()\n")
                 f.write("    for i=0,"+var_prefix+"SubVBoxNum-1 "+var_prefix+"SubVBoxObj[i] = new VBox()\n")
                 f.write("\n")
-            f.write("\n")
-            for window_index, window in enumerate(self.display):
+            #f.write("\n")
+            #for window_index, window in enumerate(self.display):
                 var_prefix = "Window"+str(window_index+1)
-                f.write("    // " + var_prefix + "\n")
+                #f.write("    // " + var_prefix + "\n")
                 for column_index, column in enumerate(window["columns"]):
                     f.write("    // Column" + str(column_index+1) + "\n")
                     f.write("    "+var_prefix+"SubVBoxObj["+str(column_index)+"].intercept(1)\n")
                     for widget_index, widget in enumerate(column["widgets"]):
                         f.write("        // Widget"+str(widget_index+1) + "\n")
+                        for widget_line in widget.hoc_display_str_list():
+                            f.write("        " + widget_line +"\n")
                     f.write("    "+var_prefix+"SubVBoxObj["+str(column_index)+"].intercept(0)\n")
-                    
+                    f.write("\n")
+                f.write("    "+var_prefix+"HBoxObj.intercept(1)\n")
+                f.write("        for i=0,"+var_prefix+"SubVBoxNum-1 "+var_prefix+"SubVBoxObj[i].map()\n")
+                f.write("    "+var_prefix+"HBoxObj.intercept(0)\n")
+                f.write("    "+var_prefix+"HBoxObj.map("+var_prefix+"BoxTitle,0,0,"+str(window["width"])+","+str(window["height"])+")\n")
 
-
-
-            
-            f.write("}// end " + window_method_name + "()\n")
+            f.write("\n")
+            f.write("}// end " + window_method_prefix + str(window_index) + "()\n")
 
             f.write("\n\n")
-            f.write(window_method_name + "()")
+            for window_index, window in enumerate(self.display):
+                f.write(window_method_prefix + str(window_index+1) + "()")
 
         return
 
@@ -552,10 +564,11 @@ class CellTunerGUI:
             cwd = os.getcwd()
             os.chdir(self.template_dir)
             if not hoc_template_file:
-                hoc_templates = glob.glob("*.hoc")
-                for hoc_template in hoc_templates:
+                self.hoc_templates = self.glob.glob("*.hoc")
+                for hoc_template in self.hoc_templates:
                     h.load_file(str(hoc_template))
             else:
+                self.hoc_templates = [hoc_template_file]
                 h.load_file(hoc_template_file)
 
             os.chdir(cwd)
