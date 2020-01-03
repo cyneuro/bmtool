@@ -93,7 +93,7 @@ class PlotWidget(Widget):
     
     def execute(self):
         self.graph = h.Graph()
-        for text, expression in self.hoc_expressions.items():
+        for text, variable in self.expressions.items():
             #self.graph.addvar('soma(0.5).v', my_cell.soma(0.5)._ref_v)
             self.graph.addvar(text,variable)
             self.advance_color()
@@ -120,7 +120,6 @@ class PlotWidget(Widget):
             hoc_ref_str = ctg.hoc_ref(hoc_expression[1]) # Get the hoc equivilent of this object
             ret.append("sprint(tstr1,\""+hoc_expression[0]+"\",\""+hoc_ref_str+"\")")
             ret.append("graphItem.addexpr(tstr1,"+str(self.color)+",1)")
-            #import pdb;pdb.set_trace()
             self.advance_color()
         ret.append("")
 
@@ -287,7 +286,9 @@ class SecMenuWidget(Widget):
         return
 
     def hoc_display_str_list(self,**kwargs):
-        return []
+        ret = []
+        #ret.append("$o2.soma nrnsecmenu(.5,1)")
+        return ret
 
 class ControlMenuWidget(Widget):
 
@@ -586,6 +587,9 @@ class CellTunerGUI:
         assert len(root_sec) is 1
         self.root_sec = root_sec[0]
         return
+
+    def all_sections(self):
+        return [sec for sec in h.allsec()]
 
     def get_sections(self):
         return self.sections

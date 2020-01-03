@@ -236,12 +236,47 @@ class PlotWidgetBuilder(Builder):
     def register_all(self):
             
         def new_expression():
-            print("Type the expression desired:")
-            exp = input()
-            sec_text = self.ctg.root_sec.hname().split('.')[-1]+"(.5)"
-            self.widget.add_expr(self.ctg.root_sec(0.5)._ref_v,sec_text,hoc_text="%%s.soma.v(0.5)")
-            print("Captured. Press enter to continue...")
-            input()
+            obj_options = ["Cell","Quick - Template Cell Membrane Voltage (0.5)"]
+            obj_selected = questionary.select(
+            "Select the object type to plot",
+            choices=obj_options).ask()
+            if obj_selected == obj_options[0]:
+                
+                cell_options = []
+                cell_options_obj = []
+                cell_options.append(self.ctg.template.hname())
+                cell_options_obj.append(self.ctg.template)
+                
+                cell_selected = questionary.select(
+                "Select the Cell",
+                choices=cell_options).ask()
+
+                section_options = []
+                section_options_obj = []
+                all_sections = self.ctg.all_sections()
+                section_options_obj = [s for s in all_sections if s.hname().startswith(cell_selected)]
+                section_options = [s.hname() for s in section_options_obj]
+
+                section_selected = questionary.select(
+                "Select the Section",
+                choices=section_options).ask()
+
+                section_selected_obj = section_options_obj[section_options.index(section_selected)]
+                section_location = questionary.text("Enter recording location (default:0.5): ",default="0.5").ask()
+                
+                import pdb;pdb.set_trace()
+                variable_options = []
+                variable_selected = questionary.select(
+                "Select the Variable",
+                choices=variable_options).ask()
+
+                section_location = questionary.text("Enter recording location (default:0.5): ").ask(default="0.5")
+
+            elif obj_selected == obj_options[1]:
+                sec_text = self.ctg.root_sec.hname().split('.')[-1]+"(.5)"
+                self.widget.add_expr(self.ctg.root_sec(0.5)._ref_v,sec_text,hoc_text="%s.soma.v(0.5)",hoc_text_obj=self.ctg.template)
+                print("Captured. Press enter to continue...")
+                input()
             return self
         
         def finished():
