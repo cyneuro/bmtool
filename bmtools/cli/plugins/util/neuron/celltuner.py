@@ -57,7 +57,7 @@ class PointMenuWidget(Widget):
         h.nrnpointmenu(self.pointprocess)
         return
 
-    def hoc_display_str_list(self):
+    def hoc_display_str_list(self,**kwargs):
         return []
     
 class PlotWidget(Widget):
@@ -72,6 +72,7 @@ class PlotWidget(Widget):
         self.current_index = 0
         self.color = 1
         self.expressions = {}
+        self.hoc_expressions = {}
         return
 
     def advance_color(self):
@@ -79,24 +80,51 @@ class PlotWidget(Widget):
         self.color = self.color + 1
         if self.color == 10:
             self.color = 1
-        self.graph.color(self.color)
+        
 
-    def add_expr(self,variable,text):
+    def reset_color(self):
+        self.color = 1
+
+    def add_expr(self,variable,text,hoc_text="",hoc_text_obj=None):
         self.expressions[text] = variable
+        if hoc_text != "":
+            self.hoc_expressions[text] = (hoc_text,hoc_text_obj)
         return
     
     def execute(self):
         self.graph = h.Graph()
-        for text, variable in self.expressions.items():
+        for text, expression in self.hoc_expressions.items():
             #self.graph.addvar('soma(0.5).v', my_cell.soma(0.5)._ref_v)
             self.graph.addvar(text,variable)
             self.advance_color()
+            self.graph.color(self.color)
         self.graph.size(self.tstart,self.tstop,self.miny,self.maxy)
         h.graphList[0].append(self.graph)
         return
 
-    def hoc_display_str_list(self):
-        return []
+    def hoc_display_str_list(self,**kwargs):
+        ret = []
+        ctg = kwargs["ctg"]
+        #newPlot(0,tstop,-80,60)        
+        #graphItem.save_name("graphList[0].")
+        #graphList[0].append(graphItem)
+        #sprint(tstr1,"%s.soma.v(.5)",$s1)
+        #graphItem.addexpr(tstr1,3,1)
+        ret.append("newPlot("+str(self.tstart)+","+str(self.tstop) + \
+                            ","+str(self.miny)+","+str(self.maxy)+")")
+        ret.append("graphItem.save_name(\"graphList[0].\")")
+        ret.append("graphList[0].append(graphItem)")
+        for text, hoc_expression in self.hoc_expressions.items():
+            #ret.append("sprint(tstr1,\"%s.soma.v(.5)\",$s1)
+            
+            hoc_ref_str = ctg.hoc_ref(hoc_expression[1]) # Get the hoc equivilent of this object
+            ret.append("sprint(tstr1,\""+hoc_expression[0]+"\",\""+hoc_ref_str+"\")")
+            ret.append("graphItem.addexpr(tstr1,"+str(self.color)+",1)")
+            #import pdb;pdb.set_trace()
+            self.advance_color()
+        ret.append("")
+
+        return ret
 
 class FICurveWidget(Widget):
     def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=50,
@@ -239,7 +267,7 @@ class FICurveWidget(Widget):
 
         return commands
 
-    def hoc_display_str_list(self):
+    def hoc_display_str_list(self,**kwargs):
         return []
 
 class SecMenuWidget(Widget):
@@ -258,7 +286,7 @@ class SecMenuWidget(Widget):
         h.nrnsecmenu(self.x,self.vartype,sec=self.sec)
         return
 
-    def hoc_display_str_list(self):
+    def hoc_display_str_list(self,**kwargs):
         return []
 
 class ControlMenuWidget(Widget):
@@ -274,7 +302,7 @@ class ControlMenuWidget(Widget):
         h.nrncontrolmenu()
         return
 
-    def hoc_display_str_list(self):
+    def hoc_display_str_list(self,**kwargs):
         ret = []
         ret.append("nrncontrolmenu()")
         return ret
@@ -347,6 +375,17 @@ class CellTunerGUI:
         
         self.tstop = tstop
         h.dt = dt
+
+        self.hoc_ref_template = "Cell"
+        self.hoc_ref_clamps = "clamps"
+        self.hoc_ref_netstims = "stims"
+        self.hoc_ref_other_templates = "auxcell"
+        return 
+
+    def hoc_ref(self,hobject):
+        if hobject is self.template:
+            return self.hoc_ref_template
+        
         return 
 
     def set_title(self,window_index,title):
@@ -517,7 +556,7 @@ class CellTunerGUI:
                     f.write("    "+var_prefix+"SubVBoxObj["+str(column_index)+"].intercept(1)\n")
                     for widget_index, widget in enumerate(column["widgets"]):
                         f.write("        // Widget"+str(widget_index+1) + "\n")
-                        for widget_line in widget.hoc_display_str_list():
+                        for widget_line in widget.hoc_display_str_list(ctg=self):
                             f.write("        " + widget_line +"\n")
                     f.write("    "+var_prefix+"SubVBoxObj["+str(column_index)+"].intercept(0)\n")
                     f.write("\n")

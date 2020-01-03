@@ -236,8 +236,11 @@ class PlotWidgetBuilder(Builder):
     def register_all(self):
             
         def new_expression():
-            print("Not currently implemented")
-            print("Press enter to continue...")
+            print("Type the expression desired:")
+            exp = input()
+            sec_text = self.ctg.root_sec.hname().split('.')[-1]+"(.5)"
+            self.widget.add_expr(self.ctg.root_sec(0.5)._ref_v,sec_text,hoc_text="%%s.soma.v(0.5)")
+            print("Captured. Press enter to continue...")
             input()
             return self
         
