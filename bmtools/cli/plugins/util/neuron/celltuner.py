@@ -58,6 +58,24 @@ class PointMenuWidget(Widget):
         self.iclamp_dur = 0
         self.iclamp_amp = 0
         self.iclamp_delay = 0
+
+        self.is_netstim = False
+        self.netstim_obj = None
+        self.netstim_sec = None
+        self.netstim_interval = 0
+        self.netstim_number = 0
+        self.netstim_start = 0
+        self.netstim_noise = 0     
+        self.netstim_synapse = None
+        self.netstim_netcon = None
+        self.netstim_netcon_weight = 1
+
+        self.is_synapse = False
+        self.synapse_obj = None
+        self.synapse_sec = None
+        self.synapse_name = ""
+        self.synapse_location = 0.5
+
         return
     
     def iclamp(self, sec, dur, amp, delay):
@@ -78,32 +96,106 @@ class PointMenuWidget(Widget):
 
         return self.iclamp_obj
 
+    def netstim(self,interval,number,start,noise,target=None,weight=1,location=0.5):
+        self.is_netstim = True
+
+        self.netstim_obj = h.NetStim(location)
+        self.netstim_obj.interval = interval #ms (mean) time between spikes
+        self.netstim_obj.number = number # (average) number of spikes
+        self.netstim_obj.start = start # ms (most likely) start time of first spike
+        self.netstim_obj.noise = noise # range 0 to 1. Fractional randomness.
+        
+        self.netstim_location = location
+        self.netstim_interval = interval
+        self.netstim_number = number
+        self.netstim_start = start
+        self.netstim_noise = noise     
+
+        self.netstim_netcon_weight = weight
+
+        if target:
+            self.netstim_synapse = target
+            self.netstim_netcon = h.NetCon(self.netstim_obj, target,0,0,self.netstim_netcon_weight)
+
+        self.pointprocess = self.netstim_obj
+
+        return self.netstim_obj, self.netstim_netcon
+
+    def synapse(self, sec, location, synapse_name):
+        self.is_synapse = True
+        #syn = h.AlphaSynapse(soma(0.5))
+        self.synapse_sec = sec(float(location))
+        self.synapse_name = synapse_name
+        self.synapse_obj = getattr(h,synapse_name)(float(location),sec=sec)
+        self.pointprocess = self.synapse_obj
+        self.synapse_location = location
+        
+        return self.synapse_obj
+
     def execute(self):
         h.nrnpointmenu(self.pointprocess)
         return
 
     def hoc_declaration_str_list(self,**kwargs):
         ctg = kwargs["ctg"]
-        
-        cell_ref = ctg.hoc_ref(self.iclamp_sec.sec.cell())
-        sec_ref = self.iclamp_sec.sec.hname().split(".")[-1]
-        clamp_ref = ctg.hoc_ref(self.iclamp_obj)
-        clamp_loc = self.iclamp_sec.x
-
         ret = []
-        ret.append("// current clamp current injection")
-        ret.append("objref " + clamp_ref)
-        ret.append(cell_ref + "." + sec_ref + " " + clamp_ref + " = new IClamp(" + str(clamp_loc) +")")
-        ret.append(clamp_ref + ".del = " + str(self.iclamp_delay))
-        ret.append(clamp_ref + ".dur = " + str(self.iclamp_dur))
-        ret.append(clamp_ref + ".amp = " + str(self.iclamp_amp))
+
+        if self.is_iclamp:
+            cell_ref = ctg.hoc_ref(self.iclamp_sec.sec.cell())
+            sec_ref = self.iclamp_sec.sec.hname().split(".")[-1]
+            clamp_ref = ctg.hoc_ref(self.iclamp_obj)
+            clamp_loc = self.iclamp_sec.x
+
+            ret.append("// current clamp current injection")
+            #ret.append("objref " + clamp_ref)
+            ret.append(cell_ref + "." + sec_ref + " " + clamp_ref + " = new IClamp(" + str(clamp_loc) +")")
+            ret.append(clamp_ref + ".del = " + str(self.iclamp_delay))
+            ret.append(clamp_ref + ".dur = " + str(self.iclamp_dur))
+            ret.append(clamp_ref + ".amp = " + str(self.iclamp_amp))
+
+        elif self.is_netstim:
+            netstim_ref = ctg.hoc_ref(self.netstim_obj)
+            netstim_loc = self.netstim_location
+            netcon_ref = ctg.hoc_ref(self.netstim_netcon)
+            netstim_syn_ref = ctg.hoc_ref(self.netstim_synapse)
+
+            #ret.append("objref " + netstim_ref + "// the code below provides the cell with a spike train")
+            #ret.append("objref " + netcon_ref + "// the code below provides the cell with a spike train")
+
+            ret.append(netstim_ref + "=new NetStim(" + str(netstim_loc) + ")")
+            ret.append(netstim_ref + ".interval=" + str(self.netstim_interval) + " // ms (mean) time between spikes")
+            ret.append(netstim_ref + ".number=" + str(self.netstim_number) + " //(average) number of spikes")
+            ret.append(netstim_ref + ".start=" + str(self.netstim_start) + " // ms (most likely) start time of first spike")
+            ret.append(netstim_ref + ".noise=" + str(self.netstim_noise) + " // range 0 to 1. Fractional randomness.")
+            ret.append(netcon_ref + "=new NetCon("+netstim_ref+","+netstim_syn_ref+",0,0,"+str(self.netstim_netcon_weight)+")")
+
+        elif self.is_synapse:
+            cell_ref = ctg.hoc_ref(self.synapse_sec.sec.cell())
+            sec_ref = self.synapse_sec.sec.hname().split(".")[-1]
+            syn_ref = ctg.hoc_ref(self.synapse_obj)
+            syn_loc = self.synapse_location
+            
+            #ret.append("objref " + syn_ref)
+            ret.append(cell_ref + "." + sec_ref + " " + syn_ref + " = new " + \
+                        self.synapse_name + "(" + str(syn_loc) +") // build a synapse input into "+cell_ref)
+            
         return ret
 
     def hoc_display_str_list(self,**kwargs):
         ctg = kwargs["ctg"]
-        hoc_ref = ctg.hoc_ref(self.iclamp_obj)
         ret = []
-        ret.append("nrnpointmenu(" + hoc_ref + ")")
+
+        if self.is_iclamp:
+            hoc_ref = ctg.hoc_ref(self.iclamp_obj)
+            ret.append("nrnpointmenu(" + hoc_ref + ")")
+        elif self.is_netstim:
+            hoc_ref = ctg.hoc_ref(self.netstim_obj)
+            ret.append("nrnpointmenu(" + hoc_ref + ")")
+            pass
+        elif self.is_synapse:
+            hoc_ref = ctg.hoc_ref(self.synapse_obj)
+            ret.append("nrnpointmenu(" + hoc_ref + ")")
+            pass
         return ret
     
 class PlotWidget(Widget):
@@ -408,17 +500,22 @@ class CellTunerGUI:
     https://github.com/tjbanks/two-cell-hco/blob/master/graphic_library.hoc
 
     """
-    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI', tstop=250, dt=.1, print_debug=False, skip_load_mod=False):
+    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI', tstop=250, dt=.1, print_debug=False, skip_load_mod=False,v_init=-65):
         self.template_dir = template_dir
         self.mechanism_dir = mechanism_dir
         self.title = title
         self.hoc_templates = []
         self.templates = None
         self.template_name = ""
+
+        self.h = h
         
         self.clamps = []
         self.netstims = []
+        self.netcons = []
+        self.synapses = []
         self.other_templates = []
+        
 
         self.display = [] # Don't feel like dealing with classes
 
@@ -429,21 +526,38 @@ class CellTunerGUI:
         self.setup_hoc_text = []
         
         self.tstop = tstop
+        self.v_init = v_init
+
         h.dt = dt
         self.print_debug = print_debug
         
         
+        #I'm not entirely pleased with how messy this solution is but it works
+        # - in regards to mechanism reading, surely NEURON has an easier/clean way builtin
         self.mechanism_files = []
         self.mechanism_parse = {}
         self.mechanism_dict = {}
+        self.mechanism_point_processes = []
         if not skip_load_mod:
             self.parse_mechs()
 
         self.hoc_ref_template = "Cell"
         self.hoc_ref_clamps = "ccl"
-        self.hoc_ref_netstims = "stims"
+        self.hoc_ref_netstims = "stim"
+        self.hoc_ref_netcons = "nc"
+        self.hoc_ref_syns = "syn"
         self.hoc_ref_other_templates = "auxcell"
         return 
+
+    def get_all_h_hocobjects(self):
+        ret = []
+        for i in dir(h):
+            try:
+                if type(getattr(neuron.h,i)) == neuron.hoc.HocObject:
+                    ret.append(i)
+            except Exception as e:
+                pass
+        return ret
 
     def hoc_ref(self,hobject):
         found = False
@@ -451,12 +565,37 @@ class CellTunerGUI:
             return self.hoc_ref_template
         else:
             clamps_name = [c.hname() for c in self.clamps]
+            netstims_name = [c.hname() for c in self.netstims]
+            netcons_name = [c.hname() for c in self.netcons]
+            synapses_name = [c.hname() for c in self.synapses]
+
             if hobject in self.clamps:
                 found = True
-                return  self.hoc_ref_clamps + str(self.clamps.index(hobject))
+                return  self.hoc_ref_clamps + "[" + str(self.clamps.index(hobject)) + "]"
             if hobject in clamps_name:
                 found = True
-                return self.hoc_ref_clamps + str(clamps_name.index(hobject))
+                return self.hoc_ref_clamps + "[" + str(clamps_name.index(hobject)) + "]"
+
+            if hobject in self.netstims:
+                found = True
+                return  self.hoc_ref_netstims + "[" + str(self.netstims.index(hobject)) + "]"
+            if hobject in netstims_name:
+                found = True
+                return self.hoc_ref_netstims + "[" + str(netstims_name.index(hobject)) + "]"
+
+            if hobject in self.netcons:
+                found = True
+                return  self.hoc_ref_netcons + "[" + str(self.netcons.index(hobject)) + "]"
+            if hobject in netcons_name:
+                found = True
+                return self.hoc_ref_netcons + "[" + str(netcons_name.index(hobject)) + "]"
+
+            if hobject in self.synapses:
+                found = True
+                return  self.hoc_ref_syns + "[" + str(self.synapses.index(hobject)) + "]"
+            if hobject in synapses_name:
+                found = True
+                return self.hoc_ref_syns + "[" + str(synapses_name.index(hobject)) + "]"
 
         if not found:
             import pdb;pdb.set_trace()
@@ -465,6 +604,15 @@ class CellTunerGUI:
 
     def register_iclamp(self,iclamp):
         self.clamps.append(iclamp)
+
+    def register_netstim(self,netstim):
+        self.netstims.append(netstim)
+
+    def register_netcon(self,netcon):
+        self.netcons.append(netcon)
+
+    def register_synapse(self,synapse):
+        self.synapses.append(synapse)
 
     def set_title(self,window_index,title):
         self.display[window_index]['title'] = title
@@ -513,7 +661,8 @@ class CellTunerGUI:
     def show(self,auto_run=False, on_complete=None):
         from neuron import gui
         fih_commands = []
-        h.tstop = self.tstop
+        h.tstop = int(self.tstop)
+        h.v_init = int(self.v_init)
         hboxes = []
         for window_index,window in enumerate(self.display):
             hboxes.append(h.HBox())
@@ -605,12 +754,49 @@ class CellTunerGUI:
 
             f.write("\n")
             f.write("tstop = " + str(self.tstop) + "\n")
-            f.write("objref Cell // declare the cell object\n")
+            f.write("v_init = " + str(self.v_init) + "\n")
+            f.write("objref Cell // declare the primary cell object\n")
             f.write("Cell = new " + self.template_name + "() // build the neuron from template\n")
+            f.write("\n")
+
+            f.write("NumClamps = " + str(len(self.clamps)) + "\n")
+            f.write("NumStims = " + str(len(self.netstims)) + "\n")
+            f.write("NumNetcons = " + str(len(self.netcons)) + "\n")
+            f.write("NumSynapses = " + str(len(self.synapses)) + "\n")
+            f.write("NumOtherCells = " + str(len(self.other_templates)) + "\n")
+            f.write("\n")
+
+            st = "objref " + self.hoc_ref_clamps + "[NumClamps]\n"
+            if len(self.clamps) == 0:
+                st = "//"+st
+            f.write(st)
+
+            st = "objref " + self.hoc_ref_netstims + "[NumStims]\n"
+            if len(self.netstims) == 0:
+                st = "//"+st
+            f.write(st)
+
+            st = "objref " + self.hoc_ref_netcons + "[NumNetcons]\n"
+            if len(self.netcons) == 0:
+                st = "//"+st
+            f.write(st)
+
+            st = "objref " + self.hoc_ref_syns + "[NumSynapses]\n"
+            if len(self.synapses) == 0:
+                st = "//"+st
+            f.write(st)
+
+            st = "objref " + self.hoc_ref_other_templates + "[NumOtherCells]\n"
+            if len(self.other_templates) == 0:
+                st = "//"+st
+            f.write(st)
+
+            f.write("\n")
+
             for text in self.setup_hoc_text:
                 f.write(text + "\n")
             
-            f.write("\n\n")
+            #f.write("\n\n")
             f.write("strdef tstr0, tstr1,tstr2,tstr3\n")
             f.write("\n")
             for window_index, window in enumerate(self.display):
@@ -701,6 +887,7 @@ class CellTunerGUI:
         from pynmodl.nmodl import ValidationException
         from textx import TextXSyntaxError,TextXSemanticError
         from pynmodl.unparser import Unparser
+        import re
         cwd = os.getcwd()
         mods_path = os.path.join(self.mechanism_dir,'modfiles')
         if not os.path.exists(mods_path):
@@ -709,11 +896,21 @@ class CellTunerGUI:
         self.mechanism_files = glob.glob("*.mod")
         os.chdir(cwd)
         for mech in self.mechanism_files:
+            # There is an issue with reading point process files
+            # Or any file that uses builtin t or dt or v variables
+            # Manually search for those words and make a manual list
+            # of these possible point processes
             mech_suffix = ".".join(mech.split(".")[:-1]) # Regex it?
             if self.print_debug:
                 print("Loading mech: " + mech)
             with open(os.path.join(mods_path,mech)) as f:
                 mod_file = f.read()
+                if "POINT_PROCESS" in mod_file:
+                    try:
+                        pp = re.search("POINT_PROCESS [A-Za-z0-9 ]*",mod_file).group().split(" ")[-1]
+                        self.mechanism_point_processes.append(pp)
+                    except Exception as e:
+                        pass
                 try:
                     #parse = mod2lems(mod_file)
                     parse = Unparser().mm.model_from_str(mod_file)

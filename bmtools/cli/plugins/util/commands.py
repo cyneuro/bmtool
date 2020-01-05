@@ -145,11 +145,23 @@ class BaseBuilder(Builder):
             input()
             return self
 
+        def set_tstop():
+            tstop = questionary.text("Set tstop (ms): )",default=str(self.ctg.tstop)).ask()
+            self.ctg.tstop = tstop
+            return self
+
+        def set_v_init():
+            v_init = questionary.text("Set v_init (mV): )",default=str(self.ctg.v_init)).ask()
+            self.ctg.v_init = v_init
+            return self
+
         def finished():
             return None
 
         self.register("New Window", new_window)
         self.register("Display Current Setup", print_ctx)
+        self.register("Set tstop", set_tstop)
+        self.register("Set v_init", set_v_init)
         self.register("Write to HOC executable", write_to_hoc)
         self.register("Finish and Display", finished ,is_exit=True)
  
@@ -187,7 +199,7 @@ class ColumnBuilder(Builder):
         self.parent = parent
         self.ctg = ctg
         self.column_index = ctg.add_column(self.parent.window_index)
-        self.title = "Window " + str(self.parent.window_index) + " Column " + str(self.column_index)
+        self.title = "Window " + str(self.parent.window_index+1) + " Column " + str(self.column_index+1)
         self.register_all()
         return
 
@@ -223,7 +235,7 @@ class ColumnBuilder(Builder):
         self.register("Add Plot Widget", new_plot_widget)
         self.register("Add Control Menu Widget (Init & Run)", new_controlmenu_widget)
         self.register("Add SecMenu Widget (Section Variables)", new_secmenu_widget)
-        self.register("Add Point Menu Widget (Current Clamp)", new_pointmenu_widget)
+        self.register("Add Point Menu Widget (Current Clamp, Netstim)", new_pointmenu_widget)
         self.register("Finish Column", finished ,is_exit=True)
 
 class SecMenuWidgetBuilder(Builder):
@@ -288,8 +300,7 @@ class PointMenuWidgetBuilder(Builder):
 
     def register_all(self):
 
-        def new_clamp():
-            from .neuron.celltuner import PointMenuWidget
+        def select_section_location():
             cell_options = []
             cell_options_obj = []
             cell_options.append(self.ctg.template.hname())
@@ -310,7 +321,14 @@ class PointMenuWidgetBuilder(Builder):
             choices=section_options).ask()
 
             section_selected_obj = section_options_obj[section_options.index(section_selected)]
-            section_location = questionary.text("Enter recording location (default:0.5): ",default="0.5").ask()
+            section_location = questionary.text("Enter location (default:0.5): ",default="0.5").ask()
+
+            return section_selected_obj, section_location
+
+        def new_clamp():
+            from .neuron.celltuner import PointMenuWidget
+            
+            section_selected_obj, section_location = select_section_location()
 
             delay = float(questionary.text("Enter default iclamp delay (default:0): ",default="0").ask())
             dur = float(questionary.text("Enter default iclamp duration (default:100): ",default="100").ask())
@@ -323,9 +341,49 @@ class PointMenuWidgetBuilder(Builder):
 
             return self.parent
 
+        def new_netstim():
+            from .neuron.celltuner import PointMenuWidget
+            section_selected_obj, section_location = select_section_location()
+
+            notlisted = "Synapse not listed"
+
+            synapse_options = self.ctg.mechanism_point_processes[:]
+            synapse_options = synapse_options + ["AlphaSynapse","Exp2Syn","ExpSyn"] #Builtins
+            synapse_options.append(notlisted)
+
+            synapse_selected = questionary.select(
+            "Select the Synapse type from the most likely options",
+            choices=synapse_options).ask()
+
+            if synapse_selected == notlisted:
+                synapse_options = [i for i in self.ctg.get_all_h_hocobjects()]
+                synapse_selected = questionary.select(
+                "Select the Synapse (ALL HOCOBJECTS)",
+                choices=synapse_options).ask()
+
+            interval = int(questionary.text("Enter default netstim interval (ms (mean) time between spikes): ",default="50").ask())
+            number = int(questionary.text("Enter default netstim number of events ((average) number of spikes): ",default="10").ask())
+            start = int(questionary.text("Enter default netstim start (ms (most likely) start time of first spike): ",default="0").ask())
+            noise = float(questionary.text("Enter default netstim noise (range 0 to 1. Fractional randomness.): ",default="0").ask())
+            weight = float(questionary.text("Enter default netcon weight (range 0 to 1. Default: 1): ",default="1").ask())
+            
+            self.widget = PointMenuWidget(None)
+            self.widget_extra = PointMenuWidget(None)
+            synapse = self.widget_extra.synapse(section_selected_obj,section_location,synapse_selected)
+            netstim,netcon = self.widget.netstim(interval,number,start,noise,target=synapse,weight=weight)
+            self.ctg.register_netstim(netstim)
+            self.ctg.register_netcon(netcon)
+            self.ctg.register_synapse(synapse)
+
+            self.widget_index_extra = self.ctg.add_widget(self.parent.parent.window_index, self.parent.column_index,self.widget_extra)
+            self.widget_index = self.ctg.add_widget(self.parent.parent.window_index, self.parent.column_index,self.widget)
+            
+            return self.parent
+
         def finish():
             return self.parent
 
+        self.register("Add Netstim to Cell and Insert Widgets", new_netstim)
         self.register("Add Current Clamp to Cell and Insert Widget", new_clamp)
         self.register("Finished", finish ,is_exit=True)        
         return
@@ -338,7 +396,7 @@ class PlotWidgetBuilder(Builder):
 
         self.parent = parent
         self.ctg = ctg
-        self.widget = PlotWidget()
+        self.widget = PlotWidget(tstop=self.ctg.tstop)
         self.widget_index = ctg.add_widget(self.parent.parent.window_index, self.parent.column_index,self.widget)
         self.title = "Window " + str(self.parent.parent.window_index + 1) + " Column " + \
             str(self.parent.column_index + 1) + " Widget " + str(self.widget_index) + " (Plot Widget)"
@@ -483,7 +541,7 @@ def cell_tune(ctx,easy,builder,write_hoc,hide,title,tstop,debug):#, title, popul
         iclamp_widget, iclamp = ctg.new_IClamp_Widget(ctg.sections[0](0.5),200,0.1,25)
         ctg.add_widget(window_index,column_index,iclamp_widget)
         
-    else:
+    else:        
         cmd_builder = BaseBuilder(ctg)
         cmd_builder.run()
         
