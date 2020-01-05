@@ -20,7 +20,7 @@ class Widget:
 
 class TextWidget(Widget):
     def __init__(self,label=""):
-        super()
+        super(TextWidget, self).__init__()
         self.label = label
         self.mystrs = []
         return
@@ -49,7 +49,7 @@ class TextWidget(Widget):
         
 class PointMenuWidget(Widget):
     def __init__(self,pointprocess):
-        super()
+        super(PointMenuWidget, self).__init__()
         self.pointprocess = pointprocess
         return
     
@@ -63,7 +63,7 @@ class PointMenuWidget(Widget):
 class PlotWidget(Widget):
 
     def __init__(self, tstart=0,tstop=50,miny=-80,maxy=50):
-        super()
+        super(PlotWidget, self).__init__()
         self.tstart = tstart
         self.tstop = tstop
         self.miny = miny
@@ -129,7 +129,7 @@ class FICurveWidget(Widget):
     def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=50,
             tdur=1000,passive_amp=-0.1,passive_delay=200, record_sec="soma[0]", record_loc="0.5",
             inj_sec="soma[0]", inj_loc="0.5"):
-        super()
+        super(FICurveWidget, self).__init__()
         self.template_name = template_name
         self.i_increment = float(i_increment)/1000
         self.i_start = float(i_start)/1000
@@ -275,7 +275,7 @@ class SecMenuWidget(Widget):
         vartype=1,2,3 shows parameters, assigned, or states respectively.
         0 < x < 1 shows variables at segment containing x changing these variables changes only the values in that segment eg. equivalent to section.v(.2) = -65
         """
-
+        super(SecMenuWidget, self).__init__()
         self.x = x
         self.vartype = vartype
         self.sec = sec
@@ -286,14 +286,18 @@ class SecMenuWidget(Widget):
         return
 
     def hoc_display_str_list(self,**kwargs):
+        ctg = kwargs["ctg"]
         ret = []
         #ret.append("$o2.soma nrnsecmenu(.5,1)")
+        cell = ctg.hoc_ref(self.sec.cell())
+        sec = self.sec.hname().split(".")[-1]
+        ret.append(cell + "."+ sec + " nrnsecmenu("+str(self.x)+","+str(self.vartype)+")")
         return ret
 
 class ControlMenuWidget(Widget):
 
     def __init__(self):
-        super()
+        super(ControlMenuWidget, self).__init__()
         return
 
     def add_expr(self):
@@ -358,14 +362,18 @@ class CellTunerGUI:
     https://github.com/tjbanks/two-cell-hco/blob/master/graphic_library.hoc
 
     """
-    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI', tstop=250, dt=.1):
+    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI', tstop=250, dt=.1, print_debug=False):
         self.template_dir = template_dir
         self.mechanism_dir = mechanism_dir
         self.title = title
         self.hoc_templates = []
         self.templates = None
         self.template_name = ""
-
+        
+        self.clamps = []
+        self.netstims = []
+        self.other_templates = []
+        
         self.display = [] # Don't feel like dealing with classes
 
         self.template = None #Template file used for GUI
@@ -376,6 +384,13 @@ class CellTunerGUI:
         
         self.tstop = tstop
         h.dt = dt
+        self.print_debug = print_debug
+        
+        
+        self.mechanism_files = []
+        self.mechanism_parse = {}
+        self.mechanism_dict = {}
+        self.parse_mechs()
 
         self.hoc_ref_template = "Cell"
         self.hoc_ref_clamps = "clamps"
@@ -384,8 +399,10 @@ class CellTunerGUI:
         return 
 
     def hoc_ref(self,hobject):
-        if hobject is self.template:
+        if hobject == self.template or hobject == self.template.hname():
             return self.hoc_ref_template
+        else:
+            import pdb;pdb.set_trace()
         
         return 
 
@@ -475,7 +492,11 @@ class CellTunerGUI:
         print("Press enter to close the GUI window and continue...")
         input()
         return
-        
+
+    def get_mech_variables(self, sec):
+
+        return
+
     def write_hoc(self, filename):
         print("Writing hoc file to " + filename)
         if os.path.exists(filename):
@@ -597,6 +618,62 @@ class CellTunerGUI:
     def get_section_names(self):
         return [sec.name() for sec in self.get_sections()]
 
+    def parse_mechs(self):
+        from pynmodl.lems import mod2lems
+        from pynmodl.nmodl import ValidationException
+        from textx import TextXSyntaxError,TextXSemanticError
+        from pynmodl.unparser import Unparser
+        cwd = os.getcwd()
+        mods_path = os.path.join(self.mechanism_dir,'modfiles')
+        if not os.path.exists(mods_path):
+            mods_path = os.path.join(self.mechanism_dir)
+        os.chdir(mods_path)
+        self.mechanism_files = glob.glob("*.mod")
+        os.chdir(cwd)
+        for mech in self.mechanism_files:
+            mech_suffix = ".".join(mech.split(".")[:-1]) # Regex it?
+            if self.print_debug:
+                print("Loading mech: " + mech)
+            with open(os.path.join(mods_path,mech)) as f:
+                mod_file = f.read()
+                try:
+                    #parse = mod2lems(mod_file)
+                    parse = Unparser().mm.model_from_str(mod_file)
+                    self.mechanism_parse[mech_suffix] = parse
+                    suffix = mech_suffix
+                    ranges = []
+                    read_ions = []
+                    for statement in parse.neuron.statements:
+                        if statement.__class__.__name__ == "UseIon":
+                            read_ions = read_ions + [r.name for r in statement.r[0].reads]
+                        elif statement.__class__.__name__ == "Suffix":
+                            suffix = statement.suffix
+                        elif statement.__class__.__name__ == "Range":
+                            ranges = ranges + [rng.name for rng in statement.ranges]
+                    ranges = [r for r in ranges if r not in read_ions] #Remove any external ions read in
+                    self.mechanism_dict[suffix] = {}
+                    self.mechanism_dict[suffix]["filename"] = mech
+                    self.mechanism_dict[suffix]["NEURON"] = {}
+                    self.mechanism_dict[suffix]["NEURON"]["RANGE"] = ranges
+
+                except ValidationException as e:
+                    if self.print_debug:
+                        print("Unable to load " + mech)
+                        print(e)
+                except TextXSyntaxError as e:
+                    if self.print_debug:
+                        print("Unable to load " + mech)
+                        print(e)
+                except TextXSemanticError as e:
+                    if self.print_debug:
+                        print("Unable to load " + mech)
+                        print(e)
+                except AttributeError as e:
+                    if self.print_debug:
+                        print("Unable to load " + mech)
+                        print(e)
+        return
+
     def get_templates(self,hoc_template_file=None):
         if self.templates is None: # Can really only do this once
             ##import pdb;pdb.set_trace()
@@ -607,7 +684,7 @@ class CellTunerGUI:
             cwd = os.getcwd()
             os.chdir(self.template_dir)
             if not hoc_template_file:
-                self.hoc_templates = self.glob.glob("*.hoc")
+                self.hoc_templates = glob.glob("*.hoc")
                 for hoc_template in self.hoc_templates:
                     h.load_file(str(hoc_template))
             else:

@@ -210,13 +210,67 @@ class ColumnBuilder(Builder):
             input()
             return self
 
+        def new_secmenu_widget():
+            return SecMenuWidgetBuilder(self,self.ctg)
+
         def finished():
             return self.parent
 
-        self.register("Add Widget", new_widget)
+        #self.register("Add Widget", new_widget)
         self.register("Add Plot Widget", new_plot_widget)
-        self.register("Add NEURON Control Menu Widget", new_controlmenu_widget)
+        self.register("Add Control Menu Widget", new_controlmenu_widget)
+        self.register("Add SecMenu Widget", new_secmenu_widget)
         self.register("Finish Column", finished ,is_exit=True)
+
+class SecMenuWidgetBuilder(Builder):
+    def __init__(self, parent, ctg):
+        super(SecMenuWidgetBuilder, self).__init__()
+
+        from .neuron.celltuner import SecMenuWidget
+
+        self.parent = parent
+        self.ctg = ctg
+        self.title =  "(Section Menu Widget)"
+        self.register_all()
+        return
+
+    def register_all(self):
+        
+        def select():
+            from .neuron.celltuner import SecMenuWidget
+            cell_options = []
+            cell_options_obj = []
+            cell_options.append(self.ctg.template.hname())
+            cell_options_obj.append(self.ctg.template)
+            
+            cell_selected = questionary.select(
+            "Select the Cell",
+            choices=cell_options).ask()
+
+            section_options = []
+            section_options_obj = []
+            all_sections = self.ctg.all_sections()
+            section_options_obj = [s for s in all_sections if s.hname().startswith(cell_selected)]
+            section_options = [s.hname() for s in section_options_obj]
+
+            section_selected = questionary.select(
+            "Select the Section",
+            choices=section_options).ask()
+
+            section_selected_obj = section_options_obj[section_options.index(section_selected)]
+            section_location = questionary.text("Enter recording location (default:0.5): ",default="0.5").ask()
+
+            self.widget = SecMenuWidget(section_selected_obj,x=float(section_location))
+            self.widget_index = self.ctg.add_widget(self.parent.parent.window_index, self.parent.column_index,self.widget)
+        
+            return self.parent
+
+        def finish():
+            return self.parent
+
+        self.register("Select Section and Finish", select)
+        self.register("Return without adding widget", finish ,is_exit=True)
+        return
 
 class PlotWidgetBuilder(Builder):
     def __init__(self, parent, ctg):
@@ -236,7 +290,7 @@ class PlotWidgetBuilder(Builder):
     def register_all(self):
             
         def new_expression():
-            obj_options = ["Cell","Quick - Template Cell Membrane Voltage (0.5)"]
+            obj_options = ["Cell","Quick - Template Cell.soma Membrane Voltage (0.5)"]
             obj_selected = questionary.select(
             "Select the object type to plot",
             choices=obj_options).ask()
@@ -264,13 +318,32 @@ class PlotWidgetBuilder(Builder):
                 section_selected_obj = section_options_obj[section_options.index(section_selected)]
                 section_location = questionary.text("Enter recording location (default:0.5): ",default="0.5").ask()
                 
-                import pdb;pdb.set_trace()
+                mechs = [mech.name() for mech in section_selected_obj(float(section_location)) if not mech.name().endswith("_ion")]            
+
                 variable_options = []
-                variable_selected = questionary.select(
-                "Select the Variable",
+                for mech in mechs:
+                    if self.ctg.mechanism_dict.get(mech):
+                        ranges = self.ctg.mechanism_dict[mech]["NEURON"]["RANGE"]
+                        variable_options = variable_options + [rng + "_" + mech for rng in ranges]
+
+                variables_selected = questionary.checkbox(
+                "Select the Variables",
                 choices=variable_options).ask()
 
-                section_location = questionary.text("Enter recording location (default:0.5): ").ask(default="0.5")
+                #sec_text = self.ctg.root_sec.hname().split('.')[-1]+"(.5)"
+                #self.widget.add_expr(self.ctg.root_sec(0.5)._ref_v,sec_text,hoc_text="%s.soma.v(0.5)",hoc_text_obj=self.ctg.template)
+                
+                for variable_selected in variables_selected:
+                    #sec_var_ref = exec("section_selected_obj(float(section_location))."+variable_selected)
+                    sec_var_ref = getattr(section_selected_obj(float(section_location)),"_ref_"+variable_selected)
+                    sec_text = section_selected_obj.hname().split('.')[-1]+"("+section_location+")."+variable_selected
+                    sec_hoc_text = section_selected.split('.')[-1]
+                    hoc_text = "%s." + sec_hoc_text +"."+ variable_selected + "(" + section_location +")"
+                    hoc_text_obj = cell_selected
+                    
+                    self.widget.add_expr(sec_var_ref,sec_text,hoc_text=hoc_text,hoc_text_obj=hoc_text_obj)
+
+                #import pdb;pdb.set_trace()
 
             elif obj_selected == obj_options[1]:
                 sec_text = self.ctg.root_sec.hname().split('.')[-1]+"(.5)"
@@ -292,9 +365,10 @@ class PlotWidgetBuilder(Builder):
 @click.option('--hide', type=click.BOOL, default=False, is_flag=True, help="hide the interface that shows automatically after building the GUI")
 @click.option('--title',type=click.STRING,default=None)
 @click.option('--tstop',type=click.INT,default=250)
+@click.option('--debug', type=click.BOOL, default=False, is_flag=True, help="Print debug messages and errors")
 @click.pass_context
-def cell_tune(ctx,easy,builder,write_hoc,hide,title,tstop):#, title, populations, group_by, save_file):
-    
+def cell_tune(ctx,easy,builder,write_hoc,hide,title,tstop,debug):#, title, populations, group_by, save_file):
+    print("Loading...")
     from .neuron.celltuner import CellTunerGUI, PlotWidget, ControlMenuWidget, SecMenuWidget
 
     hoc_folder = ctx.obj["hoc_folder"]
@@ -302,7 +376,7 @@ def cell_tune(ctx,easy,builder,write_hoc,hide,title,tstop):#, title, populations
     hoc_template_file = ctx.obj["hoc_template_file"]
     template = ctx.obj["cell_template"]
 
-    ctg = CellTunerGUI(hoc_folder,mod_folder,title=title)
+    ctg = CellTunerGUI(hoc_folder,mod_folder,title=title,print_debug=debug)
     hoc_templates = ctg.get_templates(hoc_template_file=hoc_template_file)
     
     # Cell selector
