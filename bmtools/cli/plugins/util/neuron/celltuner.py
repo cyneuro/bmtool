@@ -51,14 +51,60 @@ class PointMenuWidget(Widget):
     def __init__(self,pointprocess):
         super(PointMenuWidget, self).__init__()
         self.pointprocess = pointprocess
+
+        self.is_iclamp = False
+        self.iclamp_obj = None
+        self.iclamp_sec = None
+        self.iclamp_dur = 0
+        self.iclamp_amp = 0
+        self.iclamp_delay = 0
         return
     
+    def iclamp(self, sec, dur, amp, delay):
+        self.is_iclamp = True
+        self.iclamp_sec = sec
+
+        iclamp = h.IClamp(sec)
+        iclamp.dur = dur
+        iclamp.amp = amp
+        iclamp.delay = delay
+
+        self.iclamp_dur = dur
+        self.iclamp_amp = amp
+        self.iclamp_delay = delay
+
+        self.iclamp_obj = iclamp
+        self.pointprocess = iclamp
+
+        return self.iclamp_obj
+
     def execute(self):
         h.nrnpointmenu(self.pointprocess)
         return
 
+    def hoc_declaration_str_list(self,**kwargs):
+        ctg = kwargs["ctg"]
+        
+        cell_ref = ctg.hoc_ref(self.iclamp_sec.sec.cell())
+        sec_ref = self.iclamp_sec.sec.hname().split(".")[-1]
+        clamp_ref = ctg.hoc_ref(self.iclamp_obj)
+        clamp_loc = self.iclamp_sec.x
+
+        ret = []
+        ret.append("// current clamp current injection")
+        ret.append("objref " + clamp_ref)
+        ret.append(cell_ref + "." + sec_ref + " " + clamp_ref + " = new IClamp(" + str(clamp_loc) +")")
+        ret.append(clamp_ref + ".del = " + str(self.iclamp_delay))
+        ret.append(clamp_ref + ".dur = " + str(self.iclamp_dur))
+        ret.append(clamp_ref + ".amp = " + str(self.iclamp_amp))
+        return ret
+
     def hoc_display_str_list(self,**kwargs):
-        return []
+        ctg = kwargs["ctg"]
+        hoc_ref = ctg.hoc_ref(self.iclamp_obj)
+        ret = []
+        ret.append("nrnpointmenu(" + hoc_ref + ")")
+        return ret
     
 class PlotWidget(Widget):
 
@@ -362,7 +408,7 @@ class CellTunerGUI:
     https://github.com/tjbanks/two-cell-hco/blob/master/graphic_library.hoc
 
     """
-    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI', tstop=250, dt=.1, print_debug=False):
+    def __init__(self, template_dir, mechanism_dir,title='NEURON GUI', tstop=250, dt=.1, print_debug=False, skip_load_mod=False):
         self.template_dir = template_dir
         self.mechanism_dir = mechanism_dir
         self.title = title
@@ -373,7 +419,7 @@ class CellTunerGUI:
         self.clamps = []
         self.netstims = []
         self.other_templates = []
-        
+
         self.display = [] # Don't feel like dealing with classes
 
         self.template = None #Template file used for GUI
@@ -390,28 +436,45 @@ class CellTunerGUI:
         self.mechanism_files = []
         self.mechanism_parse = {}
         self.mechanism_dict = {}
-        self.parse_mechs()
+        if not skip_load_mod:
+            self.parse_mechs()
 
         self.hoc_ref_template = "Cell"
-        self.hoc_ref_clamps = "clamps"
+        self.hoc_ref_clamps = "ccl"
         self.hoc_ref_netstims = "stims"
         self.hoc_ref_other_templates = "auxcell"
         return 
 
     def hoc_ref(self,hobject):
+        found = False
         if hobject == self.template or hobject == self.template.hname():
             return self.hoc_ref_template
         else:
+            clamps_name = [c.hname() for c in self.clamps]
+            if hobject in self.clamps:
+                found = True
+                return  self.hoc_ref_clamps + str(self.clamps.index(hobject))
+            if hobject in clamps_name:
+                found = True
+                return self.hoc_ref_clamps + str(clamps_name.index(hobject))
+
+        if not found:
             import pdb;pdb.set_trace()
         
         return 
+
+    def register_iclamp(self,iclamp):
+        self.clamps.append(iclamp)
 
     def set_title(self,window_index,title):
         self.display[window_index]['title'] = title
     def get_title(self,window_index):
         return self.display[window_index]['title']
 
-    def add_window(self,title="BMTools NEURON Cell Tuner",width=1000,height=600):
+    def add_window(self,title=None,width=1000,height=600):
+        if title is None:
+            title = self.template_name + " - BMTools Single Cell Tuner"
+
         window = {
             'title':title,
             'width':width,
@@ -451,8 +514,9 @@ class CellTunerGUI:
         from neuron import gui
         fih_commands = []
         h.tstop = self.tstop
+        hboxes = []
         for window_index,window in enumerate(self.display):
-            hBoxObj = h.HBox()
+            hboxes.append(h.HBox())
             # Instance for each column
             window['_column_objs'] = [h.VBox() for _ in range(len(window['columns']))]
 
@@ -465,11 +529,13 @@ class CellTunerGUI:
                         fih_commands.append(ret)
                 col_vbox_obj.intercept(False)
 
-            hBoxObj.intercept(True)
+            hboxes[window_index].intercept(True)
             for col in window['_column_objs']:
                 col.map()
-            hBoxObj.intercept(False)
-            hBoxObj.map(window['title'],0,0,window['width'],window['height'])
+            hboxes[window_index].intercept(False)
+            x = window_index * 35 #Degree of separation, will be 35 pixels apart on popup
+            y = x
+            hboxes[window_index].map(window['title'],x,y,window['width'],window['height'])
 
         if auto_run:
             #https://www.neuron.yale.edu/phpbb/viewtopic.php?f=2&t=2236
@@ -558,7 +624,16 @@ class CellTunerGUI:
                 f.write("\n")
                 
             f.write("\n")
-                     
+
+            for window_index, window in enumerate(self.display):
+                for column_index, column in enumerate(window["columns"]):
+                    for widget_index, widget in enumerate(column["widgets"]):
+                        newline = False
+                        for widget_line in widget.hoc_declaration_str_list(ctg=self):
+                            f.write(widget_line +"\n")
+                            newline = True
+                        if newline:
+                            f.write("\n")
 
             for window_index, window in enumerate(self.display):
                 window_method_prefix = "DisplayWindow"
@@ -585,12 +660,15 @@ class CellTunerGUI:
                 f.write("    "+var_prefix+"HBoxObj.intercept(1)\n")
                 f.write("        for i=0,"+var_prefix+"SubVBoxNum-1 "+var_prefix+"SubVBoxObj[i].map()\n")
                 f.write("    "+var_prefix+"HBoxObj.intercept(0)\n")
-                f.write("    "+var_prefix+"HBoxObj.map("+var_prefix+"BoxTitle,0,0,"+str(window["width"])+","+str(window["height"])+")\n")
+                x = str(window_index*35)#Degree of separation 35 pixels apart for each window so you can see them on popup
+                y = x
+                f.write("    "+var_prefix+"HBoxObj.map("+var_prefix+"BoxTitle,"+x+","+y+","+str(window["width"])+","+str(window["height"])+")\n")
+
+                f.write("\n")
+                f.write("}// end " + window_method_prefix + str(window_index+1) + "()\n")
+                f.write("\n")
 
             f.write("\n")
-            f.write("}// end " + window_method_prefix + str(window_index) + "()\n")
-
-            f.write("\n\n")
             for window_index, window in enumerate(self.display):
                 f.write(window_method_prefix + str(window_index+1) + "()")
 

@@ -138,8 +138,8 @@ class BaseBuilder(Builder):
             return self
         
         def write_to_hoc():
-            print("Enter the name of the file you wish to write: (eg: cellgui.hoc)")
-            filename = input()
+            #print("Enter the name of the file you wish to write: (eg: cellgui.hoc)")
+            filename = questionary.text("Enter the name of the file you wish to write: (eg: cellgui.hoc)",default="cellgui.hoc").ask()
             self.ctg.write_hoc(filename)
             print("Done. Press enter to continue...")
             input()
@@ -151,7 +151,7 @@ class BaseBuilder(Builder):
         self.register("New Window", new_window)
         self.register("Display Current Setup", print_ctx)
         self.register("Write to HOC executable", write_to_hoc)
-        self.register("Done", finished ,is_exit=True)
+        self.register("Finish and Display", finished ,is_exit=True)
  
 class WindowBuilder(Builder):
     def __init__(self, parent, ctg):
@@ -210,6 +210,9 @@ class ColumnBuilder(Builder):
             input()
             return self
 
+        def new_pointmenu_widget():
+            return PointMenuWidgetBuilder(self,self.ctg)
+
         def new_secmenu_widget():
             return SecMenuWidgetBuilder(self,self.ctg)
 
@@ -218,8 +221,9 @@ class ColumnBuilder(Builder):
 
         #self.register("Add Widget", new_widget)
         self.register("Add Plot Widget", new_plot_widget)
-        self.register("Add Control Menu Widget", new_controlmenu_widget)
-        self.register("Add SecMenu Widget", new_secmenu_widget)
+        self.register("Add Control Menu Widget (Init & Run)", new_controlmenu_widget)
+        self.register("Add SecMenu Widget (Section Variables)", new_secmenu_widget)
+        self.register("Add Point Menu Widget (Current Clamp)", new_pointmenu_widget)
         self.register("Finish Column", finished ,is_exit=True)
 
 class SecMenuWidgetBuilder(Builder):
@@ -268,8 +272,62 @@ class SecMenuWidgetBuilder(Builder):
         def finish():
             return self.parent
 
-        self.register("Select Section and Finish", select)
+        self.register("Select Section", select)
         self.register("Return without adding widget", finish ,is_exit=True)
+        return
+
+class PointMenuWidgetBuilder(Builder):
+    def __init__(self, parent, ctg):
+        super(PointMenuWidgetBuilder, self).__init__()
+
+        self.parent = parent
+        self.ctg = ctg
+        self.title =  "(Point Menu Widget)"
+        self.register_all()
+        return
+
+    def register_all(self):
+
+        def new_clamp():
+            from .neuron.celltuner import PointMenuWidget
+            cell_options = []
+            cell_options_obj = []
+            cell_options.append(self.ctg.template.hname())
+            cell_options_obj.append(self.ctg.template)
+            
+            cell_selected = questionary.select(
+            "Select the Cell",
+            choices=cell_options).ask()
+
+            section_options = []
+            section_options_obj = []
+            all_sections = self.ctg.all_sections()
+            section_options_obj = [s for s in all_sections if s.hname().startswith(cell_selected)]
+            section_options = [s.hname() for s in section_options_obj]
+
+            section_selected = questionary.select(
+            "Select the Section",
+            choices=section_options).ask()
+
+            section_selected_obj = section_options_obj[section_options.index(section_selected)]
+            section_location = questionary.text("Enter recording location (default:0.5): ",default="0.5").ask()
+
+            delay = float(questionary.text("Enter default iclamp delay (default:0): ",default="0").ask())
+            dur = float(questionary.text("Enter default iclamp duration (default:100): ",default="100").ask())
+            amp = float(questionary.text("Enter default iclamp amp(mA) (default:1): ",default="1").ask())            
+
+            self.widget = PointMenuWidget(None)
+            iclamp = self.widget.iclamp(section_selected_obj(float(section_location)),dur,amp,delay)
+            self.ctg.register_iclamp(iclamp)
+            self.widget_index = self.ctg.add_widget(self.parent.parent.window_index, self.parent.column_index,self.widget)
+
+            return self.parent
+
+        def finish():
+            return self.parent
+
+        self.register("Add Current Clamp to Cell and Insert Widget", new_clamp)
+        self.register("Finished", finish ,is_exit=True)        
         return
 
 class PlotWidgetBuilder(Builder):
@@ -321,6 +379,7 @@ class PlotWidgetBuilder(Builder):
                 mechs = [mech.name() for mech in section_selected_obj(float(section_location)) if not mech.name().endswith("_ion")]            
 
                 variable_options = []
+                variable_options.append("v") # builtin voltage variable
                 for mech in mechs:
                     if self.ctg.mechanism_dict.get(mech):
                         ranges = self.ctg.mechanism_dict[mech]["NEURON"]["RANGE"]
@@ -472,7 +531,7 @@ def cell_fir(ctx,title,min_pa,max_pa,increment,tstart,tdur,advanced):#, title, p
 
     tstop = tstart+tdur
 
-    ctg = CellTunerGUI(hoc_folder,mod_folder,tstop=tstop)
+    ctg = CellTunerGUI(hoc_folder,mod_folder,tstop=tstop,skip_load_mod=True)
     hoc_templates = ctg.get_templates(hoc_template_file=hoc_template_file)
     
     # Cell selector
