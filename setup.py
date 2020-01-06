@@ -5,8 +5,8 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(
-    name="bmtools",
-    version="0.0.1",
+    name="bmtool",
+    version="0.1.0",
     author="Tyler Banks",
     author_email="tbanks@mail.missouri.edu",
     description="BMTools",
@@ -24,7 +24,8 @@ setup(
         'networkx',
         'numpy',
         'pandas',
-        'questionary'
+        'questionary',
+        'pynmodlt'
     ],
     classifiers=[
         'Intended Audience :: Developers',
@@ -40,7 +41,8 @@ setup(
     packages=find_packages(exclude=['tests']),
     entry_points={
         'console_scripts': [
-            'bmtools = bmtools.cli.manage:cli'
+            'bmtools = bmtools.cli.manage:cli',
+            'bmtool = bmtools.cli.manage:cli'
         ]
     }
 )

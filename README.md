@@ -8,13 +8,17 @@ A collection of scripts to make developing networks in BMTK easier.
 **Installation**
 
 ```bash
-git clone https://github.com/tjbanks/bmtools
-cd bmtools
-python setup.py install
+pip install bmtool
 ```
 For developers who will be pulling down additional updates to this repository regularly use the following instead.
 ```bash
+git clone https://github.com/tjbanks/bmtools
+cd bmtools
 python setup.py develop
+```
+Then download updates (from this directory) with
+```
+git pull
 ```
 
 **Example Use**
@@ -53,6 +57,20 @@ Commands:
 ```
 ![bmtools](./figure.png "Positions Figure")
 
+### Single Cell Tuning
+
+From a BMTK Model directory containing a `simulation_config.json` file:
+```
+bmtools util cell tune --builder
+```
+
+For non-BMTK cell tuning:
+```
+bmtools util cell --template TemplateFile.hoc --mod-folder ./ tune --builder
+```
+![bmtools](./figure2.png "Tuning Figure")
+
+
 ## Planned future features
 ```
 bmtools build
@@ -62,11 +80,11 @@ bmtools build
 bmtools plot
     Plot variable traces
     Plot spike rasters
-    Plot cell positions
-    Plot connection matricies
+    X Plot cell positions
+    X Plot connection matricies
     
 bmtools debug 
-    list cell types available for single debug
-    Run a single cell in the network
+    X list cell types available for single debug
+    X Run a single cell in the network
     Isolate a single cell in the network
 ```
