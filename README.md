@@ -70,6 +70,41 @@ bmtools util cell --template TemplateFile.hoc --mod-folder ./ tune --builder
 ```
 ![bmtools](./figure2.png "Tuning Figure")
 
+### FIR Curve plotting
+
+```
+> bmtools util cell fir --help
+Usage: bmtools util cell fir [OPTIONS]
+
+  Creates a NEURON GUI window with FI curve and passive properties
+
+Options:
+  --title TEXT
+  --min-pa INTEGER   Min pA for injection
+  --max-pa INTEGER   Max pA for injection
+  --increment FLOAT  Increment the injection by [i] pA
+  --tstart INTEGER   Injection start time
+  --tdur INTEGER     Duration of injection default:1000ms
+  --advanced         Interactive dialog to select injection and recording
+                     points
+  --help             Show this message and exit.
+
+> bmtools util cell fir
+? Select a cell:  (Use arrow keys)
+ » CA3PyramidalCell
+   DGCell
+   IzhiCell
+   IzhiCell_BC
+   IzhiCell_EC
+   IzhiCell_EC2
+   IzhiCell_EC_BIO
+   IzhiCell_EmoExcitatory
+   IzhiCell_EmoInhibitory
+   IzhiCell_OLM
+   IzhiCell_int
+```
+
+![bmtools](./figure3.png "FIR Figure")
 
 ## Planned future features
 ```
