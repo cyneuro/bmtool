@@ -509,6 +509,8 @@ class CellTunerGUI:
         self.template_name = ""
 
         self.h = h
+        self.hboxes = []
+        self.fih = []
         
         self.clamps = []
         self.netstims = []
@@ -658,14 +660,14 @@ class CellTunerGUI:
         self.setup_hoc_text.append("")
         return PointMenuWidget(iclamp), iclamp
 
-    def show(self,auto_run=False, on_complete=None):
+    def show(self,auto_run=False, on_complete=None,on_complete_fih=None):
         from neuron import gui
         fih_commands = []
         h.tstop = int(self.tstop)
         h.v_init = int(self.v_init)
-        hboxes = []
+        self.hboxes = []
         for window_index,window in enumerate(self.display):
-            hboxes.append(h.HBox())
+            self.hboxes.append(h.HBox())
             # Instance for each column
             window['_column_objs'] = [h.VBox() for _ in range(len(window['columns']))]
 
@@ -678,32 +680,38 @@ class CellTunerGUI:
                         fih_commands.append(ret)
                 col_vbox_obj.intercept(False)
 
-            hboxes[window_index].intercept(True)
+            self.hboxes[window_index].intercept(True)
             for col in window['_column_objs']:
                 col.map()
-            hboxes[window_index].intercept(False)
+            self.hboxes[window_index].intercept(False)
             x = window_index * 35 #Degree of separation, will be 35 pixels apart on popup
             y = x
-            hboxes[window_index].map(window['title'],x,y,window['width'],window['height'])
+            self.hboxes[window_index].map(window['title'],x,y,window['width'],window['height'])
 
         if auto_run:
             #https://www.neuron.yale.edu/phpbb/viewtopic.php?f=2&t=2236
-            fih = []
+            self.fih = []
             for commands in fih_commands:
-                fih.append(h.FInitializeHandler(0, commands))
-            if on_complete:
+                self.fih.append(h.FInitializeHandler(0, commands))
+            if on_complete_fih:
                 tstop = self.tstop
                 cvode = h.CVode()
                 def commands_complete():
-                    nonlocal tstop
-                    cvode.event(tstop,on_complete)
+                    nonlocal tstop, self
+                    def pdbtest():
+                        nonlocal tstop, self
+                        #import pdb;pdb.set_trace()
+                        pass
+                    cvode.event(tstop,on_complete_fih)
+                    cvode.event(tstop,pdbtest)
                     
-                fih.append(h.FInitializeHandler(0, commands_complete))
-                #on_complete()
+                self.fih.append(h.FInitializeHandler(0, commands_complete))
 
             h.stdinit()
-            h.run()
-        
+            
+            h.run()   
+            if on_complete:
+                on_complete()
         print("Press enter to close the GUI window and continue...")
         input()
         return
