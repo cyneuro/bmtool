@@ -943,9 +943,7 @@ class CellTunerGUI:
                     self.mechanism_dict[suffix]["STATE"] = {}
                     self.mechanism_dict[suffix]["STATE"]["variables"] = [var.name for var in parse.state.state_vars]
 
-                    def process_procedure(func):
-                        return
-
+                
                     self.mechanism_dict[suffix]["DERIVATIVE"] = []
 
                     parse_funcs = [func for func in parse.blocks if func.__class__.__name__ == "FuncDef"]
@@ -1034,7 +1032,8 @@ class CellTunerGUI:
                         return None,None,None
 
                     #activation to vhalf and slope matching
-
+                    #state_activation_vars = []
+                    self.mechanism_dict[suffix]["state_activation_vars"] = []
                     procedures_called = []
                     #Look at each state variable
                     for state_var in self.mechanism_dict[suffix]["STATE"]["variables"]:
@@ -1043,30 +1042,28 @@ class CellTunerGUI:
                             if derivative_line["procedure_call"]:
                                 procedures_called.append(derivative_line["procedure"])
                             if derivative_line["variable_assignment"]:
+                                # There may be a case where the inf var is set right before calculating the derivative
+                                # TODO handle this case
                                 pass
                             if state_var == derivative_line["variable"]: 
                                 if derivative_line["is_likely_activation"]:
                                     inf_var = derivative_line["inf"]
                                     for procedure in procedures_called:
-                                        vh_var = False
-                                        slope_var = False
                                         vh,slope,line = get_vh_slope(inf_var, procedure)
                                         if vh and slope:
-                                            print(suffix)
-                                            print(inf_var)
-                                            print(vh)
-                                            print(slope)
+                                            vardef = {}
+                                            vardef['var'] = state_var
+                                            vardef['var_inf'] = inf_var
+                                            vardef['vh'] = vh
+                                            vardef['k'] = slope
+                                            vardef['procedure_set'] = procedure
+                                            vardef['line_set'] = line
+                                            self.mechanism_dict[suffix]["state_activation_vars"].append(vardef)
                                             break
                                         #if not is_number(vh):
                                         #    vh_var = True
                                         #if not is_number(slope):
                                         #    slope_var = True
-
-
-                            
-                    #for statement in parse.derivative.statements:
-                    if mech == "na.mod":
-                        import pdb;pdb.set_trace()
 
                 except ValidationException as e:
                     if self.print_debug:

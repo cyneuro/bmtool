@@ -736,23 +736,28 @@ def cell_vhseg(ctx,title,tstop):
 
     click.echo("Using section " + colored.green(sec_split))
     #mechs = [s for s in ctg.root_sec() if not s.is_ion()]
+    
     mechs = [mech.name() for mech in ctg.root_sec() if not mech.name().endswith("_ion")]
-    #must install pip install textX==1.6.1
-    from xml.dom.minidom import parseString
-    from pynmodl.unparser import Unparser
-    from pynmodl.lems import mod2lems
-    mod_files = []
 
-    mods_path = os.path.join(mod_folder,'modfiles')
-    if not os.path.exists(mods_path):
-        mods_path = os.path.join(mod_folder)
-    import pdb;pdb.set_trace()
+    valid_mechs = []
+    for mech in mechs:
+        if not ctg.mechanism_dict.get(mech):
+            print("Skipping \"" + mech + "\" mechanism (mod file not originally parsed)")
+        else:
+            print("Adding mechanism \"" + mech + "\" to queue")
+            valid_mechs.append(mech)
 
-    with open(os.path.join(mod_folder,'modfiles/borgkaCA3.mod')) as f:
-        mod_file = f.read()
-        print(parseString(mod2lems(mod_file)).toprettyxml())
-        mod_files.append(Unparser().compile(mod_file))
-        print(mod_files[-1])
+    print("")
+    for mech in valid_mechs:
+        print("Processing \"" + mech + "\"")
+        if ctg.mechanism_dict[mech].get("state_activation_vars"):
+            avars = ctg.mechanism_dict[mech]["state_activation_vars"]
+            act_vars = [v for v in avars if float(v["k"]) < 0]
+            act_vars_names = [v["var"] for v in act_vars]
+            print("Activation variables: " + ", ".join(act_vars_names))
+        else:
+            print("No activation variables")
+        print("")
     import pdb;pdb.set_trace()
 
     return
