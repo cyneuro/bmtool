@@ -4,6 +4,7 @@ import os
 import glob
 import numpy as np
 from datetime import datetime
+import re
 
 class Widget:
     def __init__(self):
@@ -938,6 +939,134 @@ class CellTunerGUI:
                     self.mechanism_dict[suffix]["filename"] = mech
                     self.mechanism_dict[suffix]["NEURON"] = {}
                     self.mechanism_dict[suffix]["NEURON"]["RANGE"] = ranges
+
+                    self.mechanism_dict[suffix]["STATE"] = {}
+                    self.mechanism_dict[suffix]["STATE"]["variables"] = [var.name for var in parse.state.state_vars]
+
+                    def process_procedure(func):
+                        return
+
+                    self.mechanism_dict[suffix]["DERIVATIVE"] = []
+
+                    parse_funcs = [func for func in parse.blocks if func.__class__.__name__ == "FuncDef"]
+
+                    # Should extract vhalf and slope
+                    boltzmann_reg = r"[A-Za-z0-9\*\/+\.\-\(\)]*\s*\/\s*\([A-Za-z0-9\*\/+\.\-\(\)]*\s*\+\s*\(\s*exp\s*\(\s*\(v\s*[\+\-]\s*([A-Za-z0-9\*\/+\.\-\(\)]*)\s*\)\s*\/\s*\(\s*(\-*[A-Za-z0-9\*\/+\.\-\(\)]*)\s*\)\s*\)\s*\)\s*\)\s*"
+                    boltzmann_activation_reg = r"[A-Za-z0-9\*\/+\.\-\(\)]*\s*\/\s*\([A-Za-z0-9\*\/+\.\-\(\)]*\s*\+\s*\(\s*exp\s*\(\s*\(v\s*[\-]\s*([A-Za-z0-9\*\/+\.\-\(\)]*)\s*\)\s*\/\s*\(\s*(\-*[A-Za-z0-9\*\/+\.\-\(\)]*)\s*\)\s*\)\s*\)\s*\)\s*"
+                    boltzmann_inactivation_reg = r"[A-Za-z0-9\*\/+\.\-\(\)]*\s*\/\s*\([A-Za-z0-9\*\/+\.\-\(\)]*\s*\+\s*\(\s*exp\s*\(\s*\(v\s*[\+]\s*([A-Za-z0-9\*\/+\.\-\(\)]*)\s*\)\s*\/\s*\(\s*(\-*[A-Za-z0-9\*\/+\.\-\(\)]*)\s*\)\s*\)\s*\)\s*\)\s*"
+                    
+                    func_extract_reg = r"([A-Za-z0-9]*)\("
+
+                    for statement in parse.derivative.b.stmts:
+                        line = {}
+                        line["unparsed"] = statement.unparsed
+                        line["primed"] = False
+                        line["procedure_call"] = False
+                        line["variable_assignment"] = False
+                        line["is_likely_activation"] = False
+                        line["inf"] = ""
+                        line["inf_in_range"] = False
+                        line["inf_in_derivative_block"] = False
+                        line["variable"] = ""
+                        line["expression"] = ""
+                        line["procedure"] = ""
+
+                        line["expression"] = statement.expression.unparsed
+
+                        if statement.__class__.__name__ == "Assignment": # ex: method(v)
+                            if not statement.variable:
+                                line["procedure_call"] = True
+                                try:
+                                    line["procedure"] = re.search(func_extract_reg, statement.expression.unparsed).group(1)
+                                    #process_procedure(line["procedure"])
+                                except AttributeError:
+                                    # procedure not found in the string
+                                    pass
+                            else:
+                                line["variable_assignment"] = True
+                                line["variable"] = statement.variable
+                                
+                        if statement.__class__.__name__ == "Primed": # ex: m' = ... 
+                            if statement.variable in self.mechanism_dict[suffix]["STATE"]["variables"]:
+                                var = statement.variable
+                                line["variable"] = var
+                                inf_reg = var + r"'\s*=\s*\(([A-Za-z0-9\*\/+\.\-\(\)]*)\s*-\s*"+var+"\)\s*\/\s[A-Za-z]*"
+                                line["primed"] = True
+                                try:
+                                    line["inf"] = re.search(inf_reg, statement.unparsed).group(1)
+                                    line["is_likely_activation"] = True
+                                except AttributeError:
+                                    # inf_reg not found in the original string
+                                    pass
+                                if line["inf"]:
+                                    if line["inf"] in ranges: # the inf expression is a defined variable in RANGES section
+                                        line["inf_in_range"] = True
+                                    elif line["inf"] in [l["inf"] for l in self.mechanism_dict[suffix]["DERIVATIVE"]]:
+                                        line["inf_in_derivative_block"] = True
+
+                        self.mechanism_dict[suffix]["DERIVATIVE"].append(line)
+
+                    def is_number(s):
+                        try:
+                            float(s)
+                            return True
+                        except ValueError:
+                            return False
+                            
+                    def get_vh_slope(inf_var,procedure):
+                        func = [f for f in parse_funcs if f.name==procedure][0] # May be a crash point if not found, other issues
+                        stmts = [s for s in func.b.stmts]
+                        for statement in stmts:
+                            if statement.__class__.__name__ == "Assignment":
+                                if statement.variable.__class__.__name__ == "VarRef":
+                                    if statement.variable.var.__class__.__name__ == "AssignedDef":
+                                        var = statement.variable.var.name
+                                        if inf_var == var:
+                                            expression = statement.expression.unparsed
+                                            try:
+                                                vh = re.search(boltzmann_reg, expression).group(1)
+                                                slope = re.search(boltzmann_reg, expression).group(2)
+                                                return vh,slope,statement.unparsed
+                                            except AttributeError:
+                                                # inf_reg not found in the original string
+                                                pass
+
+                        return None,None,None
+
+                    #activation to vhalf and slope matching
+
+                    procedures_called = []
+                    #Look at each state variable
+                    for state_var in self.mechanism_dict[suffix]["STATE"]["variables"]:
+                        #Look through each line of the derivative block
+                        for derivative_line in self.mechanism_dict[suffix]["DERIVATIVE"]:
+                            if derivative_line["procedure_call"]:
+                                procedures_called.append(derivative_line["procedure"])
+                            if derivative_line["variable_assignment"]:
+                                pass
+                            if state_var == derivative_line["variable"]: 
+                                if derivative_line["is_likely_activation"]:
+                                    inf_var = derivative_line["inf"]
+                                    for procedure in procedures_called:
+                                        vh_var = False
+                                        slope_var = False
+                                        vh,slope,line = get_vh_slope(inf_var, procedure)
+                                        if vh and slope:
+                                            print(suffix)
+                                            print(inf_var)
+                                            print(vh)
+                                            print(slope)
+                                            break
+                                        #if not is_number(vh):
+                                        #    vh_var = True
+                                        #if not is_number(slope):
+                                        #    slope_var = True
+
+
+                            
+                    #for statement in parse.derivative.statements:
+                    if mech == "na.mod":
+                        import pdb;pdb.set_trace()
 
                 except ValidationException as e:
                     if self.print_debug:

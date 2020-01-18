@@ -48,11 +48,20 @@ def cell(ctx,hoc_folder,mod_folder,template,hoc):
             mod_folder = './'
         hoc_template_file = hoc
     elif not hoc_folder or not mod_folder:
-        cfg = load_config(ctx.obj['config'])
-        if not hoc_folder:
-            hoc_folder = cfg['components']['templates_dir']
-        if not mod_folder:
-            mod_folder = cfg['components']['mechanisms_dir']  
+        try:
+            cfg = load_config(ctx.obj['config'])
+            if not hoc_folder:
+                hoc_folder = cfg['components']['templates_dir']
+            if not mod_folder:
+                mod_folder = cfg['components']['mechanisms_dir']  
+        except Exception as e:
+            #lazy way of passing cases where sim config is not found and template provided
+            if not hoc_folder:
+                print("Possible error - Setting hoc folder to ./")
+                hoc_folder = '.'
+            if not mod_folder:
+                print("Possible error - Setting mod folder to ./")
+                mod_folder = '.'
 
     ctx.obj["hoc_folder"] = hoc_folder
     ctx.obj["mod_folder"] = mod_folder
@@ -709,10 +718,10 @@ def cell_vhseg(ctx,title,tstop):
     template = ctx.obj["cell_template"]
 
     ctg = CellTunerGUI(hoc_folder,mod_folder,tstop=tstop)
-    hoc_templates = ctg.get_templates(hoc_template_file=hoc_template_file)
-    
+       
     # Cell selector
     if not template:
+        hoc_templates = ctg.get_templates(hoc_template_file=hoc_template_file)
         template = questionary.select(
         "Select a cell:",
         choices=hoc_templates).ask()
@@ -726,7 +735,8 @@ def cell_vhseg(ctx,title,tstop):
     sec_split = sec.split('.')[-1]
 
     click.echo("Using section " + colored.green(sec_split))
-    mechs = [s for s in ctg.root_sec() if not s.is_ion()]
+    #mechs = [s for s in ctg.root_sec() if not s.is_ion()]
+    mechs = [mech.name() for mech in ctg.root_sec() if not mech.name().endswith("_ion")]
     #must install pip install textX==1.6.1
     from xml.dom.minidom import parseString
     from pynmodl.unparser import Unparser
