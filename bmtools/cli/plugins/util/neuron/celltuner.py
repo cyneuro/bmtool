@@ -5,6 +5,8 @@ import glob
 import numpy as np
 from datetime import datetime
 import re
+import click
+from clint.textui import puts, colored, indent
 
 class Widget:
     def __init__(self):
@@ -18,6 +20,17 @@ class Widget:
 
     def hoc_display_str_list(self,**kwargs):
         return []
+
+class MultiSecMenuWidget(Widget):
+    def __init__(self,label=""):
+        super(MultiSecMenuWidget, self).__init__()
+        self.label = label
+    
+    def execute(self):
+        h.xpanel('xvarlabel')
+        h.xlabel(self.label)
+        h.xpanel()
+        return
 
 class TextWidget(Widget):
     def __init__(self,label=""):
@@ -46,6 +59,9 @@ class TextWidget(Widget):
         for mystr in self.mystrs:
             h.xvarlabel(mystr)
         h.xpanel()
+        return
+    
+    def set_to_fir_passive(self, firwidget):
         return
         
 class PointMenuWidget(Widget):
@@ -689,28 +705,28 @@ class CellTunerGUI:
             y = x
             self.hboxes[window_index].map(window['title'],x,y,window['width'],window['height'])
 
-        if auto_run:
-            #https://www.neuron.yale.edu/phpbb/viewtopic.php?f=2&t=2236
-            self.fih = []
-            for commands in fih_commands:
-                self.fih.append(h.FInitializeHandler(0, commands))
-            if on_complete_fih:
-                tstop = self.tstop
-                cvode = h.CVode()
-                def commands_complete():
+        
+        #https://www.neuron.yale.edu/phpbb/viewtopic.php?f=2&t=2236
+        self.fih = []
+        for commands in fih_commands:
+            self.fih.append(h.FInitializeHandler(0, commands))
+        if on_complete_fih:
+            tstop = self.tstop
+            cvode = h.CVode()
+            def commands_complete():
+                nonlocal tstop, self
+                def pdbtest():
                     nonlocal tstop, self
-                    def pdbtest():
-                        nonlocal tstop, self
-                        #import pdb;pdb.set_trace()
-                        pass
-                    cvode.event(tstop,on_complete_fih)
-                    cvode.event(tstop,pdbtest)
-                    
-                self.fih.append(h.FInitializeHandler(0, commands_complete))
+                    #import pdb;pdb.set_trace()
+                    pass
+                cvode.event(tstop,on_complete_fih)
+                cvode.event(tstop,pdbtest)
+                
+            self.fih.append(h.FInitializeHandler(0, commands_complete))
 
-            h.stdinit()
-            
-            h.run()   
+            if auto_run:
+                h.stdinit()
+                h.run()   
             if on_complete:
                 on_complete()
         print("Press enter to close the GUI window and continue...")
@@ -869,9 +885,9 @@ class CellTunerGUI:
 
         return
 
-    def load_template(self,template_name):
+    def load_template(self,template_name,hoc_template_file=None):
         self.template_name = template_name
-        templates = self.get_templates() #also serves to load templates
+        templates = self.get_templates(hoc_template_file=hoc_template_file) #also serves to load templates
         if template_name not in templates:
             raise Exception("NEURON template not found")
         
@@ -1082,6 +1098,177 @@ class CellTunerGUI:
                         print("Unable to load " + mech)
                         print(e)
         return
+
+    def seg_mechs(self):
+        
+        mechs = [mech.name() for mech in self.root_sec() if not mech.name().endswith("_ion")]
+        
+        valid_mechs = []
+        for mech in mechs:
+            if not self.mechanism_dict.get(mech):
+                if self.print_debug:
+                    click.echo("Skipping \"" + colored.green(mech) + "\" mechanism (mod file not originally parsed)")
+            else:
+                if self.print_debug:
+                    print("Adding mechanism \"" + mech + "\" to queue")
+                valid_mechs.append(mech)
+        if self.print_debug:
+            print("")
+        mechs_processed = []
+        for mech in valid_mechs:
+            if self.print_debug:
+                click.echo("Processing \"" + mech + "\"")
+            act_vars = []
+            if self.mechanism_dict[mech].get("state_activation_vars"):
+                mechs_processed.append(mech)
+                avars = self.mechanism_dict[mech]["state_activation_vars"]
+                act_vars = [v for v in avars if float(v["k"]) < 0]
+                act_vars_names = [v["var"] for v in act_vars]
+                inact_vars = [v for v in avars if float(v["k"]) > 0]
+                inact_vars_names = [v["var"] for v in inact_vars]
+
+                if len(act_vars):
+                    if self.print_debug:
+                        click.echo("Activation variables: " + colored.green(", ".join(act_vars_names)))
+                if len(inact_vars):
+                    if self.print_debug:
+                        click.echo("Inactivation variables: " + colored.red(", ".join(inact_vars_names)))
+            else:
+                if self.print_debug:
+                    print("No activation/inactivation variables")
+                    print("")
+                continue
+            filename = mech + 'seg.mod'
+
+            with open(filename, 'w+') as f:
+                if self.print_debug:
+                    click.echo("Writing " + colored.green(filename))
+                f.write(': Ion channel activation segregation -- Generated by BMTools (https://github.com/tjbanks/bmtools)\n')
+                f.write(': based on the paper "Distinct Current Modules Shape Cellular Dynamics in Model Neurons" (2016)\n\n')
+                code_blocks = self.mechanism_parse[mech].blocks
+                for block in code_blocks:
+                    if block.__class__.__name__ == "Neuron":
+                        f.write("NEURON {\n")
+                        for statement in block.statements:
+                            st = statement.unparsed
+                            if statement.__class__.__name__ == "Suffix":
+                                st = st + "seg"
+                            f.write('\t' + st + '\n')
+                        rngvars = []
+                        for act_var in act_vars:
+                            rngvars.append(act_var['var']+"vhalf")
+                            rngvars.append(act_var['var']+"k")
+                            rngvars.append(act_var['var']+"seg")
+                        f.write("\t" + "RANGE " + ", ".join(rngvars) + " : Segmentation variables\n")
+                        f.write("} \n")
+                    elif block.__class__.__name__ == "Parameter":
+                        f.write("PARAMETER {\n")
+                        for parameter in block.parameters:
+                            f.write('\t' + parameter.unparsed + '\n')
+                        for act_var in act_vars:
+                            act = [v for v in self.mechanism_dict[mech]["state_activation_vars"] if v['var'] == act_var['var']][0]
+                            f.write('\t' + act_var['var']+"vhalf = " + act["vh"] + "\n")
+                            f.write('\t' + act_var['var']+"k = " + act["k"] + "\n")
+                            f.write('\t' + act_var['var']+"seg = " + "-50" + "\n") #TODO CHANGE THIS TO USER DEFINED VARIABLE
+                        f.write("}\n")
+
+                    elif block.__class__.__name__ == "Derivative":
+                        func_name = block.name
+                        f.write("DERIVATIVE " + func_name + "{\n")
+                        for statement in block.b.stmts:
+                            statement_str = statement.unparsed
+                            if statement.__class__.__name__ == "Assignment":
+                                pass
+                            if statement.__class__.__name__ == "Primed":
+                                for act_var in act_vars:
+                                    if statement.variable == act_var['var'] and act_var['var_inf'] in statement.unparsed:
+                                        f.write("\t" + act_var['var'] + "segment(v)" + "\n")
+                            f.write("\t" + statement_str + "\n")
+                        f.write("}\n")
+
+                    elif block.__class__.__name__ == "FuncDef":
+                        func_name = block.name
+                        #{'var': 'n', 'var_inf': 'inf', 'vh': '12.3', 'k': '-11.8', 'procedure_set': 'rate', 'line_set': 'inf = 1.0 / (1.0 + (exp((v + 12.3) / (-11.8))))'}
+                        pars_arr = [p.unparsed for p in block.pars]
+                        pars = ", ".join(pars_arr)
+                        ftype = "PROCEDURE" if block.is_procedure else "FUNCTION"
+                        f.write(ftype + " " + func_name + "(" + pars + "){\n")
+                        for statement in block.b.stmts:
+                            statement_str = statement.unparsed
+                            if statement.__class__.__name__ == "Assignment":
+                                for act_var in act_vars:
+                                    if func_name == act_var["procedure_set"] and statement_str == act_var["line_set"]:
+                                        statement_str = statement_str.replace(act_var["vh"],act_var["var"]+"vhalf",1)
+                                        statement_str = statement_str.replace(act_var["k"],act_var["var"]+"k",1)
+                            f.write('\t' + statement_str + '\n')
+
+                        f.write("}\n")
+
+                    else:
+                        f.write(block.unparsed)
+                    f.write('\n')
+
+                f.write(": Segmentation functions\n\n")
+
+                for act_var in act_vars:
+                    #Create a xsegment(v) function for each variable
+                    f.write("PROCEDURE " + act_var["var"] + "segment(v){\n")
+                    f.write("\tif (v < " + act_var["var"] + "seg){\n")
+                    f.write("\t\t" + act_var['var_inf'] + " = 0\n")
+                    f.write("\t}\n")
+                    f.write("}\n\n")
+            if self.print_debug:
+                print("")
+            
+        return mechs_processed
+
+    def seg_template(self,outhoc, mechs_processed, hoc_template_file=None, outappend=False):
+        # open hoc template file 
+        # scan through each line for template selected begintemplate
+        # copy all lines until ^endtemplate TEMPL\s*$
+        # go through all copied lines, replace "insert x" with "insert xseg" && "_x" with "_xseg"
+        # write to outhoc and append if outappend set
+        
+        new_template_name = self.template_name+"Seg"
+
+        hoc_files = []
+        if hoc_template_file:
+            hoc_files.append(hoc_template_file)
+        else:
+            hoc_files = self.hoc_templates
+        found = False
+
+        template_text = []
+        for hoc_file in hoc_files:
+            if found:
+                break
+            with open(hoc_file, 'r') as f:
+                lines = f.readlines()
+                readon = False
+                for line in lines:
+                    if "begintemplate " + self.template_name in line:
+                        readon = True
+                        found = True
+                    if readon:
+                        template_text.append(line)
+                    if "endtemplate " + self.template_name in line:
+                        readon = False
+        if found:
+            mode = "a+" if outappend else "w+"
+            #ins_mechs = ["insert " + mech for mech in mechs_processed]
+            #ref_mechs = ["_ " + mech for mech in mechs_processed]
+            with open(outhoc,mode) as f:
+                click.echo("Writing new template to " + colored.green(outhoc) + " in " + mode + " mode.")
+                for line in template_text:
+                    line = line.replace (self.template_name, new_template_name)
+                    for mech in mechs_processed:
+                        line = line.replace("insert " + mech, "insert " + mech + "seg")
+                        line = line.replace("_"+mech, "_"+mech+"seg")
+                    f.write(line)
+        else:
+            print("Template "+ self.template_name +"not found in a hoc file, no file written.")
+
+        return new_template_name
 
     def get_templates(self,hoc_template_file=None):
         if self.templates is None: # Can really only do this once
