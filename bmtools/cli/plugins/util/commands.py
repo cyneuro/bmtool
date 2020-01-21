@@ -756,16 +756,9 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     #Column 2
     column_index = ctg.add_column(window_index)
     
+    #import pdb;pdb.set_trace()
     other_cells = fir_widget.cells + [fir_widget.passive_cell]
-    variables = ["diam","cm"]
-    mechs = [mech.name() for mech in ctg.root_sec() if not mech.name().endswith("_ion")]
-    #ctg.mechanism_dict["kdr"]["NEURON"]["USEION"]["READ"]
-    #['eleak']
-    # if they're in the useion read then ignore as 
-    #ctg.mechanism_dict["leak"]["PARAMETER"]
-    #[('gbar', '(siemens/cm2)'), ('eleak', '(mV)')]
-    import pdb;pdb.set_trace()
-    widget = MultiSecMenuWidget(ctg.root_sec.cell(), other_cells,"soma",variables)
+    widget = MultiSecMenuWidget(ctg.root_sec.cell(), other_cells,"soma",ctg.mechanism_dict)
 
     #for cell,amp in zip(fir_widget.cells, fir_widget.amps):
         #plot_widget.add_expr(eval("cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),str(round(float(amp),2)))

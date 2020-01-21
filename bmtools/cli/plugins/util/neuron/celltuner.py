@@ -49,6 +49,7 @@ class SameCellValuePanel:
         self.original_cell = original_cell
         self.other_cells = other_cells
         self.prop = prop
+        #import pdb;pdb.set_trace()
         #self._val = h.ref(init_val)
         self._val_obj = getattr(getattr(original_cell,section)(0.5),"_ref_"+prop)
         self._val =  h.Pointer(self._val_obj)
@@ -92,21 +93,50 @@ class SameCellValuePanel:
 # 1WQ2E -- Morgan 1/20/2020 @ ~9:30pm
 
 class MultiSecMenuWidget(Widget):
-    def __init__(self,cell,other_cells,section,variables,label=""):
+    def __init__(self,cell,other_cells,section,md,label=""):
         super(MultiSecMenuWidget, self).__init__()
         self.cell = cell
         self.other_cells = other_cells
         self.section = section
-        self.variables = variables
+        self.md = md
         self.label = label
         self.panels = []
+
+        if self.label == "":
+            self.label = ""
+        self.variables = self.get_variables()
+
+    def get_variables(self):
+        variables = [("diam","diam (um)"),("cm", "cm (uF/cm2)")]
+        mechs = [mech.name() for mech in getattr(self.cell,self.section)(0.5) if not mech.name().endswith("_ion")]
+        #ctg.mechanism_dict["kdr"]["NEURON"]["USEION"]["READ"]
+        #['eleak']
+        # if they're in the useion read then ignore as 
+        #ctg.mechanism_dict["leak"]["PARAMETER"]
+        #[('gbar', '(siemens/cm2)'), ('eleak', '(mV)')]
+        md = self.md
+        for mech in mechs:
+            if md.get(mech) and \
+                md[mech].get("NEURON") and \
+                md[mech]["NEURON"].get("USEION") and \
+                md[mech]["NEURON"]["USEION"].get("READ"):
+                    ri = md[mech]["NEURON"]["USEION"]["READ"]
+                    for v in ri:
+                        variables.append((v,v))
+            if md.get(mech) and md[mech].get("PARAMETER"):
+                params = md[mech]["PARAMETER"]
+                for param in params:
+                    v = param[0]+"_"+mech
+                    t = v + ' ' + param[1]
+                    variables.append((v,t))
+        return variables
     
     def execute(self):
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
         cellsec = getattr(self.cell,"soma")
         for var in self.variables:
-            panel=SameCellValuePanel(self.cell, self.other_cells, self.section, var, label=var)
+            panel=SameCellValuePanel(self.cell, self.other_cells, self.section, var[0], label=var[1])
             self.panels.append(panel)
         h.xpanel()
         return
