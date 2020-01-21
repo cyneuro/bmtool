@@ -103,7 +103,7 @@ class MultiSecMenuWidget(Widget):
         self.panels = []
 
         if self.label == "":
-            self.label = ""
+            self.label = self.cell.hname() + "." + section + "(0.5)" + " (Parameters)"
         self.variables = self.get_variables()
 
     def get_variables(self):
@@ -125,10 +125,15 @@ class MultiSecMenuWidget(Widget):
                         variables.append((v,v))
             if md.get(mech) and md[mech].get("PARAMETER"):
                 params = md[mech]["PARAMETER"]
+                ions = [v[0] for v in variables]
                 for param in params:
-                    v = param[0]+"_"+mech
-                    t = v + ' ' + param[1]
-                    variables.append((v,t))
+                    if param[0] not in ions:
+                        v = param[0]+"_"+mech
+                        units = ""
+                        if param[1]:
+                            units = param[1]
+                        t = v + ' ' + units
+                        variables.append((v,t))
         return variables
     
     def execute(self):
@@ -1128,8 +1133,10 @@ class CellTunerGUI:
                     self.mechanism_dict[suffix]["NEURON"]["USEION"]["READ"] = read_ions
 
                     self.mechanism_dict[suffix]["STATE"] = {}
-                    self.mechanism_dict[suffix]["STATE"]["variables"] = [var.name for var in parse.state.state_vars]
-
+                    self.mechanism_dict[suffix]["STATE"]["variables"] = []
+                    if hasattr(parse,'state'):
+                        self.mechanism_dict[suffix]["STATE"]["variables"] = [var.name for var in parse.state.state_vars]
+                    
                     self.mechanism_dict[suffix]["PARAMETER"] = [(p.name,p.unit) for p in parse.parameter.parameters]
                 
                     self.mechanism_dict[suffix]["DERIVATIVE"] = []
@@ -1143,54 +1150,55 @@ class CellTunerGUI:
                     
                     func_extract_reg = r"([A-Za-z0-9]*)\("
 
-                    for statement in parse.derivative.b.stmts:
-                        line = {}
-                        line["unparsed"] = statement.unparsed
-                        line["primed"] = False
-                        line["procedure_call"] = False
-                        line["variable_assignment"] = False
-                        line["is_likely_activation"] = False
-                        line["inf"] = ""
-                        line["inf_in_range"] = False
-                        line["inf_in_derivative_block"] = False
-                        line["variable"] = ""
-                        line["expression"] = ""
-                        line["procedure"] = ""
+                    if hasattr(parse,'derivative'):
+                        for statement in parse.derivative.b.stmts:
+                            line = {}
+                            line["unparsed"] = statement.unparsed
+                            line["primed"] = False
+                            line["procedure_call"] = False
+                            line["variable_assignment"] = False
+                            line["is_likely_activation"] = False
+                            line["inf"] = ""
+                            line["inf_in_range"] = False
+                            line["inf_in_derivative_block"] = False
+                            line["variable"] = ""
+                            line["expression"] = ""
+                            line["procedure"] = ""
 
-                        line["expression"] = statement.expression.unparsed
+                            line["expression"] = statement.expression.unparsed
 
-                        if statement.__class__.__name__ == "Assignment": # ex: method(v)
-                            if not statement.variable:
-                                line["procedure_call"] = True
-                                try:
-                                    line["procedure"] = re.search(func_extract_reg, statement.expression.unparsed).group(1)
-                                    #process_procedure(line["procedure"])
-                                except AttributeError:
-                                    # procedure not found in the string
-                                    pass
-                            else:
-                                line["variable_assignment"] = True
-                                line["variable"] = statement.variable
-                                
-                        if statement.__class__.__name__ == "Primed": # ex: m' = ... 
-                            if statement.variable in self.mechanism_dict[suffix]["STATE"]["variables"]:
-                                var = statement.variable
-                                line["variable"] = var
-                                inf_reg = var + r"'\s*=\s*\(([A-Za-z0-9\*\/+\.\-\(\)]*)\s*-\s*"+var+"\)\s*\/\s[A-Za-z]*"
-                                line["primed"] = True
-                                try:
-                                    line["inf"] = re.search(inf_reg, statement.unparsed).group(1)
-                                    line["is_likely_activation"] = True
-                                except AttributeError:
-                                    # inf_reg not found in the original string
-                                    pass
-                                if line["inf"]:
-                                    if line["inf"] in ranges: # the inf expression is a defined variable in RANGES section
-                                        line["inf_in_range"] = True
-                                    elif line["inf"] in [l["inf"] for l in self.mechanism_dict[suffix]["DERIVATIVE"]]:
-                                        line["inf_in_derivative_block"] = True
+                            if statement.__class__.__name__ == "Assignment": # ex: method(v)
+                                if not statement.variable:
+                                    line["procedure_call"] = True
+                                    try:
+                                        line["procedure"] = re.search(func_extract_reg, statement.expression.unparsed).group(1)
+                                        #process_procedure(line["procedure"])
+                                    except AttributeError:
+                                        # procedure not found in the string
+                                        pass
+                                else:
+                                    line["variable_assignment"] = True
+                                    line["variable"] = statement.variable
+                                    
+                            if statement.__class__.__name__ == "Primed": # ex: m' = ... 
+                                if statement.variable in self.mechanism_dict[suffix]["STATE"]["variables"]:
+                                    var = statement.variable
+                                    line["variable"] = var
+                                    inf_reg = var + r"'\s*=\s*\(([A-Za-z0-9\*\/+\.\-\(\)]*)\s*-\s*"+var+"\)\s*\/\s[A-Za-z]*"
+                                    line["primed"] = True
+                                    try:
+                                        line["inf"] = re.search(inf_reg, statement.unparsed).group(1)
+                                        line["is_likely_activation"] = True
+                                    except AttributeError:
+                                        # inf_reg not found in the original string
+                                        pass
+                                    if line["inf"]:
+                                        if line["inf"] in ranges: # the inf expression is a defined variable in RANGES section
+                                            line["inf_in_range"] = True
+                                        elif line["inf"] in [l["inf"] for l in self.mechanism_dict[suffix]["DERIVATIVE"]]:
+                                            line["inf_in_derivative_block"] = True
 
-                        self.mechanism_dict[suffix]["DERIVATIVE"].append(line)
+                            self.mechanism_dict[suffix]["DERIVATIVE"].append(line)
 
                     def is_number(s):
                         try:
@@ -1255,20 +1263,24 @@ class CellTunerGUI:
 
                 except ValidationException as e:
                     if self.print_debug or True:
-                        print("Unable to parse " + mech)
+                        print("ValidationException: Unable to parse " + mech)
                         print(e)
+                        import pdb;pdb.set_trace()
                 except TextXSyntaxError as e:
                     if self.print_debug or True:
-                        print("Unable to parse " + mech)
+                        print("TextXSyntaxError: Unable to parse " + mech)
                         print(e)
+                        import pdb;pdb.set_trace()
                 except TextXSemanticError as e:
                     if self.print_debug or True:
-                        print("Unable to parse " + mech)
+                        print("TextXSemanticError: Unable to parse " + mech)
                         print(e)
-                except AttributeError as e:
-                    if self.print_debug or True:
-                        print("Unable to parse " + mech)
-                        print(e)
+                        import pdb;pdb.set_trace()
+                #except AttributeError as e:
+                #    if self.print_debug or True:
+                #        print("AttributeError: Unable to parse " + mech)
+                #        print(e)
+                #        import pdb;pdb.set_trace()
         return
 
     def seg_mechs(self):

@@ -762,10 +762,9 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
 
     #for cell,amp in zip(fir_widget.cells, fir_widget.amps):
         #plot_widget.add_expr(eval("cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),str(round(float(amp),2)))
-    widget.add_var()
     widget_index = ctg.add_widget(window_index, column_index,widget) 
-    widget = SecMenuWidget(ctg.root_sec,x=float(inj_loc))
-    widget_index = ctg.add_widget(window_index, column_index,widget) 
+    #widget = SecMenuWidget(ctg.root_sec,x=float(inj_loc))
+    #widget_index = ctg.add_widget(window_index, column_index,widget) 
 
     #Column 3
     column_index = ctg.add_column(window_index)
