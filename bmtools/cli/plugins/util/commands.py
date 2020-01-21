@@ -657,50 +657,12 @@ def cell_fir(ctx,title,min_pa,max_pa,increment,tstart,tdur,advanced):#, title, p
     #column_index = ctg.add_column(window_index)
     #control_widget = ControlMenuWidget()
     #ctg.add_widget(window_index,column_index,control_widget)
-
-    text_widget = TextWidget(label='PASSIVE PROPERTIES:\n')
-    text_widget.add_text("V_rest: ")
-    text_widget.add_text("R_in: ")
-    text_widget.add_text("Tau: ")
-    text_widget.add_text("")
-    text_widget.add_text("V_rest Calculation: ")
-    text_widget.add_text("R_in Calculation: ")
-    text_widget.add_text("")
-    text_widget.add_text("Tau Calculation: ")
-    text_widget.add_text("")
-    text_widget.add_text("")
-    text_widget.add_text("FICurve ([nA]:Hz): ")
-    text_widget.add_text("")
+    
+    text_widget = TextWidget()
+    text_widget.set_to_fir_passive(fir_widget)
     ctg.add_widget(window_index, column_index, text_widget)
 
-    def set_text():
-        nonlocal fir_widget
-        v_rest_calc = "V_rest Calculation: Taken at time " + str(fir_widget.v_rest_time) + "(ms) on negative injection cell"
-        rin_calc = "R_in Calculation: [(dV/dI)] = (v_start-v_final)/(i_start-i_final) = " + str(round(fir_widget.v_rest,2)) + \
-                "-(" + str(round(fir_widget.passive_v_final,2))+"))/(0-(" + str(fir_widget.passive_amp) + "))" + \
-                " = (" + str(round(fir_widget.v_rest-fir_widget.passive_v_final,2))+ " (mV) /" + str(0-fir_widget.passive_amp) + " (nA))" + \
-                " = ("+ str(round(((fir_widget.v_rest-fir_widget.passive_v_final)/(0-fir_widget.passive_amp)),2)) + " (MOhms))"
-        tau_calc = "Tau Calculation: [(s) until 63.2% change in mV] = " + \
-                "(mV at inj_start_time (" + str(fir_widget.tstart) + ")) - ((mV at inj_time  - mV at inj_final (" + str(fir_widget.tstart+fir_widget.passive_delay) + ")) * 0.632) = " + \
-                "(" + str(round(fir_widget.v_rest,2)) + ") - (" + str(round(fir_widget.v_rest,2)) +"-" +str(round(fir_widget.passive_v_final,2))+")*0.632 = " + str(round(fir_widget.v_rest - ((fir_widget.v_rest - fir_widget.passive_v_final)*0.632),2))
-        tau_calc2 = "Time where mV == " + str(round(fir_widget.v_t_const,2)) + " = " + str(fir_widget.tstart+fir_widget.tau*1000) + "(ms) | (" + str(fir_widget.tstart+fir_widget.tau*1000) + " - v_start_time (" + str(fir_widget.tstart) +"))/1000 = " + str(round(fir_widget.tau,4))
-        text_widget.set_text(0,"V_rest: " + str(round(fir_widget.v_rest,2)) + " (mV) ")
-        text_widget.set_text(1,"R_in: " + str(round(fir_widget.r_in,2)) + " (MOhms) ")
-        text_widget.set_text(2,"Tau: " + str(round(fir_widget.tau,4)) + " (s) ")
-
-        text_widget.set_text(4,v_rest_calc)
-        text_widget.set_text(5,rin_calc)
-        text_widget.set_text(6,"v_start time: " + str(fir_widget.v_rest_time) + "(ms) | v_final time: " + str(fir_widget.v_final_time) + "(ms)")
-        text_widget.set_text(7,tau_calc)
-        text_widget.set_text(8,tau_calc2)
-
-        spikes = [str(round(i,0)) for i in fir_widget.plenvec]
-        amps = fir_widget.amps
-        text_widget.set_text(11," | ".join("["+str(round(a,2))+"]:"+n for a,n in zip(amps,spikes)))
-        
-        return
-
-    ctg.show(auto_run=True,on_complete=set_text)
+    ctg.show(auto_run=True,on_complete=text_widget.update_fir_passive)
 
 #https://www.youtube.com/watch?v=MkzeOmkOUHM
 
@@ -774,11 +736,15 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     #Column 1
     column_index = ctg.add_column(window_index)
 
-    plot_widget = PlotWidget(tstop=ctg.tstop)
-    ctg.add_widget(window_index,column_index,plot_widget)
+    plot_widget = PlotWidget(tstop=tstop)
+    sec_text = ctg.root_sec.hname().split('.')[-1]+"(.5)"
 
     fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa,tstart=tstart,tdur=tdur,
         record_sec=rec_sec_split, record_loc=rec_loc, inj_sec=inj_sec_split, inj_loc=inj_loc)
+    plot_widget.add_expr(ctg.root_sec(0.5)._ref_v,sec_text)
+    plot_widget.add_expr(eval("fir_widget.passive_cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),"Passive @"+str(round(float(fir_widget.passive_amp),2))+"nA")
+    ctg.add_widget(window_index,column_index,plot_widget)
+
     ctg.add_widget(window_index,column_index,fir_widget)
 
     
@@ -789,25 +755,44 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
 
     #Column 2
     column_index = ctg.add_column(window_index)
-    widget = MultiSecMenuWidget(ctg.root_sec.hname())
+    
+    other_cells = fir_widget.cells + [fir_widget.passive_cell]
+    variables = ["diam","cm"]
+    mechs = [mech.name() for mech in ctg.root_sec() if not mech.name().endswith("_ion")]
+    #ctg.mechanism_dict["kdr"]["NEURON"]["USEION"]["READ"]
+    #['eleak']
+    # if they're in the useion read then ignore as 
+    #ctg.mechanism_dict["leak"]["PARAMETER"]
+    #[('gbar', '(siemens/cm2)'), ('eleak', '(mV)')]
+    import pdb;pdb.set_trace()
+    widget = MultiSecMenuWidget(ctg.root_sec.cell(), other_cells,"soma",variables)
+
+    #for cell,amp in zip(fir_widget.cells, fir_widget.amps):
+        #plot_widget.add_expr(eval("cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),str(round(float(amp),2)))
+    widget.add_var()
+    widget_index = ctg.add_widget(window_index, column_index,widget) 
+    widget = SecMenuWidget(ctg.root_sec,x=float(inj_loc))
     widget_index = ctg.add_widget(window_index, column_index,widget) 
 
     #Column 3
     column_index = ctg.add_column(window_index)
     widget = ControlMenuWidget()
     ctg.add_widget(window_index,column_index,widget)
-    widget = SecMenuWidget(ctg.root_sec,x=float(inj_loc))
-    widget_index = ctg.add_widget(window_index, column_index,widget)           
+              
 
     widget = PointMenuWidget(None)
     iclamp = widget.iclamp(ctg.root_sec(float(inj_loc)),dur,amp,delay)
     ctg.register_iclamp(iclamp)
     widget_index = ctg.add_widget(window_index, column_index,widget)
 
+    text_widget = TextWidget()
+    text_widget.set_to_fir_passive(fir_widget,print_calc=False,print_fi=False)
+    widget_index = ctg.add_widget(window_index, column_index,text_widget)
+
     #Column 4
     column_index = ctg.add_column(window_index)
 
-    ctg.show()
+    ctg.show(auto_run=True,on_complete_fih=text_widget.update_fir_passive)
 
     return
     

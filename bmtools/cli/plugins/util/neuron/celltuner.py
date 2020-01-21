@@ -7,6 +7,7 @@ from datetime import datetime
 import re
 import click
 from clint.textui import puts, colored, indent
+from random import random
 
 class Widget:
     def __init__(self):
@@ -21,22 +22,107 @@ class Widget:
     def hoc_display_str_list(self,**kwargs):
         return []
 
+class ValuePanel:
+
+    def __init__(self, init_val=0, label='',lower_limit=-100,upper_limit=100):
+        self._val = h.ref(init_val)
+        h.xvalue(label, self._val, True, self._bounds_check)
+        self.__lower_limit = lower_limit
+        self.__upper_limit = upper_limit
+        #h.xslider(self._val, self.__lower_limit, self.__upper_limit)
+
+    def _bounds_check(self):
+        self.val = self.val
+
+    @property
+    def val(self):
+        return self._val[0]
+
+    @val.setter
+    def val(self, new_val):
+        new_val = max(self.__lower_limit, new_val)
+        self._val[0] = min(new_val, self.__upper_limit)
+
+class SameCellValuePanel:
+
+    def __init__(self, original_cell, other_cells, section, prop, init_val=0, label='',lower_limit=-100,upper_limit=100):
+        self.original_cell = original_cell
+        self.other_cells = other_cells
+        self.prop = prop
+        #self._val = h.ref(init_val)
+        self._val_obj = getattr(getattr(original_cell,section)(0.5),"_ref_"+prop)
+        self._val =  h.Pointer(self._val_obj)
+        self._vals = []
+        #import pdb;pdb.set_trace()
+        for cell in other_cells:
+            self._vals.append(h.Pointer(getattr(getattr(cell,section)(0.5),"_ref_"+prop)))
+            #print(self._vals[-1].val)
+        #import pdb;pdb.set_trace()
+        h.xvalue(label, self._val_obj, True, self._bounds_check)
+        self.__lower_limit = lower_limit
+        self.__upper_limit = upper_limit
+        #h.xslider(self._val, self.__lower_limit, self.__upper_limit)
+
+    def _bounds_check(self):
+        #self.val = self.val
+        new_val = max(self.__lower_limit, self.val)
+        #self._val[0] = min(new_val, self.__upper_limit)
+        self._val.assign(min(new_val, self.__upper_limit))
+        #print(self._val.val)
+        for _val in self._vals:
+            _val.assign(min(new_val, self.__upper_limit))
+            #print(_val.val)
+        #print("bounds check called")
+        #pass
+
+    @property
+    def val(self):
+        return self._val.val
+
+    @val.setter
+    def val(self, new_val):
+        new_val = max(self.__lower_limit, new_val)
+        #self._val[0] = min(new_val, self.__upper_limit)
+        self._val.assign(min(new_val, self.__upper_limit))
+        #print(self._val.val)
+        for _val in self._vals:
+            _val.assign(min(new_val, self.__upper_limit))
+            #print(_val.val)
+
+# 1WQ2E -- Morgan 1/20/2020 @ ~9:30pm
+
 class MultiSecMenuWidget(Widget):
-    def __init__(self,label=""):
+    def __init__(self,cell,other_cells,section,variables,label=""):
         super(MultiSecMenuWidget, self).__init__()
+        self.cell = cell
+        self.other_cells = other_cells
+        self.section = section
+        self.variables = variables
         self.label = label
+        self.panels = []
     
     def execute(self):
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
+        cellsec = getattr(self.cell,"soma")
+        for var in self.variables:
+            panel=SameCellValuePanel(self.cell, self.other_cells, self.section, var, label=var)
+            self.panels.append(panel)
         h.xpanel()
         return
+
+    def add_var(self):
+        pass
 
 class TextWidget(Widget):
     def __init__(self,label=""):
         super(TextWidget, self).__init__()
         self.label = label
         self.mystrs = []
+
+        self.fir_widget = None
+        self.fir_print_calc = False
+        self.fir_print_fi = False
         return
     
     def add_text(self, text):
@@ -61,7 +147,54 @@ class TextWidget(Widget):
         h.xpanel()
         return
     
-    def set_to_fir_passive(self, firwidget):
+    def set_to_fir_passive(self, fir_widget, print_calc=True, print_fi=True):
+        self.fir_widget = fir_widget
+        self.fir_print_calc = print_calc
+        self.fir_print_fi = print_fi
+        self.label='PASSIVE PROPERTIES:\n'
+        self.add_text("V_rest: ")
+        self.add_text("R_in: ")
+        self.add_text("Tau: ")
+        self.add_text("")
+        if print_calc:
+            self.add_text("V_rest Calculation: ")
+            self.add_text("R_in Calculation: ")
+            self.add_text("")
+            self.add_text("Tau Calculation: ")
+            self.add_text("")
+            self.add_text("")
+        if print_fi:
+            self.add_text("FICurve ([nA]:Hz): ")
+            self.add_text("")
+        return
+    
+    def update_fir_passive(self):
+        
+        if self.fir_widget:
+            self.set_text(0,"V_rest: " + str(round(self.fir_widget.v_rest,2)) + " (mV) ")
+            self.set_text(1,"R_in: " + str(round(self.fir_widget.r_in,2)) + " (MOhms) ")
+            self.set_text(2,"Tau: " + str(round(self.fir_widget.tau,4)) + " (s) ")
+
+            if self.fir_print_calc:
+                v_rest_calc = "V_rest Calculation: Taken at time " + str(self.fir_widget.v_rest_time) + "(ms) on negative injection cell"
+                rin_calc = "R_in Calculation: [(dV/dI)] = (v_start-v_final)/(i_start-i_final) = " + str(round(self.fir_widget.v_rest,2)) + \
+                        "-(" + str(round(self.fir_widget.passive_v_final,2))+"))/(0-(" + str(self.fir_widget.passive_amp) + "))" + \
+                        " = (" + str(round(self.fir_widget.v_rest-self.fir_widget.passive_v_final,2))+ " (mV) /" + str(0-self.fir_widget.passive_amp) + " (nA))" + \
+                        " = ("+ str(round(((self.fir_widget.v_rest-self.fir_widget.passive_v_final)/(0-self.fir_widget.passive_amp)),2)) + " (MOhms))"
+                tau_calc = "Tau Calculation: [(s) until 63.2% change in mV] = " + \
+                        "(mV at inj_start_time (" + str(self.fir_widget.tstart) + ")) - ((mV at inj_time  - mV at inj_final (" + str(self.fir_widget.tstart+self.fir_widget.passive_delay) + ")) * 0.632) = " + \
+                        "(" + str(round(self.fir_widget.v_rest,2)) + ") - (" + str(round(self.fir_widget.v_rest,2)) +"-" +str(round(self.fir_widget.passive_v_final,2))+")*0.632 = " + str(round(self.fir_widget.v_rest - ((self.fir_widget.v_rest - self.fir_widget.passive_v_final)*0.632),2))
+                tau_calc2 = "Time where mV == " + str(round(self.fir_widget.v_t_const,2)) + " = " + str(self.fir_widget.tstart+self.fir_widget.tau*1000) + "(ms) | (" + str(self.fir_widget.tstart+self.fir_widget.tau*1000) + " - v_start_time (" + str(self.fir_widget.tstart) +"))/1000 = " + str(round(self.fir_widget.tau,4))
+                
+                self.set_text(4,v_rest_calc)
+                self.set_text(5,rin_calc)
+                self.set_text(6,"v_start time: " + str(self.fir_widget.v_rest_time) + "(ms) | v_final time: " + str(self.fir_widget.v_final_time) + "(ms)")
+                self.set_text(7,tau_calc)
+                self.set_text(8,tau_calc2)
+            if self.fir_print_fi:
+                spikes = [str(round(i,0)) for i in self.fir_widget.plenvec]
+                amps = self.fir_widget.amps
+                self.set_text(11," | ".join("["+str(round(a,2))+"]:"+n for a,n in zip(amps,spikes)))
         return
         
 class PointMenuWidget(Widget):
@@ -378,17 +511,25 @@ class FICurveWidget(Widget):
         cvode = h.CVode()
         def commands():
             def start_event():
+                nonlocal cfir_widget, cvgraph
+                cvgraph.erase_all()
+                cfir_widget.plenvec.clear()
+                #print(cfir_widget.vectors[4].as_numpy())
                 return
             cvode.event(0 , start_event)
 
             def stop_event():
                 nonlocal ctstop, cvectors, cvgraph, ctemplate_name, ampvec, lenvec,camps,plenvec
                 nonlocal cfir_widget
+                #print(cfir_widget.vectors[4].as_numpy())    
+                #print(cfir_widget.cells[0].soma(0.5)._ref_cm)
                 tplenvec = [len(cvec) for cvec in cvectors]
                 hzlenvec = [i * (1000/cdur) for i in tplenvec]
                 for vec in hzlenvec:
                     plenvec.append(vec)
                 lenvec = h.Vector(plenvec)
+                #print(lenvec.as_numpy())
+                cvgraph.erase_all()
                 cvgraph.label(ctemplate_name + " FI Curve")
                 plot = lenvec.plot(cvgraph,ampvec)
                 cvgraph.size(0,max(camps),0,max(lenvec)+1)
@@ -412,9 +553,7 @@ class FICurveWidget(Widget):
                 time_tau = (index_v_tau / ((1000/h.dt)/1000)) - cfir_widget.tstart
                 cfir_widget.tau = time_tau / 1000
                 cfir_widget.r_in = (v_diff)/(0-cfir_widget.passive_amp) #MegaOhms
-                
-                return
-            
+                                
             cvode.event(ctstop, stop_event)
         
         h.graphList[0].append(self.graph)
@@ -724,11 +863,11 @@ class CellTunerGUI:
                 
             self.fih.append(h.FInitializeHandler(0, commands_complete))
 
-            if auto_run:
-                h.stdinit()
-                h.run()   
-            if on_complete:
-                on_complete()
+        if auto_run:
+            h.stdinit()
+            h.run()   
+        if on_complete:
+            on_complete()
         print("Press enter to close the GUI window and continue...")
         input()
         return
@@ -955,10 +1094,13 @@ class CellTunerGUI:
                     self.mechanism_dict[suffix]["filename"] = mech
                     self.mechanism_dict[suffix]["NEURON"] = {}
                     self.mechanism_dict[suffix]["NEURON"]["RANGE"] = ranges
+                    self.mechanism_dict[suffix]["NEURON"]["USEION"] = {}
+                    self.mechanism_dict[suffix]["NEURON"]["USEION"]["READ"] = read_ions
 
                     self.mechanism_dict[suffix]["STATE"] = {}
                     self.mechanism_dict[suffix]["STATE"]["variables"] = [var.name for var in parse.state.state_vars]
 
+                    self.mechanism_dict[suffix]["PARAMETER"] = [(p.name,p.unit) for p in parse.parameter.parameters]
                 
                     self.mechanism_dict[suffix]["DERIVATIVE"] = []
 
@@ -1082,20 +1224,20 @@ class CellTunerGUI:
                                         #    slope_var = True
 
                 except ValidationException as e:
-                    if self.print_debug:
-                        print("Unable to load " + mech)
+                    if self.print_debug or True:
+                        print("Unable to parse " + mech)
                         print(e)
                 except TextXSyntaxError as e:
-                    if self.print_debug:
-                        print("Unable to load " + mech)
+                    if self.print_debug or True:
+                        print("Unable to parse " + mech)
                         print(e)
                 except TextXSemanticError as e:
-                    if self.print_debug:
-                        print("Unable to load " + mech)
+                    if self.print_debug or True:
+                        print("Unable to parse " + mech)
                         print(e)
                 except AttributeError as e:
-                    if self.print_debug:
-                        print("Unable to load " + mech)
+                    if self.print_debug or True:
+                        print("Unable to parse " + mech)
                         print(e)
         return
 
