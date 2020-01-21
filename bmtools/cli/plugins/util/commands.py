@@ -678,7 +678,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
 
     click.echo(colored.red("EXPERIMENTAL!"))
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget,PointMenuWidget, MultiSecMenuWidget
-
+    from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget
     hoc_folder = ctx.obj["hoc_folder"]
     mod_folder = ctx.obj["mod_folder"]
     hoc_template_file = ctx.obj["hoc_template_file"]
@@ -749,7 +749,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
 
     
 
-    plot_widget = PlotWidget(tstop=ctg.tstop)
+    plot_widget = VoltagePlotWidget()
     ctg.add_widget(window_index,column_index,plot_widget)
     
 
@@ -783,6 +783,15 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
 
     #Column 4
     column_index = ctg.add_column(window_index)
+    
+    widget = SegregationSelectorWidget()
+    ctg.add_widget(window_index,column_index,widget)
+
+    widget = SegregationPassiveWidget()
+    ctg.add_widget(window_index,column_index,widget)
+
+    widget = SegregationFIRFitWidget()
+    ctg.add_widget(window_index,column_index,widget)
 
     ctg.show(auto_run=True,on_complete_fih=text_widget.update_fir_passive)
 

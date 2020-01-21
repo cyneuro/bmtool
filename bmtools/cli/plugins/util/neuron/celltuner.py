@@ -149,6 +149,36 @@ class MultiSecMenuWidget(Widget):
     def add_var(self):
         pass
 
+class SegregationSelectorWidget(Widget):
+    def __init__(self):
+        super(SegregationSelectorWidget, self).__init__()
+        self.label = "Segregation Selection"
+
+    def execute(self):
+        h.xpanel('xvarlabel')
+        h.xlabel(self.label)
+        h.xpanel()
+        
+class SegregationPassiveWidget(Widget):
+    def __init__(self):
+        super(SegregationPassiveWidget, self).__init__()
+        self.label = "Segregation Passive Fitting"
+
+    def execute(self):
+        h.xpanel('xvarlabel')
+        h.xlabel(self.label)
+        h.xpanel()
+
+class SegregationFIRFitWidget(Widget):
+    def __init__(self):
+        super(SegregationFIRFitWidget, self).__init__()
+        self.label = "Segregation FIR Fitting"
+
+    def execute(self):
+        h.xpanel('xvarlabel')
+        h.xlabel(self.label)
+        h.xpanel()
+
 class TextWidget(Widget):
     def __init__(self,label=""):
         super(TextWidget, self).__init__()
@@ -382,7 +412,20 @@ class PointMenuWidget(Widget):
             ret.append("nrnpointmenu(" + hoc_ref + ")")
             pass
         return ret
+
+class VoltagePlotWidget(Widget):
     
+    def __init__(self):
+        super(VoltagePlotWidget, self).__init__()
+        self.graph = None
+        return
+
+    def execute(self):
+        self.graph = h.Graph()
+        
+        h.graphList[0].append(self.graph)
+    
+
 class PlotWidget(Widget):
 
     def __init__(self, tstart=0,tstop=50,miny=-80,maxy=50):
