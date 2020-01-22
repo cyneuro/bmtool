@@ -24,12 +24,13 @@ class Widget:
 
 class ValuePanel:
 
-    def __init__(self, init_val=0, label='',lower_limit=-100,upper_limit=100):
+    def __init__(self, init_val=0, label='',lower_limit=-100,upper_limit=100,slider=True):
         self._val = h.ref(init_val)
         h.xvalue(label, self._val, True, self._bounds_check)
         self.__lower_limit = lower_limit
         self.__upper_limit = upper_limit
-        #h.xslider(self._val, self.__lower_limit, self.__upper_limit)
+        if slider:
+            h.xslider(self._val, self.__lower_limit, self.__upper_limit)
 
     def _bounds_check(self):
         self.val = self.val
@@ -150,24 +151,94 @@ class MultiSecMenuWidget(Widget):
         pass
 
 class SegregationSelectorWidget(Widget):
-    def __init__(self):
+    def __init__(self,cell, other_cells, section, mechanism_dict):
         super(SegregationSelectorWidget, self).__init__()
         self.label = "Segregation Selection"
+        self.cell = cell
+        self.other_cells = other_cells
+        self.section = section
+        self.mechanism_dict = mechanism_dict
+        self.mechs = [mech.name() for mech in getattr(cell,section)(0.5) if not mech.name().endswith("_ion")]
+
+        self.vps=[]#ValuePanels
+
 
     def execute(self):
+        def a(n):
+            """function to be called when a radio button is toggled"""
+            print(n)
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
+        for mech in self.mechs:
+            if not self.mechanism_dict[mech].get("DERIVATIVE"):
+                continue
+            actvars = [line['variable'] for line in self.mechanism_dict[mech]["DERIVATIVE"] if line['is_likely_activation']]
+            
+            for var in self.mechanism_dict[mech]['state_activation_vars']:
+                import pdb;pdb.set_trace()
+                if var['var'] in actvars:
+                    #{'var': 'n', 'var_inf': 'inf', 'vh': 'nvhalf', 'k': 'nk', 'procedure_set': 'rate', 'line_set': 'inf = 1.0 / (1.0 + (exp((v + nvhalf) / (nk))))'}
+                    label = var['var'] + ' (' + mech + ') ' +  'Segregation Voltage'
+                    #vp = ValuePanel(label=label)
+                    ref = var['var']+'seg_'+mech
+                    try:
+                        vp = SameCellValuePanel(self.cell, self.other_cells, self.section, ref, label=label)
+                        self.vps.append(vp)
+                    except AttributeError as e:
+                        pass
+        
+        menu = h.xmenu('menu')
+        #import pdb;pdb.set_trace()
+        for i in range(1, 11):
+            h.xradiobutton('item %d' % i, (a, i))
+
+        h.xmenu()
         h.xpanel()
         
 class SegregationPassiveWidget(Widget):
-    def __init__(self):
+    def __init__(self, fir_widget):
         super(SegregationPassiveWidget, self).__init__()
         self.label = "Segregation Passive Fitting"
+        self.fir_widget = fir_widget
+        self.is_calculating = False
+        self.v_rest = None
+        self.r_in = None
+        self.tau = None
 
     def execute(self):
+        def calculate():
+            self.is_calculating = True
+            h.stdinit()
+            h.run()
+            
+        spw = self
+        ctstop = self.fir_widget.tstop
+        cvode = h.CVode()
+
+        def commands():
+            def start_event():
+                return
+            cvode.event(0 , start_event)
+
+            def stop_event():
+                nonlocal spw
+                if not spw.is_calculating:
+                    spw.v_rest.val = round(self.fir_widget.v_rest,2)
+                    spw.r_in.val = round(float(self.fir_widget.r_in),2)
+                    spw.tau.val = round(self.fir_widget.tau,4)  
+                else:
+                    spw.is_calculating = False           
+            cvode.event(ctstop, stop_event)           
+
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
+        self.v_rest=ValuePanel(label='V Rest',slider=False,lower_limit=-1000,upper_limit=1000)
+        self.r_in=ValuePanel(label='R in',slider=False,lower_limit=0,upper_limit=100000)
+        self.tau=ValuePanel(label='Tau',slider=False,lower_limit=-100,upper_limit=100)
+        h.xbutton('Fit Passive Properties (Run)', calculate)
         h.xpanel()
+
+        return commands
 
 class SegregationFIRFitWidget(Widget):
     def __init__(self):
@@ -178,6 +249,33 @@ class SegregationFIRFitWidget(Widget):
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
         h.xpanel()
+
+class AutoVInitWidget(Widget):
+    def __init__(self,fir_widget):
+        self.fir_widget = fir_widget
+        self.vinitcheckbox = 1
+    
+    def execute(self):
+        spw = self
+        ctstop = self.fir_widget.tstop
+        cvode = h.CVode()
+
+        def commands():
+            def start_event():
+                return
+            cvode.event(0 , start_event)
+
+            def stop_event():
+                nonlocal spw
+                if spw.vinitcheckbox:
+                    h.v_init = spw.fir_widget.v_rest         
+            cvode.event(ctstop, stop_event)           
+
+        h.xpanel('xvarlabel')
+        h.xcheckbox('Auto set v_init to V Rest at end of simulation', (self, 'vinitcheckbox'))#, self.vinitcheckboxpressed)
+        h.xpanel()
+
+        return commands
 
 class TextWidget(Widget):
     def __init__(self,label=""):
@@ -894,7 +992,7 @@ class CellTunerGUI:
         self.setup_hoc_text.append("")
         return PointMenuWidget(iclamp), iclamp
 
-    def show(self,auto_run=False, on_complete=None,on_complete_fih=None):
+    def show(self,auto_run=False, on_complete=None,on_complete_fih=None,run_count=1):
         from neuron import gui
         fih_commands = []
         h.tstop = int(self.tstop)
@@ -942,8 +1040,9 @@ class CellTunerGUI:
             self.fih.append(h.FInitializeHandler(0, commands_complete))
 
         if auto_run:
-            h.stdinit()
-            h.run()   
+            for _ in range(run_count):
+                h.stdinit()
+                h.run()   
         if on_complete:
             on_complete()
         print("Press enter to close the GUI window and continue...")

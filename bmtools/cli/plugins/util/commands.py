@@ -668,7 +668,7 @@ def cell_fir(ctx,title,min_pa,max_pa,increment,tstart,tdur,advanced):#, title, p
 
 @cell.command('vhseg', help="Alturki et al. (2016) V1/2 Automated Segregation Interface, simplify tuning by separating channel activation")
 @click.option('--title',type=click.STRING,default=None)
-@click.option('--tstop',type=click.INT,default=1050)
+@click.option('--tstop',type=click.INT,default=1150)
 @click.option('--outhoc',type=click.STRING,default="segmented_template.hoc",help="Specify the file you want the modified cell tempate written to")
 @click.option('--outappend',type=click.BOOL,default=False,is_flag=True,help="Append out instead of overwriting (default: False)")
 @click.option('--skipmod',type=click.BOOL,default=False,is_flag=True,help="Skip new mod file generation")
@@ -678,7 +678,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
 
     click.echo(colored.red("EXPERIMENTAL!"))
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget,PointMenuWidget, MultiSecMenuWidget
-    from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget
+    from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget, AutoVInitWidget
     hoc_folder = ctx.obj["hoc_folder"]
     mod_folder = ctx.obj["mod_folder"]
     hoc_template_file = ctx.obj["hoc_template_file"]
@@ -709,11 +709,12 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
         ctg = CellTunerGUI("./","./",tstop=tstop,print_debug=debug)
         ctg.load_template(template,hoc_template_file=hoc_template_file)
 
+    section_selected = "soma"
     #FIR Properties
     min_pa = 0
     max_pa = 1000
     increment = 100
-    tstart = 50
+    tstart = 150
     tdur = 1000
     inj_sec = ctg.root_sec.hname()
     rec_sec = ctg.root_sec.hname()
@@ -727,7 +728,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
         print("Exiting")
         return
     # Current Clamp properties
-    delay = 50
+    delay = 150
     dur = 1000
     amp = 0.2
 
@@ -758,7 +759,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     
     #import pdb;pdb.set_trace()
     other_cells = fir_widget.cells + [fir_widget.passive_cell]
-    widget = MultiSecMenuWidget(ctg.root_sec.cell(), other_cells,"soma",ctg.mechanism_dict)
+    widget = MultiSecMenuWidget(ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict)
 
     #for cell,amp in zip(fir_widget.cells, fir_widget.amps):
         #plot_widget.add_expr(eval("cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),str(round(float(amp),2)))
@@ -781,19 +782,22 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     text_widget.set_to_fir_passive(fir_widget,print_calc=False,print_fi=False)
     widget_index = ctg.add_widget(window_index, column_index,text_widget)
 
+    vinit_widget = AutoVInitWidget(fir_widget)
+    widget_index = ctg.add_widget(window_index, column_index,vinit_widget)
+
     #Column 4
     column_index = ctg.add_column(window_index)
     
-    widget = SegregationSelectorWidget()
+    widget = SegregationSelectorWidget(ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict)
     ctg.add_widget(window_index,column_index,widget)
 
-    widget = SegregationPassiveWidget()
+    widget = SegregationPassiveWidget(fir_widget)
     ctg.add_widget(window_index,column_index,widget)
 
     widget = SegregationFIRFitWidget()
     ctg.add_widget(window_index,column_index,widget)
 
-    ctg.show(auto_run=True,on_complete_fih=text_widget.update_fir_passive)
+    ctg.show(auto_run=True,on_complete_fih=text_widget.update_fir_passive,run_count=2)
 
     return
     
