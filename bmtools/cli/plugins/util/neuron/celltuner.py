@@ -164,6 +164,10 @@ class SegregationSelectorWidget(Widget):
 
 
     def execute(self):
+        def calculate():
+            h.stdinit()
+            h.run()
+
         def a(n):
             """function to be called when a radio button is toggled"""
             print(n)
@@ -177,7 +181,7 @@ class SegregationSelectorWidget(Widget):
             for var in self.mechanism_dict[mech]['state_activation_vars']:
                 if var['var'] in actvars:
                     #{'var': 'n', 'var_inf': 'inf', 'vh': 'nvhalf', 'k': 'nk', 'procedure_set': 'rate', 'line_set': 'inf = 1.0 / (1.0 + (exp((v + nvhalf) / (nk))))'}
-                    label = var['var'] + ' (' + mech + ') ' +  'Segregation Voltage'
+                    label = var['var'] + ' (' + mech + ') ' +  'Segregation (mV)'
                     #vp = ValuePanel(label=label)
                     ref = var['var']+'seg_'+mech
                     try:
@@ -185,17 +189,18 @@ class SegregationSelectorWidget(Widget):
                         self.vps.append(vp)
                     except AttributeError as e:
                         pass
+        h.xbutton('Segregation (Run)', calculate)
         
-        menu = h.xmenu('menu')
+        #menu = h.xmenu('menu')
         #import pdb;pdb.set_trace()
-        for i in range(1, 11):
-            h.xradiobutton('item %d' % i, (a, i))
+        #for i in range(1, 11):
+        #    h.xradiobutton('item %d' % i, (a, i))
 
-        h.xmenu()
+        #h.xmenu()
         h.xpanel()
         
 class SegregationPassiveWidget(Widget):
-    def __init__(self, fir_widget):
+    def __init__(self, fir_widget, cell, other_cells, section, mechanism_dict, gleak_var = None, eleak_var = None):
         super(SegregationPassiveWidget, self).__init__()
         self.label = "Segregation Passive Fitting"
         self.fir_widget = fir_widget
@@ -204,9 +209,72 @@ class SegregationPassiveWidget(Widget):
         self.r_in = None
         self.tau = None
 
+        self.cell = cell
+        self.other_cells = other_cells
+        self.section = section
+        self.mechanism_dict = mechanism_dict
+        self.mechs = [mech.name() for mech in getattr(cell,section)(0.5) if not mech.name().endswith("_ion")]
+
+        self.segment = getattr(cell,section)(0.5)
+        self.eleak_var = ""
+        self.gleak_var = ""
+        if not gleak_var:
+            if hasattr(self.segment,"gbar_leak"):
+                self.gleak_var = "gbar_leak"
+            elif hasattr(self.segment,"g_bar_leak"):
+                self.gleak_var = "g_bar_leak"
+            else:
+                raise AttributeError("Leak channel gbar not found, specify gleak_var in SegregationPassiveWidget")
+        else:
+            self.gleak_var = gleak_var
+        
+        if not gleak_var:
+            if hasattr(self.segment,"eleak"):
+                self.eleak_var = "eleak"
+            elif hasattr(self.segment,"e_leak"):
+                self.gleak_var = "e_leak"
+            else:
+                raise AttributeError("Leak channel reversal not found, specify eleak_var in SegregationPassiveWidget")
+        else:
+            self.gleak_var = gleak_var
+        
+        #import pdb;pdb.set_trace()
+
     def execute(self):
         def calculate():
             self.is_calculating = True
+                        
+            area = self.segment.area()
+            g_bar_leak = getattr(self.segment,self.gleak_var)
+
+            v_rest = self.v_rest.val
+            r_in = self.r_in.val
+            tau = self.tau.val*1000 # panel is in seconds, need ms
+
+            # Assuming Vrest is within the range for ELeak
+            # ELeak = Vrest
+
+            # Rin = 1/(Area*g_bar leak)
+            # g_bar leak = 1/(Rin*Area)
+
+            # tau = (R*C) = R*Area*cm
+            # cm = tau*g_bar leak*Area         
+
+            eleak = v_rest
+            setattr(self.segment,self.eleak_var,eleak)
+
+            g_bar_leak = 1/(r_in*area)
+            setattr(self.segment,self.gleak_var,g_bar_leak)
+
+            cm = tau*g_bar_leak*area
+            setattr(self.segment,"cm",cm)
+
+            for cell in self.other_cells:
+                segment = getattr(cell,self.section)(0.5)
+                setattr(segment,self.eleak_var,eleak)
+                setattr(segment,self.gleak_var,g_bar_leak)
+                setattr(segment,"cm",cm)
+
             h.stdinit()
             h.run()
             
@@ -231,9 +299,9 @@ class SegregationPassiveWidget(Widget):
 
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
-        self.v_rest=ValuePanel(label='V Rest',slider=False,lower_limit=-1000,upper_limit=1000)
-        self.r_in=ValuePanel(label='R in',slider=False,lower_limit=0,upper_limit=100000)
-        self.tau=ValuePanel(label='Tau',slider=False,lower_limit=-100,upper_limit=100)
+        self.v_rest=ValuePanel(label='V Rest (mV)',slider=False,lower_limit=-1000,upper_limit=1000)
+        self.r_in=ValuePanel(label='R in (MO)',slider=False,lower_limit=0,upper_limit=100000)
+        self.tau=ValuePanel(label='Tau (s)',slider=False,lower_limit=-100,upper_limit=100)
         h.xbutton('Fit Passive Properties (Run)', calculate)
         h.xpanel()
 
@@ -543,15 +611,74 @@ class PointMenuWidget(Widget):
 
 class VoltagePlotWidget(Widget):
     
-    def __init__(self):
+    def __init__(self,cell,section="soma",tstop=1150):
         super(VoltagePlotWidget, self).__init__()
+        self.cell = cell
+        self.section = section
+        self.tstop = tstop
         self.graph = None
+        self.color = 1
+        self.expressions = {}
+        self.segment = getattr(self.cell,section)
+
+        self.vectors = []
+        self.v_vector = None
         return
 
+    def advance_color(self):
+        #https://www.neuron.yale.edu/neuron/static/py_doc/visualization/graph.html#Graph.color
+        self.color = self.color + 1
+        if self.color == 10:
+            self.color = 1
+        
+
+    def reset_color(self):
+        self.color = 1
+
+    def add_var(self,variable,text):
+        self.expressions[text] = variable
+        return
+    
     def execute(self):
+        variable = getattr(self.segment(0.5),"_ref_v")
+        self.v_vector = h.Vector()
+        self.v_vector.record(variable)
+
+        #Recording
+        for text, var in self.expressions.items():
+            variable = getattr(self.segment(0.5),var)
+            spvec = h.Vector()
+            spvec.record(variable)
+            self.vectors.append((spvec,text))
+
+        cvode = h.CVode()
+            
         self.graph = h.Graph()
         
+        #self.graph.size(self.tstart,self.tstop,self.miny,self.maxy)
         h.graphList[0].append(self.graph)
+
+        def commands():
+            def start_event():
+                self.graph.erase_all()
+                return
+            cvode.event(0 , start_event)
+
+            def stop_event():
+                for v in self.vectors:
+                    vec = v[0]
+                    text = v[1]
+                    #self.graph.addvar(text,variable)
+                    self.graph.label(text)
+                    vec.plot(self.graph,self.v_vector, self.color,1)
+                    
+                    self.advance_color()
+                    #self.graph.color(self.color)
+                return
+                
+            cvode.event(self.tstop, stop_event)       
+
+        return commands
     
 
 class PlotWidget(Widget):
@@ -983,7 +1110,7 @@ class CellTunerGUI:
     def get_title(self,window_index):
         return self.display[window_index]['title']
 
-    def add_window(self,title=None,width=1000,height=600):
+    def add_window(self,title=None,width=1100,height=600):
         if title is None:
             title = self.template_name + " - BMTools Single Cell Tuner"
 

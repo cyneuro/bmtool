@@ -752,7 +752,9 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
 
     
 
-    plot_widget = VoltagePlotWidget()
+    plot_widget = VoltagePlotWidget(ctg.root_sec.cell(),section="soma")
+    plot_widget.add_var("_ref_inf_kdrseg","n inf kdr")
+    plot_widget.add_var("_ref_minf_naseg","m inf na")
     ctg.add_widget(window_index,column_index,plot_widget)
     
 
@@ -793,7 +795,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     widget = SegregationSelectorWidget(ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict)
     ctg.add_widget(window_index,column_index,widget)
 
-    widget = SegregationPassiveWidget(fir_widget)
+    widget = SegregationPassiveWidget(fir_widget,ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict)
     ctg.add_widget(window_index,column_index,widget)
 
     widget = SegregationFIRFitWidget(fir_widget)
