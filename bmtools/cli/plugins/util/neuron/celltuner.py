@@ -240,14 +240,45 @@ class SegregationPassiveWidget(Widget):
         return commands
 
 class SegregationFIRFitWidget(Widget):
-    def __init__(self):
+    def __init__(self, fir_widget):
         super(SegregationFIRFitWidget, self).__init__()
         self.label = "Segregation FIR Fitting"
+        self.fir_widget = fir_widget
+        self.vps = []
+        self.is_calculating = False
 
     def execute(self):
+        def calculate():
+            self.is_calculating = True
+            h.stdinit()
+            h.run()
+
+        spw = self
+        ctstop = self.fir_widget.tstop
+        cvode = h.CVode()
+
+        def commands():
+            def start_event():
+                return
+            cvode.event(0 , start_event)
+
+            def stop_event():
+                nonlocal spw
+                if not spw.is_calculating:
+                    pass 
+                else:
+                    spw.is_calculating = False           
+            cvode.event(ctstop, stop_event)           
+
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
+        for amp in self.fir_widget.amps:
+            vp = ValuePanel(label=str(round(amp,2)) + " (nA)",slider=False)
+            self.vps.append(vp)
+        h.xbutton('Fit FIR Curve (Run)', calculate)
         h.xpanel()
+
+        return commands
 
 class AutoVInitWidget(Widget):
     def __init__(self,fir_widget):

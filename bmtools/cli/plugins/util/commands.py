@@ -796,7 +796,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     widget = SegregationPassiveWidget(fir_widget)
     ctg.add_widget(window_index,column_index,widget)
 
-    widget = SegregationFIRFitWidget()
+    widget = SegregationFIRFitWidget(fir_widget)
     ctg.add_widget(window_index,column_index,widget)
 
     ctg.show(auto_run=True,on_complete_fih=text_widget.update_fir_passive,run_count=2)
