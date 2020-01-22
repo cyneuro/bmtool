@@ -705,9 +705,11 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
         # Carry out the segregation method
         mechs_processed = ctg.seg_mechs()
         template = ctg.seg_template(outhoc,mechs_processed)
-
+        click.echo(colored.green("COMPILING MOD FILES"))
+        os.system("nrnivmodl")
+        click.echo(colored.green("COMPILATION COMPLETE"))
         ctg = CellTunerGUI("./","./",tstop=tstop,print_debug=debug)
-        ctg.load_template(template,hoc_template_file=hoc_template_file)
+        ctg.load_template(template,hoc_template_file=outhoc)
 
     section_selected = "soma"
     #FIR Properties

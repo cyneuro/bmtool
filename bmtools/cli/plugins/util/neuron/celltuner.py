@@ -175,7 +175,6 @@ class SegregationSelectorWidget(Widget):
             actvars = [line['variable'] for line in self.mechanism_dict[mech]["DERIVATIVE"] if line['is_likely_activation']]
             
             for var in self.mechanism_dict[mech]['state_activation_vars']:
-                import pdb;pdb.set_trace()
                 if var['var'] in actvars:
                     #{'var': 'n', 'var_inf': 'inf', 'vh': 'nvhalf', 'k': 'nk', 'procedure_set': 'rate', 'line_set': 'inf = 1.0 / (1.0 + (exp((v + nvhalf) / (nk))))'}
                     label = var['var'] + ' (' + mech + ') ' +  'Segregation Voltage'
@@ -1202,6 +1201,8 @@ class CellTunerGUI:
         return
 
     def load_template(self,template_name,hoc_template_file=None):
+        for sec in h.allsec():
+            h("%s{delete_section()}"%sec.name())
         self.template_name = template_name
         templates = self.get_templates(hoc_template_file=hoc_template_file) #also serves to load templates
         if template_name not in templates:
@@ -1444,28 +1445,39 @@ class CellTunerGUI:
         for mech in valid_mechs:
             if self.print_debug:
                 click.echo("Processing \"" + mech + "\"")
+
+            parameters = [p[0] for p in self.mechanism_dict[mech]["PARAMETER"]]
+            ranges = []
+            if self.mechanism_dict[mech]["NEURON"].get("RANGE"):
+                ranges = self.mechanism_dict[mech]["NEURON"]["RANGE"]
+
             act_vars = []
             if self.mechanism_dict[mech].get("state_activation_vars"):
-                mechs_processed.append(mech)
                 avars = self.mechanism_dict[mech]["state_activation_vars"]
-                act_vars = [v for v in avars if float(v["k"]) < 0]
+                
+                # If the values are already variables we don't need to process the mech further
+                act_vars = [v for v in avars if v["vh"] not in parameters and v["k"] not in parameters and float(v["k"]) < 0]
                 act_vars_names = [v["var"] for v in act_vars]
-                inact_vars = [v for v in avars if float(v["k"]) > 0]
+                inact_vars = [v for v in avars if v["vh"] not in parameters and v["k"] not in parameters and float(v["k"]) > 0]
                 inact_vars_names = [v["var"] for v in inact_vars]
+
+                if act_vars:
+                    mechs_processed.append(mech)
 
                 if len(act_vars):
                     if self.print_debug:
-                        click.echo("Activation variables: " + colored.green(", ".join(act_vars_names)))
+                        click.echo("Activation variables to process: " + colored.green(", ".join(act_vars_names)))
                 if len(inact_vars):
                     if self.print_debug:
-                        click.echo("Inactivation variables: " + colored.red(", ".join(inact_vars_names)))
+                        click.echo("Inactivation variables to process: " + colored.red(", ".join(inact_vars_names)))
             else:
                 if self.print_debug:
                     print("No activation/inactivation variables")
                     print("")
                 continue
-            filename = mech + 'seg.mod'
-
+            
+            filename = mech + 'seg.mod' if not mech.endswith("seg") else mech + ".mod"
+                           
             with open(filename, 'w+') as f:
                 if self.print_debug:
                     click.echo("Writing " + colored.green(filename))
@@ -1478,14 +1490,16 @@ class CellTunerGUI:
                         for statement in block.statements:
                             st = statement.unparsed
                             if statement.__class__.__name__ == "Suffix":
-                                st = st + "seg"
+                                if not statement.suffix.endswith("seg"):
+                                    st = st + "seg"
                             f.write('\t' + st + '\n')
                         rngvars = []
                         for act_var in act_vars:
                             rngvars.append(act_var['var']+"vhalf")
                             rngvars.append(act_var['var']+"k")
                             rngvars.append(act_var['var']+"seg")
-                        f.write("\t" + "RANGE " + ", ".join(rngvars) + " : Segmentation variables\n")
+                        if rngvars:
+                            f.write("\t" + "RANGE " + ", ".join(rngvars) + "\n")
                         f.write("} \n")
                     elif block.__class__.__name__ == "Parameter":
                         f.write("PARAMETER {\n")
@@ -1495,7 +1509,7 @@ class CellTunerGUI:
                             act = [v for v in self.mechanism_dict[mech]["state_activation_vars"] if v['var'] == act_var['var']][0]
                             f.write('\t' + act_var['var']+"vhalf = " + act["vh"] + "\n")
                             f.write('\t' + act_var['var']+"k = " + act["k"] + "\n")
-                            f.write('\t' + act_var['var']+"seg = " + "-50" + "\n") #TODO CHANGE THIS TO USER DEFINED VARIABLE
+                            f.write('\t' + act_var['var']+"seg = " + "-999" + "\n") #TODO CHANGE THIS TO USER DEFINED VARIABLE
                         f.write("}\n")
 
                     elif block.__class__.__name__ == "Derivative":
@@ -1534,7 +1548,8 @@ class CellTunerGUI:
                         f.write(block.unparsed)
                     f.write('\n')
 
-                f.write(": Segmentation functions\n\n")
+                if act_vars:
+                    f.write(": Segmentation functions\n\n")
 
                 for act_var in act_vars:
                     #Create a xsegment(v) function for each variable
@@ -1542,7 +1557,7 @@ class CellTunerGUI:
                     f.write("\tif (v < " + act_var["var"] + "seg){\n")
                     f.write("\t\t" + act_var['var_inf'] + " = 0\n")
                     f.write("\t}\n")
-                    f.write("}\n\n")
+                    f.write("}\n")
             if self.print_debug:
                 print("")
             
@@ -1555,7 +1570,10 @@ class CellTunerGUI:
         # go through all copied lines, replace "insert x" with "insert xseg" && "_x" with "_xseg"
         # write to outhoc and append if outappend set
         
-        new_template_name = self.template_name+"Seg"
+        if mechs_processed:
+            new_template_name = self.template_name+"Seg"
+        else:
+            new_template_name = self.template_name
 
         hoc_files = []
         if hoc_template_file:
@@ -1584,7 +1602,7 @@ class CellTunerGUI:
             #ins_mechs = ["insert " + mech for mech in mechs_processed]
             #ref_mechs = ["_ " + mech for mech in mechs_processed]
             with open(outhoc,mode) as f:
-                click.echo("Writing new template to " + colored.green(outhoc) + " in " + mode + " mode.")
+                click.echo("Writing segregated template to " + colored.green(outhoc) + " in " + mode + " mode.")
                 for line in template_text:
                     line = line.replace (self.template_name, new_template_name)
                     for mech in mechs_processed:
