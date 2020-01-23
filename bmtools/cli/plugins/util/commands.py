@@ -17,7 +17,8 @@ def cli(ctx, config):
     ctx.obj["config"] = config_path
 
     if not os.path.exists(config_path):
-        click.echo(colored.red("Config file not found: " + config))
+        #click.echo(colored.red("Config file not found: " + config))
+        pass
 
 def check_neuron_installed(confirm=True):
     try:
@@ -671,12 +672,18 @@ def cell_fir(ctx,title,min_pa,max_pa,increment,tstart,tdur,advanced):#, title, p
 @click.option('--tstop',type=click.INT,default=1150)
 @click.option('--outhoc',type=click.STRING,default="segmented_template.hoc",help="Specify the file you want the modified cell tempate written to")
 @click.option('--outappend',type=click.BOOL,default=False,is_flag=True,help="Append out instead of overwriting (default: False)")
-@click.option('--skipmod',type=click.BOOL,default=False,is_flag=True,help="Skip new mod file generation")
+#@click.option('--skipmod',type=click.BOOL,default=False,is_flag=True,help="Skip new mod file generation")
 @click.option('--debug',type=click.BOOL,default=False,is_flag=True,help="Print all debug statements")
-@click.pass_context
-def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
+@click.option('--build',type=click.BOOL,default=False,is_flag=True,help="Build must be run before viewing GUI")
+@click.option('--fminpa',type=click.INT,default=0,help="Starting FIR Curve amps (default: 0)")
+@click.option('--fmaxpa',type=click.INT,default=1000,help="Ending FIR Curve amps (default: 1000)")
+@click.option('--fincrement',type=click.INT,default=100,help="Increment the FIR Curve amps by supplied pA (default: 100)")
 
-    click.echo(colored.red("EXPERIMENTAL!"))
+@click.pass_context
+def cell_vhseg(ctx,title,tstop,outhoc,outappend,debug,build,fminpa,fmaxpa,fincrement):
+    
+    if not build:
+        click.echo(colored.red("BE SURE TO RUN `vhseg --build` FOR YOUR CELL FIRST!"))
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget,PointMenuWidget, MultiSecMenuWidget
     from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget, AutoVInitWidget
     hoc_folder = ctx.obj["hoc_folder"]
@@ -701,21 +708,42 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     sec_split = sec.split('.')[-1]
     click.echo("Using section " + colored.green(sec_split))
     
-    if not skipmod:
+    if build:
         # Carry out the segregation method
         mechs_processed = ctg.seg_mechs()
         template = ctg.seg_template(outhoc,mechs_processed)
         click.echo(colored.green("COMPILING MOD FILES"))
-        os.system("nrnivmodl")
-        click.echo(colored.green("COMPILATION COMPLETE"))
+        ret = os.system("nrnivmodl")
+        if not ret:
+            click.echo(colored.green("COMPILATION COMPLETE"))
+        else:
+            click.echo(colored.red("nrnivmodl may not have been run, execute nrnivmodl or mknrndll manually then press enter..."))
+            input()
+            click.echo(colored.green("Done... remove the `--build` flag and re-run."))
+            return
+    else:
+        template = template + "Seg" #Likely not the best way to do it
         ctg = CellTunerGUI("./","./",tstop=tstop,print_debug=debug)
+        
         ctg.load_template(template,hoc_template_file=outhoc)
+
+    do_others = False
+    if ctg.other_sec:
+        do_others = questionary.confirm("Show other sections? (default: No)",default=False).ask()
+    selected_segments = []
+    if do_others:
+        choices = [s.name().split('.')[-1] for s in ctg.other_sec]
+        selected_segments = questionary.checkbox(
+            'Select other sections (space bar to select):',
+            choices=choices).ask()
+        
+    
 
     section_selected = "soma"
     #FIR Properties
-    min_pa = 0
-    max_pa = 1000
-    increment = 100
+    min_pa = fminpa
+    max_pa = fmaxpa
+    increment = fincrement
     tstart = 150
     tdur = 1000
     inj_sec = ctg.root_sec.hname()
@@ -734,16 +762,38 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     dur = 1000
     amp = 0.2
 
+    fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa,tstart=tstart,tdur=tdur,
+        record_sec=rec_sec_split, record_loc=rec_loc, inj_sec=inj_sec_split, inj_loc=inj_loc)
+    other_cells = fir_widget.cells + [fir_widget.passive_cell]
+
+    for segment in selected_segments:
+        window_index = ctg.add_window(title="(" + segment + ")" + title, width=650)
+        # Column 1
+        column_index = ctg.add_column(window_index)
+        plot_widget = PlotWidget(tstop=tstop)
+        sec_text = segment+"(.5)"
+        plot_widget.add_expr(getattr(ctg.template,segment)(0.5)._ref_v,sec_text)
+
+        ctg.add_widget(window_index,column_index,plot_widget)
+
+        widget = ControlMenuWidget()
+        ctg.add_widget(window_index,column_index,widget)
+
+        # Column 2
+        column_index = ctg.add_column(window_index)
+        widget = MultiSecMenuWidget(ctg.root_sec.cell(), other_cells,segment,ctg.mechanism_dict)
+        ctg.add_widget(window_index,column_index,widget)
+    
+
     #Window 1
     window_index = ctg.add_window(title=title)
+
     #Column 1
     column_index = ctg.add_column(window_index)
 
     plot_widget = PlotWidget(tstop=tstop)
     sec_text = ctg.root_sec.hname().split('.')[-1]+"(.5)"
 
-    fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa,tstart=tstart,tdur=tdur,
-        record_sec=rec_sec_split, record_loc=rec_loc, inj_sec=inj_sec_split, inj_loc=inj_loc)
     plot_widget.add_expr(ctg.root_sec(0.5)._ref_v,sec_text)
     plot_widget.add_expr(eval("fir_widget.passive_cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),"Passive @"+str(round(float(fir_widget.passive_amp),2))+"nA")
     ctg.add_widget(window_index,column_index,plot_widget)
@@ -753,8 +803,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     
 
     plot_widget = VoltagePlotWidget(ctg.root_sec.cell(),section="soma")
-    plot_widget.add_var("_ref_inf_kdrseg","n inf kdr")
-    plot_widget.add_var("_ref_minf_naseg","m inf na")
+    plot_widget.add_act_inf(ctg.mechanism_dict)
     ctg.add_widget(window_index,column_index,plot_widget)
     
 
@@ -762,7 +811,6 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     column_index = ctg.add_column(window_index)
     
     #import pdb;pdb.set_trace()
-    other_cells = fir_widget.cells + [fir_widget.passive_cell]
     widget = MultiSecMenuWidget(ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict)
 
     #for cell,amp in zip(fir_widget.cells, fir_widget.amps):
@@ -792,7 +840,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,skipmod,debug):
     #Column 4
     column_index = ctg.add_column(window_index)
     
-    widget = SegregationSelectorWidget(ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict)
+    widget = SegregationSelectorWidget(ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict,all_sec=True)
     ctg.add_widget(window_index,column_index,widget)
 
     widget = SegregationPassiveWidget(fir_widget,ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict)

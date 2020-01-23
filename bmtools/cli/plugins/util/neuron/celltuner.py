@@ -46,19 +46,37 @@ class ValuePanel:
 
 class SameCellValuePanel:
 
-    def __init__(self, original_cell, other_cells, section, prop, init_val=0, label='',lower_limit=-100,upper_limit=100):
+    def __init__(self, original_cell, other_cells, section, prop, init_val=0, label='',lower_limit=-1000,upper_limit=1000,all_sec=False):
         self.original_cell = original_cell
         self.other_cells = other_cells
         self.prop = prop
         #import pdb;pdb.set_trace()
         #self._val = h.ref(init_val)
-        self._val_obj = getattr(getattr(original_cell,section)(0.5),"_ref_"+prop)
+        
+        try:
+            self._val_obj = getattr(getattr(original_cell,section)(0.5),"_ref_"+prop)
+        except AttributeError as e:
+            #print(e)
+            return
         self._val =  h.Pointer(self._val_obj)
         self._vals = []
-        #import pdb;pdb.set_trace()
-        for cell in other_cells:
-            self._vals.append(h.Pointer(getattr(getattr(cell,section)(0.5),"_ref_"+prop)))
-            #print(self._vals[-1].val)
+
+        all_sections = [sec for sec in h.allsec()]
+        primary_section = getattr(original_cell,section)
+
+        if all_sec:
+            for osection in all_sections:
+                if not osection == primary_section:
+                    try:
+                        attrptr = getattr(osection(0.5),"_ref_"+prop)
+                        self._vals.append(h.Pointer(attrptr))
+                    except AttributeError as e:
+                        print(e)
+
+        else:
+            for cell in other_cells:
+                self._vals.append(h.Pointer(getattr(getattr(cell,section)(0.5),"_ref_"+prop)))
+                #print(self._vals[-1].val)
         #import pdb;pdb.set_trace()
         h.xvalue(label, self._val_obj, True, self._bounds_check)
         self.__lower_limit = lower_limit
@@ -102,6 +120,7 @@ class MultiSecMenuWidget(Widget):
         self.md = md
         self.label = label
         self.panels = []
+        self.defined_vars = []
 
         if self.label == "":
             self.label = self.cell.hname() + "." + section + "(0.5)" + " (Parameters)"
@@ -142,8 +161,10 @@ class MultiSecMenuWidget(Widget):
         h.xlabel(self.label)
         cellsec = getattr(self.cell,"soma")
         for var in self.variables:
-            panel=SameCellValuePanel(self.cell, self.other_cells, self.section, var[0], label=var[1])
-            self.panels.append(panel)
+            if var[1] not in self.defined_vars:
+                panel=SameCellValuePanel(self.cell, self.other_cells, self.section, var[0], label=var[1])
+                self.panels.append(panel)
+                self.defined_vars.append(var[1])
         h.xpanel()
         return
 
@@ -151,14 +172,18 @@ class MultiSecMenuWidget(Widget):
         pass
 
 class SegregationSelectorWidget(Widget):
-    def __init__(self,cell, other_cells, section, mechanism_dict):
+    def __init__(self,cell, other_cells, section, mechanism_dict, all_sec=False):
         super(SegregationSelectorWidget, self).__init__()
-        self.label = "Segregation Selection"
+        if all_sec:
+            self.label = "Segregation Selection (All Segments)"
+        else:
+            self.label = "Segregation Selection"
         self.cell = cell
         self.other_cells = other_cells
         self.section = section
         self.mechanism_dict = mechanism_dict
         self.mechs = [mech.name() for mech in getattr(cell,section)(0.5) if not mech.name().endswith("_ion")]
+        self.all_sec = all_sec
 
         self.vps=[]#ValuePanels
 
@@ -185,7 +210,7 @@ class SegregationSelectorWidget(Widget):
                     #vp = ValuePanel(label=label)
                     ref = var['var']+'seg_'+mech
                     try:
-                        vp = SameCellValuePanel(self.cell, self.other_cells, self.section, ref, label=label)
+                        vp = SameCellValuePanel(self.cell, self.other_cells, self.section, ref, label=label,all_sec=self.all_sec)
                         self.vps.append(vp)
                     except AttributeError as e:
                         pass
@@ -341,7 +366,7 @@ class SegregationFIRFitWidget(Widget):
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
         for amp in self.fir_widget.amps:
-            vp = ValuePanel(label=str(round(amp,2)) + " (nA)",slider=False)
+            vp = ValuePanel(label=str(round(amp,2)) + " (nA)",slider=False,lower_limit=0,upper_limit=1000)
             self.vps.append(vp)
         h.xbutton('Fit FIR Curve (Run)', calculate)
         h.xpanel()
@@ -611,7 +636,7 @@ class PointMenuWidget(Widget):
 
 class VoltagePlotWidget(Widget):
     
-    def __init__(self,cell,section="soma",tstop=1150):
+    def __init__(self,cell,section="soma",tstop=1150,minx=-80,maxx=50,miny=0,maxy=1):
         super(VoltagePlotWidget, self).__init__()
         self.cell = cell
         self.section = section
@@ -620,6 +645,10 @@ class VoltagePlotWidget(Widget):
         self.color = 1
         self.expressions = {}
         self.segment = getattr(self.cell,section)
+        self.minx = minx
+        self.maxx = maxx
+        self.miny = miny
+        self.maxy = maxy
 
         self.vectors = []
         self.v_vector = None
@@ -637,6 +666,31 @@ class VoltagePlotWidget(Widget):
 
     def add_var(self,variable,text):
         self.expressions[text] = variable
+        return
+
+    def add_act_inf(self, mech_dict):
+        
+        mechs = [mech.name() for mech in self.segment(0.5) if not mech.name().endswith("_ion")]
+        for mech in mechs:
+            if not mech_dict[mech].get("DERIVATIVE"):
+                continue
+            actvars = [line['variable'] for line in mech_dict[mech]["DERIVATIVE"] if line['is_likely_activation']]
+            
+            for var in mech_dict[mech]['state_activation_vars']:
+                if var['var'] in actvars:
+                    #{'var': 'n', 'var_inf': 'inf', 'vh': 'nvhalf', 'k': 'nk', 'procedure_set': 'rate', 'line_set': 'inf = 1.0 / (1.0 + (exp((v + nvhalf) / (nk))))'}
+                    #label = var['var'] + ' (' + mech + ') ' +  'Segregation (mV)'
+                    #vp = ValuePanel(label=label)
+                    #ref = var['var']+'seg_'+mech
+
+                    variable = "_ref_" + var['var_inf'] + "_" + mech
+                    text = '('+var['var']+') '+var['var_inf'] + "_" + mech
+                    
+                    if var['k'] in [m[0] for m in mech_dict[mech]["PARAMETER"] if m[2] and float(m[2]) < 0]:            
+                        self.add_var(variable,text)
+
+        #self.add_var("_ref_inf_kdrseg","n inf kdr")
+        #self.add_var("_ref_minf_naseg","m inf na")
         return
     
     def execute(self):
@@ -665,19 +719,20 @@ class VoltagePlotWidget(Widget):
             cvode.event(0 , start_event)
 
             def stop_event():
-                for v in self.vectors:
+                for color, v in enumerate(self.vectors):
                     vec = v[0]
                     text = v[1]
                     #self.graph.addvar(text,variable)
+                    self.graph.color(color+1)
                     self.graph.label(text)
-                    vec.plot(self.graph,self.v_vector, self.color,1)
+                    vec.plot(self.graph,self.v_vector, color+1,1)
                     
-                    self.advance_color()
-                    #self.graph.color(self.color)
+                    #self.advance_color()
+                    
                 return
                 
             cvode.event(self.tstop, stop_event)       
-
+        self.graph.size(self.minx,self.maxx,self.miny,self.maxy)
         return commands
     
 
@@ -1371,6 +1426,7 @@ class CellTunerGUI:
         root_sec = [sec for sec in h.allsec() if sec.parentseg() is None]
         assert len(root_sec) is 1
         self.root_sec = root_sec[0]
+        self.other_sec = [sec for sec in h.allsec() if sec.parentseg() is not None]
         return
 
     def all_sections(self):
@@ -1438,7 +1494,7 @@ class CellTunerGUI:
                     if hasattr(parse,'state'):
                         self.mechanism_dict[suffix]["STATE"]["variables"] = [var.name for var in parse.state.state_vars]
                     
-                    self.mechanism_dict[suffix]["PARAMETER"] = [(p.name,p.unit) for p in parse.parameter.parameters]
+                    self.mechanism_dict[suffix]["PARAMETER"] = [(p.name,p.unit,p.value) for p in parse.parameter.parameters]
                 
                     self.mechanism_dict[suffix]["DERIVATIVE"] = []
 
@@ -1477,7 +1533,7 @@ class CellTunerGUI:
                                     except AttributeError:
                                         # procedure not found in the string
                                         pass
-                                else:
+                                else:    
                                     line["variable_assignment"] = True
                                     line["variable"] = statement.variable
                                     
@@ -1487,7 +1543,7 @@ class CellTunerGUI:
                                     line["variable"] = var
                                     inf_reg = var + r"'\s*=\s*\(([A-Za-z0-9\*\/+\.\-\(\)]*)\s*-\s*"+var+"\)\s*\/\s[A-Za-z]*"
                                     line["primed"] = True
-                                    try:
+                                    try: 
                                         line["inf"] = re.search(inf_reg, statement.unparsed).group(1)
                                         line["is_likely_activation"] = True
                                     except AttributeError:
@@ -1721,7 +1777,7 @@ class CellTunerGUI:
             
         return mechs_processed
 
-    def seg_template(self,outhoc, mechs_processed, hoc_template_file=None, outappend=False):
+    def seg_template(self,outhoc, mechs_processed, hoc_template_file=None, outappend=False, returnnameonly=False):
         # open hoc template file 
         # scan through each line for template selected begintemplate
         # copy all lines until ^endtemplate TEMPL\s*$
@@ -1732,6 +1788,9 @@ class CellTunerGUI:
             new_template_name = self.template_name+"Seg"
         else:
             new_template_name = self.template_name
+
+        if returnnameonly:
+            return new_template_name
 
         hoc_files = []
         if hoc_template_file:
