@@ -1535,9 +1535,10 @@ class CellTunerGUI:
                             line["variable"] = ""
                             line["expression"] = ""
                             line["procedure"] = ""
-
-                            line["expression"] = statement.expression.unparsed
-
+                            try:
+                                line["expression"] = statement.expression.unparsed
+                            except:
+                                pass
                             if statement.__class__.__name__ == "Assignment": # ex: method(v)
                                 if not statement.variable:
                                     line["procedure_call"] = True
@@ -1636,17 +1637,17 @@ class CellTunerGUI:
                     if self.print_debug or True:
                         print("ValidationException: Unable to parse " + mech)
                         print(e)
-                        import pdb;pdb.set_trace()
+                        #import pdb;pdb.set_trace()
                 except TextXSyntaxError as e:
                     if self.print_debug or True:
                         print("TextXSyntaxError: Unable to parse " + mech)
                         print(e)
-                        import pdb;pdb.set_trace()
+                        #import pdb;pdb.set_trace()
                 except TextXSemanticError as e:
                     if self.print_debug or True:
                         print("TextXSemanticError: Unable to parse " + mech)
                         print(e)
-                        import pdb;pdb.set_trace()
+                        #import pdb;pdb.set_trace()
                 #except AttributeError as e:
                 #    if self.print_debug or True:
                 #        print("AttributeError: Unable to parse " + mech)
