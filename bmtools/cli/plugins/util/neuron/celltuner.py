@@ -46,7 +46,7 @@ class ValuePanel:
 
 class SameCellValuePanel:
 
-    def __init__(self, original_cell, other_cells, section, prop, init_val=0, label='',lower_limit=-1000,upper_limit=1000,all_sec=False):
+    def __init__(self, original_cell, other_cells, section, prop, init_val=0, label='',lower_limit=-1e15,upper_limit=1e15,all_sec=False):
         self.original_cell = original_cell
         self.other_cells = other_cells
         self.prop = prop
@@ -267,41 +267,43 @@ class SegregationPassiveWidget(Widget):
 
     def execute(self):
         def calculate():
-            self.is_calculating = True
-                        
-            area = self.segment.area()
-            g_bar_leak = getattr(self.segment,self.gleak_var)
+            if not self.is_calculating:
+                self.is_calculating = True
+                            
+                area = self.segment.area()
+                g_bar_leak = getattr(self.segment,self.gleak_var)
 
-            v_rest = self.v_rest.val
-            r_in = self.r_in.val
-            tau = self.tau.val*1000 # panel is in seconds, need ms
+                v_rest = self.v_rest.val # mV
+                r_in = self.r_in.val # Ohms
+                tau = self.tau.val # ms
 
-            # Assuming Vrest is within the range for ELeak
-            # ELeak = Vrest
+                # Assuming Vrest is within the range for ELeak
+                # ELeak = Vrest
 
-            # Rin = 1/(Area*g_bar leak)
-            # g_bar leak = 1/(Rin*Area)
+                # Rin = 1/(Area*g_bar_leak)
+                # g_bar leak = 1/(Rin*Area)
 
-            # tau = (R*C) = R*Area*cm
-            # cm = tau*g_bar leak*Area         
+                # tau = (R*C) = R*Area*cm
+                # cm = tau*g_bar_leak*Area
+                # cm/cm2 = (tau*g_bar_leak*Area)/Area = tau*g_bar_leak
 
-            eleak = v_rest
-            setattr(self.segment,self.eleak_var,eleak)
+                eleak = v_rest
+                setattr(self.segment,self.eleak_var,eleak)
 
-            g_bar_leak = 1/(r_in*area)
-            setattr(self.segment,self.gleak_var,g_bar_leak)
+                g_bar_leak = 1/(r_in*area)*1e2 #area m to cm?
+                setattr(self.segment,self.gleak_var,g_bar_leak)
 
-            cm = tau*g_bar_leak*area
-            setattr(self.segment,"cm",cm)
+                cm = tau*g_bar_leak*1e3 #tau ms->s
+                setattr(self.segment,"cm",cm)
 
-            for cell in self.other_cells:
-                segment = getattr(cell,self.section)(0.5)
-                setattr(segment,self.eleak_var,eleak)
-                setattr(segment,self.gleak_var,g_bar_leak)
-                setattr(segment,"cm",cm)
+                for cell in self.other_cells:
+                    segment = getattr(cell,self.section)(0.5)
+                    setattr(segment,self.eleak_var,eleak)
+                    setattr(segment,self.gleak_var,g_bar_leak)
+                    setattr(segment,"cm",cm)
 
-            h.stdinit()
-            h.run()
+                h.stdinit()
+                h.run()
             
         spw = self
         ctstop = self.fir_widget.tstop
@@ -315,8 +317,8 @@ class SegregationPassiveWidget(Widget):
             def stop_event():
                 nonlocal spw
                 if not spw.is_calculating:
-                    spw.v_rest.val = round(self.fir_widget.v_rest,2)
-                    spw.r_in.val = round(float(self.fir_widget.r_in),2)
+                    spw.v_rest.val = round(self.fir_widget.v_rest,4)
+                    spw.r_in.val = round(float(self.fir_widget.r_in/1e6),4)
                     spw.tau.val = round(self.fir_widget.tau,4)  
                 else:
                     spw.is_calculating = False           
@@ -325,8 +327,8 @@ class SegregationPassiveWidget(Widget):
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
         self.v_rest=ValuePanel(label='V Rest (mV)',slider=False,lower_limit=-1000,upper_limit=1000)
-        self.r_in=ValuePanel(label='R in (MO)',slider=False,lower_limit=0,upper_limit=100000)
-        self.tau=ValuePanel(label='Tau (s)',slider=False,lower_limit=-100,upper_limit=100)
+        self.r_in=ValuePanel(label='R in (MOhm)',slider=False,lower_limit=0,upper_limit=100000)
+        self.tau=ValuePanel(label='Tau (ms)',slider=False,lower_limit=-100,upper_limit=100)
         h.xbutton('Fit Passive Properties (Run)', calculate)
         h.xpanel()
 
@@ -339,6 +341,8 @@ class SegregationFIRFitWidget(Widget):
         self.fir_widget = fir_widget
         self.vps = []
         self.is_calculating = False
+        self.valvec = None
+        self.plot = None
 
     def execute(self):
         def calculate():
@@ -352,8 +356,15 @@ class SegregationFIRFitWidget(Widget):
 
         def commands():
             def start_event():
+                vals = [v.val for v in self.vps]
+                any_nonzero = next((value for index,value in enumerate(vals) if value != 0), None)
+                if any_nonzero:
+                    self.valvec = h.Vector(vals)
+                    self.fir_widget.graph.color(3)
+                    self.fir_widget.graph.label("User FI Curve")
+                    self.plot = self.valvec.plot(self.fir_widget.graph,self.fir_widget.ampvec,3,1)
                 return
-            cvode.event(0 , start_event)
+            cvode.event(1 , start_event)
 
             def stop_event():
                 nonlocal spw
@@ -368,7 +379,7 @@ class SegregationFIRFitWidget(Widget):
         for amp in self.fir_widget.amps:
             vp = ValuePanel(label=str(round(amp,2)) + " (nA)",slider=False,lower_limit=0,upper_limit=1000)
             self.vps.append(vp)
-        h.xbutton('Fit FIR Curve (Run)', calculate)
+        h.xbutton('Fit FIR Curve (Run) [Plots User FIR]', calculate)
         h.xpanel()
 
         return commands
@@ -458,8 +469,8 @@ class TextWidget(Widget):
         
         if self.fir_widget:
             self.set_text(0,"V_rest: " + str(round(self.fir_widget.v_rest,2)) + " (mV) ")
-            self.set_text(1,"R_in: " + str(round(self.fir_widget.r_in,2)) + " (MOhms) ")
-            self.set_text(2,"Tau: " + str(round(self.fir_widget.tau,4)) + " (s) ")
+            self.set_text(1,"R_in: " + str(round(self.fir_widget.r_in/1e6,2)) + " (MOhms) ")
+            self.set_text(2,"Tau: " + str(round(self.fir_widget.tau,4)) + " (ms) ")
 
             if self.fir_print_calc:
                 v_rest_calc = "V_rest Calculation: Taken at time " + str(self.fir_widget.v_rest_time) + "(ms) on negative injection cell"
@@ -470,7 +481,7 @@ class TextWidget(Widget):
                 tau_calc = "Tau Calculation: [(s) until 63.2% change in mV] = " + \
                         "(mV at inj_start_time (" + str(self.fir_widget.tstart) + ")) - ((mV at inj_time  - mV at inj_final (" + str(self.fir_widget.tstart+self.fir_widget.passive_delay) + ")) * 0.632) = " + \
                         "(" + str(round(self.fir_widget.v_rest,2)) + ") - (" + str(round(self.fir_widget.v_rest,2)) +"-" +str(round(self.fir_widget.passive_v_final,2))+")*0.632 = " + str(round(self.fir_widget.v_rest - ((self.fir_widget.v_rest - self.fir_widget.passive_v_final)*0.632),2))
-                tau_calc2 = "Time where mV == " + str(round(self.fir_widget.v_t_const,2)) + " = " + str(self.fir_widget.tstart+self.fir_widget.tau*1000) + "(ms) | (" + str(self.fir_widget.tstart+self.fir_widget.tau*1000) + " - v_start_time (" + str(self.fir_widget.tstart) +"))/1000 = " + str(round(self.fir_widget.tau,4))
+                tau_calc2 = "Time where mV == " + str(round(self.fir_widget.v_t_const,2)) + " = " + str(self.fir_widget.tstart+self.fir_widget.tau) + "(ms) | (" + str(self.fir_widget.tstart+self.fir_widget.tau*1000) + " - v_start_time (" + str(self.fir_widget.tstart) +"))/1000 = " + str(round(self.fir_widget.tau,4))
                 
                 self.set_text(4,v_rest_calc)
                 self.set_text(5,rin_calc)
@@ -802,14 +813,16 @@ class PlotWidget(Widget):
         return ret
 
 class FICurveWidget(Widget):
-    def __init__(self,template_name,i_increment=0.1,i_start=0,i_stop=1,tstart=50,
-            tdur=1000,passive_amp=-0.1,passive_delay=200, record_sec="soma[0]", record_loc="0.5",
-            inj_sec="soma[0]", inj_loc="0.5"):
+    def __init__(self,template_name,i_increment=100,i_start=0,i_stop=1000,tstart=50,
+            tdur=1000,passive_amp=-100,passive_delay=200, record_sec="soma", record_loc="0.5",
+            inj_sec="soma", inj_loc="0.5"):
+        """ Takes in values of pA
+        """
         super(FICurveWidget, self).__init__()
         self.template_name = template_name
-        self.i_increment = float(i_increment)/1000
-        self.i_start = float(i_start)/1000
-        self.i_stop = float(i_stop)/1000
+        self.i_increment = float(i_increment)/1e3
+        self.i_start = float(i_start)/1e3
+        self.i_stop = float(i_stop)/1e3
         self.tstart = tstart
         self.tdur = tdur
 
@@ -836,7 +849,7 @@ class FICurveWidget(Widget):
         self.lenvec = None
         self.ampvec = h.Vector(self.amps)
 
-        self.passive_amp = passive_amp
+        self.passive_amp = passive_amp/1e3
         self.passive_cell = eval('h.'+self.template_name+'()')
         self.passive_src = None
         self.passive_vec = None
@@ -917,9 +930,10 @@ class FICurveWidget(Widget):
                     plenvec.append(vec)
                 lenvec = h.Vector(plenvec)
                 #print(lenvec.as_numpy())
-                cvgraph.erase_all()
+                #cvgraph.erase_all()
+                cvgraph.color(1)
                 cvgraph.label(ctemplate_name + " FI Curve")
-                plot = lenvec.plot(cvgraph,ampvec)
+                plot = lenvec.plot(cvgraph,ampvec,1,1)
                 cvgraph.size(0,max(camps),0,max(lenvec)+1)
                 
                 #cfir_widget.passive_vec[int(cfir_widget.tstop)-20]
@@ -939,8 +953,8 @@ class FICurveWidget(Widget):
                 #index_v_tau = list(filter(lambda i: i < v_t_const, cfir_widget.passive_vec))[0]
                 index_v_tau = next(x for x, val in enumerate(list(cfir_widget.passive_vec)) if val < cfir_widget.v_t_const) 
                 time_tau = (index_v_tau / ((1000/h.dt)/1000)) - cfir_widget.tstart
-                cfir_widget.tau = time_tau / 1000
-                cfir_widget.r_in = (v_diff)/(0-cfir_widget.passive_amp) #MegaOhms
+                cfir_widget.tau = time_tau #/ 1000 (in ms)
+                cfir_widget.r_in = (v_diff)/(0-cfir_widget.passive_amp) * 1e6 #MegaOhms -> Ohms
                                 
             cvode.event(ctstop, stop_event)
         

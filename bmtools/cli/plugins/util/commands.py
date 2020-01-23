@@ -720,7 +720,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outappend,debug,build,fminpa,fmaxpa,fincre
             click.echo(colored.red("nrnivmodl may not have been run, execute nrnivmodl or mknrndll manually then press enter..."))
             input()
             click.echo(colored.green("Done... remove the `--build` flag and re-run."))
-            return
+        return
     else:
         template = template + "Seg" #Likely not the best way to do it
         ctg = CellTunerGUI("./","./",tstop=tstop,print_debug=debug)
