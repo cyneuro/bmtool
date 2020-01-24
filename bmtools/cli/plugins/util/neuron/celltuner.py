@@ -56,8 +56,12 @@ class SameCellValuePanel:
         try:
             self._val_obj = getattr(getattr(original_cell,section)(0.5),"_ref_"+prop)
         except AttributeError as e:
-            #print(e)
-            return
+            try:
+                self._val_obj = getattr(getattr(original_cell,section),"_ref_"+prop)
+            except AttributeError as e:
+                pass
+
+
         self._val =  h.Pointer(self._val_obj)
         self._vals = []
 
@@ -172,7 +176,7 @@ class MultiSecMenuWidget(Widget):
         pass
 
 class SegregationSelectorWidget(Widget):
-    def __init__(self,cell, other_cells, section, mechanism_dict, all_sec=False):
+    def __init__(self,cell, other_cells, section, mechanism_dict, all_sec=False, variables=None):
         super(SegregationSelectorWidget, self).__init__()
         if all_sec:
             self.label = "Segregation Selection (All Segments)"
@@ -182,12 +186,14 @@ class SegregationSelectorWidget(Widget):
         self.other_cells = other_cells
         self.section = section
         self.mechanism_dict = mechanism_dict
-        self.mechs = [mech.name() for mech in getattr(cell,section)(0.5) if not mech.name().endswith("_ion")]
         self.all_sec = all_sec
 
         self.vps=[]#ValuePanels
         self.labels=[]
+        self.mechs = [mech.name() for mech in getattr(cell,section)(0.5) if not mech.name().endswith("_ion")]
+        
 
+        self.variables = variables
 
     def execute(self):
         def calculate():
@@ -199,24 +205,36 @@ class SegregationSelectorWidget(Widget):
             print(n)
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
-        for mech in self.mechs:
-            if not self.mechanism_dict[mech].get("DERIVATIVE"):
-                continue
-            actvars = [line['variable'] for line in self.mechanism_dict[mech]["DERIVATIVE"] if line['is_likely_activation']]
-            
-            for var in self.mechanism_dict[mech]['state_activation_vars']:
-                if var['var'] in actvars:
-                    #{'var': 'n', 'var_inf': 'inf', 'vh': 'nvhalf', 'k': 'nk', 'procedure_set': 'rate', 'line_set': 'inf = 1.0 / (1.0 + (exp((v + nvhalf) / (nk))))'}
-                    label = var['var'] + ' (' + mech + ') ' +  'Segregation (mV)'
-                    #vp = ValuePanel(label=label)
-                    ref = var['var']+'seg_'+mech
-                    try:
-                        if not label in self.labels:
-                            vp = SameCellValuePanel(self.cell, self.other_cells, self.section, ref, label=label,all_sec=self.all_sec)
-                            self.vps.append(vp)
-                            self.labels.append(label)
-                    except AttributeError as e:
-                        pass
+        if self.variables:
+            for variable in self.variables:
+                label = variable #+  ' Segregation (mV)'
+                ref = variable
+                try:
+                    if not label in self.labels:
+                        vp = SameCellValuePanel(self.cell, self.other_cells, self.section, ref, label=label,all_sec=self.all_sec)
+                        self.vps.append(vp)
+                        self.labels.append(label)
+                except AttributeError as e:
+                    pass
+        else:
+            for mech in self.mechs:
+                if not self.mechanism_dict[mech].get("DERIVATIVE"):
+                    continue
+                actvars = [line['variable'] for line in self.mechanism_dict[mech]["DERIVATIVE"] if line['is_likely_activation']]
+                
+                for var in self.mechanism_dict[mech]['state_activation_vars']:
+                    if var['var'] in actvars:
+                        #{'var': 'n', 'var_inf': 'inf', 'vh': 'nvhalf', 'k': 'nk', 'procedure_set': 'rate', 'line_set': 'inf = 1.0 / (1.0 + (exp((v + nvhalf) / (nk))))'}
+                        label = var['var'] + ' (' + mech + ') ' +  'Segregation (mV)'
+                        #vp = ValuePanel(label=label)
+                        ref = var['var']+'seg_'+mech
+                        try:
+                            if not label in self.labels:
+                                vp = SameCellValuePanel(self.cell, self.other_cells, self.section, ref, label=label,all_sec=self.all_sec)
+                                self.vps.append(vp)
+                                self.labels.append(label)
+                        except AttributeError as e:
+                            pass
         h.xbutton('Segregation (Run)', calculate)
         
         #menu = h.xmenu('menu')
@@ -682,26 +700,30 @@ class VoltagePlotWidget(Widget):
         self.expressions[text] = variable
         return
 
-    def add_act_inf(self, mech_dict):
-        
-        mechs = [mech.name() for mech in self.segment(0.5) if not mech.name().endswith("_ion")]
-        for mech in mechs:
-            if not mech_dict[mech].get("DERIVATIVE"):
-                continue
-            actvars = [line['variable'] for line in mech_dict[mech]["DERIVATIVE"] if line['is_likely_activation']]
-            
-            for var in mech_dict[mech]['state_activation_vars']:
-                if var['var'] in actvars:
-                    #{'var': 'n', 'var_inf': 'inf', 'vh': 'nvhalf', 'k': 'nk', 'procedure_set': 'rate', 'line_set': 'inf = 1.0 / (1.0 + (exp((v + nvhalf) / (nk))))'}
-                    #label = var['var'] + ' (' + mech + ') ' +  'Segregation (mV)'
-                    #vp = ValuePanel(label=label)
-                    #ref = var['var']+'seg_'+mech
+    def add_act_inf(self, mech_dict=None, variables=None):
+        if mech_dict:
+            mechs = [mech.name() for mech in self.segment(0.5) if not mech.name().endswith("_ion")]
+            for mech in mechs:
+                if not mech_dict[mech].get("DERIVATIVE"):
+                    continue
+                actvars = [line['variable'] for line in mech_dict[mech]["DERIVATIVE"] if line['is_likely_activation']]
+                
+                for var in mech_dict[mech]['state_activation_vars']:
+                    if var['var'] in actvars:
+                        #{'var': 'n', 'var_inf': 'inf', 'vh': 'nvhalf', 'k': 'nk', 'procedure_set': 'rate', 'line_set': 'inf = 1.0 / (1.0 + (exp((v + nvhalf) / (nk))))'}
+                        #label = var['var'] + ' (' + mech + ') ' +  'Segregation (mV)'
+                        #vp = ValuePanel(label=label)
+                        #ref = var['var']+'seg_'+mech
 
-                    variable = "_ref_" + var['var_inf'] + "_" + mech
-                    text = '('+var['var']+') '+var['var_inf'] + "_" + mech
-                    
-                    if var['k'] in [m[0] for m in mech_dict[mech]["PARAMETER"] if m[2] and float(m[2]) < 0] or not var['k']:            
-                        self.add_var(variable,text)
+                        variable = "_ref_" + var['var_inf'] + "_" + mech
+                        text = '('+var['var']+') '+var['var_inf'] + "_" + mech
+                        
+                        if var['k'] in [m[0] for m in mech_dict[mech]["PARAMETER"] if m[2] and float(m[2]) < 0] or not var['k']:            
+                            self.add_var(variable,text)
+        if variables:
+            for variable in variables:
+                variable_ref = "_ref_"+variable
+                self.add_var(variable_ref,variable)
 
         #self.add_var("_ref_inf_kdrseg","n inf kdr")
         #self.add_var("_ref_minf_naseg","m inf na")
@@ -1899,7 +1921,7 @@ class CellTunerGUI:
     def get_templates(self,hoc_template_file=None):
         if self.templates is None: # Can really only do this once
             ##import pdb;pdb.set_trace()
-            if self.mechanism_dir != './' and self.mechanism_dir != '.':
+            if self.mechanism_dir != './' and self.mechanism_dir != '.' and self.mechanism_dir != '././':
                 neuron.load_mechanisms(self.mechanism_dir)
             h_base = dir(h)
             
