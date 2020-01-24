@@ -186,6 +186,7 @@ class SegregationSelectorWidget(Widget):
         self.all_sec = all_sec
 
         self.vps=[]#ValuePanels
+        self.labels=[]
 
 
     def execute(self):
@@ -210,8 +211,10 @@ class SegregationSelectorWidget(Widget):
                     #vp = ValuePanel(label=label)
                     ref = var['var']+'seg_'+mech
                     try:
-                        vp = SameCellValuePanel(self.cell, self.other_cells, self.section, ref, label=label,all_sec=self.all_sec)
-                        self.vps.append(vp)
+                        if not label in self.labels:
+                            vp = SameCellValuePanel(self.cell, self.other_cells, self.section, ref, label=label,all_sec=self.all_sec)
+                            self.vps.append(vp)
+                            self.labels.append(label)
                     except AttributeError as e:
                         pass
         h.xbutton('Segregation (Run)', calculate)
@@ -697,7 +700,7 @@ class VoltagePlotWidget(Widget):
                     variable = "_ref_" + var['var_inf'] + "_" + mech
                     text = '('+var['var']+') '+var['var_inf'] + "_" + mech
                     
-                    if var['k'] in [m[0] for m in mech_dict[mech]["PARAMETER"] if m[2] and float(m[2]) < 0]:            
+                    if var['k'] in [m[0] for m in mech_dict[mech]["PARAMETER"] if m[2] and float(m[2]) < 0] or not var['k']:            
                         self.add_var(variable,text)
 
         #self.add_var("_ref_inf_kdrseg","n inf kdr")
@@ -711,7 +714,10 @@ class VoltagePlotWidget(Widget):
 
         #Recording
         for text, var in self.expressions.items():
-            variable = getattr(self.segment(0.5),var)
+            try:
+                variable = getattr(self.segment(0.5),var)
+            except AttributeError as e:
+                variable = getattr(h,var) # Perhaps it's a global?
             spvec = h.Vector()
             spvec.record(variable)
             self.vectors.append((spvec,text))
@@ -1598,6 +1604,8 @@ class CellTunerGUI:
                                                 pass
 
                         return None,None,None
+                    #print(mech)
+                    
 
                     #activation to vhalf and slope matching
                     #state_activation_vars = []
@@ -1616,9 +1624,28 @@ class CellTunerGUI:
                             if state_var == derivative_line["variable"]: 
                                 if derivative_line["is_likely_activation"]:
                                     inf_var = derivative_line["inf"]
+                                    if not procedures_called:
+                                        vardef = {}
+                                        vardef['var'] = state_var
+                                        vardef['var_inf'] = inf_var
+                                        vardef['vh'] = None
+                                        vardef['k'] = None
+                                        vardef['procedure_set'] = None
+                                        vardef['line_set'] = line
+                                        self.mechanism_dict[suffix]["state_activation_vars"].append(vardef)
+
                                     for procedure in procedures_called:
                                         vh,slope,line = get_vh_slope(inf_var, procedure)
                                         if vh and slope:
+                                            vardef = {}
+                                            vardef['var'] = state_var
+                                            vardef['var_inf'] = inf_var
+                                            vardef['vh'] = vh
+                                            vardef['k'] = slope
+                                            vardef['procedure_set'] = procedure
+                                            vardef['line_set'] = line
+                                            self.mechanism_dict[suffix]["state_activation_vars"].append(vardef)
+                                        else:
                                             vardef = {}
                                             vardef['var'] = state_var
                                             vardef['var_inf'] = inf_var
@@ -1653,10 +1680,16 @@ class CellTunerGUI:
                 #        print("AttributeError: Unable to parse " + mech)
                 #        print(e)
                 #        import pdb;pdb.set_trace()
+        #import pdb;pdb.set_trace()
         return
 
-    def seg_mechs(self):
+    def seg_mechs(self, folder=None):
         
+        cwd = os.getcwd()
+
+        if folder:
+            os.chdir(os.path.abspath(folder))
+
         mechs = [mech.name() for mech in self.root_sec() if not mech.name().endswith("_ion")]
         
         valid_mechs = []
@@ -1685,9 +1718,9 @@ class CellTunerGUI:
                 avars = self.mechanism_dict[mech]["state_activation_vars"]
                 
                 # If the values are already variables we don't need to process the mech further
-                act_vars = [v for v in avars if v["vh"] not in parameters and v["k"] not in parameters and float(v["k"]) < 0]
+                act_vars = [v for v in avars if v["vh"] not in parameters and v["k"] not in parameters and (v["k"]==None or float(v["k"]) < 0)]
                 act_vars_names = [v["var"] for v in act_vars]
-                inact_vars = [v for v in avars if v["vh"] not in parameters and v["k"] not in parameters and float(v["k"]) > 0]
+                inact_vars = [v for v in avars if v["vh"] not in parameters and v["k"] not in parameters and (v["k"]==None or float(v["k"]) > 0)]
                 inact_vars_names = [v["var"] for v in inact_vars]
 
                 if act_vars:
@@ -1712,7 +1745,13 @@ class CellTunerGUI:
                     click.echo("Writing " + colored.green(filename))
                 f.write(': Ion channel activation segregation -- Generated by BMTools (https://github.com/tjbanks/bmtools)\n')
                 f.write(': based on the paper "Distinct Current Modules Shape Cellular Dynamics in Model Neurons" (2016)\n\n')
-                code_blocks = self.mechanism_parse[mech].blocks
+                
+                if mech in self.mechanism_parse:
+                    code_blocks = self.mechanism_parse[mech].blocks
+                else: # it may be possible that the filename is different from the actual mechanism suffix
+                    mech_name = self.mechanism_dict[mech]["filename"].replace(".mod","")
+                    code_blocks = self.mechanism_parse[mech_name].blocks
+
                 for block in code_blocks:
                     if block.__class__.__name__ == "Neuron":
                         f.write("NEURON {\n")
@@ -1721,11 +1760,15 @@ class CellTunerGUI:
                             if statement.__class__.__name__ == "Suffix":
                                 if not statement.suffix.endswith("seg"):
                                     st = st + "seg"
+                            if statement.__class__.__name__ == "UseIon":
+                                st = st.replace("VALENCE +","VALENCE ") # This is a bit of a hack, as NEURON doesn't like `+2`, prefer `2`
                             f.write('\t' + st + '\n')
                         rngvars = []
                         for act_var in act_vars:
-                            rngvars.append(act_var['var']+"vhalf")
-                            rngvars.append(act_var['var']+"k")
+                            if act_var["vh"]:
+                                rngvars.append(act_var['var']+"vhalf")
+                            if act_var["k"]:
+                                rngvars.append(act_var['var']+"k")
                             rngvars.append(act_var['var']+"seg")
                         if rngvars:
                             f.write("\t" + "RANGE " + ", ".join(rngvars) + "\n")
@@ -1736,9 +1779,11 @@ class CellTunerGUI:
                             f.write('\t' + parameter.unparsed + '\n')
                         for act_var in act_vars:
                             act = [v for v in self.mechanism_dict[mech]["state_activation_vars"] if v['var'] == act_var['var']][0]
-                            f.write('\t' + act_var['var']+"vhalf = " + act["vh"] + "\n")
-                            f.write('\t' + act_var['var']+"k = " + act["k"] + "\n")
-                            f.write('\t' + act_var['var']+"seg = " + "-999" + "\n") #TODO CHANGE THIS TO USER DEFINED VARIABLE
+                            if act["vh"]:
+                                f.write('\t' + act_var['var']+"vhalf = " + act["vh"] + "\n")
+                            if act["k"]:
+                                f.write('\t' + act_var['var']+"k = " + act["k"] + "\n")
+                            f.write('\t' + act_var['var']+"seg = " + "-99" + "\n") #TODO CHANGE THIS TO USER DEFINED VARIABLE
                         f.write("}\n")
 
                     elif block.__class__.__name__ == "Derivative":
@@ -1767,8 +1812,10 @@ class CellTunerGUI:
                             if statement.__class__.__name__ == "Assignment":
                                 for act_var in act_vars:
                                     if func_name == act_var["procedure_set"] and statement_str == act_var["line_set"]:
-                                        statement_str = statement_str.replace(act_var["vh"],act_var["var"]+"vhalf",1)
-                                        statement_str = statement_str.replace(act_var["k"],act_var["var"]+"k",1)
+                                        if act["vh"]:
+                                            statement_str = statement_str.replace(act_var["vh"],act_var["var"]+"vhalf",1)
+                                        if act["k"]:
+                                            statement_str = statement_str.replace(act_var["k"],act_var["var"]+"k",1)
                             f.write('\t' + statement_str + '\n')
 
                         f.write("}\n")
@@ -1789,6 +1836,9 @@ class CellTunerGUI:
                     f.write("}\n")
             if self.print_debug:
                 print("")
+            
+        if folder:
+            os.chdir(cwd)
             
         return mechs_processed
 
@@ -1811,7 +1861,7 @@ class CellTunerGUI:
         if hoc_template_file:
             hoc_files.append(hoc_template_file)
         else:
-            hoc_files = self.hoc_templates
+            hoc_files = [os.path.join(self.template_dir, t) for t in self.hoc_templates]
         found = False
 
         template_text = []
