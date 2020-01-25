@@ -106,6 +106,79 @@ Options:
 
 ![bmtools](./figure3.png "FIR Figure")
 
+### VHalf Segregation Module
+
+Based on the Alturki et al. (2016) paper.
+
+Segregate your channel activation for an easier time tuning your cells.
+
+
+```
+> bmtools util cell vhseg --help
+
+Usage: bmtools util cell vhseg [OPTIONS]
+
+  Alturki et al. (2016) V1/2 Automated Segregation Interface, simplify
+  tuning by separating channel activation
+
+Options:
+  --title TEXT
+  --tstop INTEGER
+  --outhoc TEXT         Specify the file you want the modified cell template
+                        written to
+  --outfolder TEXT      Specify the directory you want the modified cell
+                        template and mod files written to (default: _seg)
+  --outappend           Append out instead of overwriting (default: False)
+  --debug               Print all debug statements
+  --fminpa INTEGER      Starting FIR Curve amps (default: 0)
+  --fmaxpa INTEGER      Ending FIR Curve amps (default: 1000)
+  --fincrement INTEGER  Increment the FIR Curve amps by supplied pA (default:
+                        100)
+  --infvars TEXT        Specify the inf variables to plot, skips the wizard.
+                        (Comma separated, eg: inf_mech,minf_mech2,ninf_mech2)
+  --segvars TEXT        Specify the segregation variables to globally set,
+                        skips the wizard. (Comma separated, eg:
+                        mseg_mech,nseg_mech2)
+  --eleak TEXT          Specify the eleak var manually
+  --gleak TEXT          Specify the gleak var manually
+  --othersec TEXT       Specify other sections that a window should be
+                        generated for (Comma separated, eg: dend[0],dend[1])
+  --help                Show this message and exit.
+
+```
+
+#### Examples 
+
+Wizard Mode (Interactive)
+
+```
+> bmtool util cell vhseg
+
+? Select a cell:  CA3PyramidalCell
+Using section dend[0]
+? Show other sections? (default: No)  Yes
+? Select other sections (space bar to select):  done (2 selections)
+? Select inf variables to plot (space bar to select):   done (5 selections)
+? Select segregation variables [OR VARIABLES YOU WANT TO CHANGE ON ALL SEGMENTS at the same time] (space bar to select):  done (2 selections)
+```
+
+Command Mode (Non-interactive)
+
+```
+bmtool util cell --template CA3PyramidalCell vhseg --othersec dend[0],dend[1] --infvars inf_im --segvars gbar_im --gleak gl_ichan2CA3 --eleak el_ichan2CA3
+```
+
+Example:
+
+![bmtools](./figure4.png "Seg Figure")
+
+Simple models can utilize 
+``` 
+bmtool util cell --hoc cell_template.hoc vhsegbuild --build
+bmtool util cell --hoc segmented_template.hoc vhsegbuild
+```
+ex: [https://github.com/tjbanks/two-cell-hco](https://github.com/tjbanks/two-cell-hco)
+
 ## Planned future features
 ```
 bmtools build

@@ -814,7 +814,8 @@ def cell_vhsegbuild(ctx,title,tstop,outhoc,outfolder,outappend,debug,build,fminp
         column_index = ctg.add_column(window_index)
         plot_widget = PlotWidget(tstop=tstop)
         sec_text = segment+"(.5)"
-        plot_widget.add_expr(getattr(ctg.template,segment)(0.5)._ref_v,sec_text)
+        cellsec = eval('ctg.template.'+section_selected)
+        plot_widget.add_expr(cellsec(0.5)._ref_v,sec_text)
 
         ctg.add_widget(window_index,column_index,plot_widget)
 
@@ -908,8 +909,11 @@ def cell_vhsegbuild(ctx,title,tstop,outhoc,outfolder,outappend,debug,build,fminp
 @click.option('--fincrement',type=click.INT,default=100,help="Increment the FIR Curve amps by supplied pA (default: 100)")
 @click.option('--infvars',type=click.STRING,default=None,help="Specify the inf variables to plot, skips the wizard. (Comma separated, eg: inf_mech,minf_mech2,ninf_mech2)")
 @click.option('--segvars',type=click.STRING,default=None,help="Specify the segregation variables to globally set, skips the wizard. (Comma separated, eg: mseg_mech,nseg_mech2)")
+@click.option('--eleak',type=click.STRING,default=None,help="Specify the eleak var manually")
+@click.option('--gleak',type=click.STRING,default=None,help="Specify the gleak var manually")
+@click.option('--othersec',type=click.STRING,default=None,help="Specify other sections that a window should be generated for (Comma separated, eg: dend[0],dend[1])")
 @click.pass_context
-def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fincrement,infvars,segvars):
+def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fincrement,infvars,segvars,eleak,gleak,othersec):
     
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget,PointMenuWidget, MultiSecMenuWidget
     from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget, AutoVInitWidget
@@ -939,17 +943,27 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
 
     do_others = False
     if ctg.other_sec:
-        do_others = questionary.confirm("Show other sections? (default: No)",default=False).ask()
+
+        if othersec:
+            do_others = True
+        else:
+            do_others = questionary.confirm("Show other sections? (default: No)",default=False).ask()
+
     selected_segments = []
     if do_others:
-        choices = [s.name().split('.')[-1] for s in ctg.other_sec]
-        selected_segments = questionary.checkbox(
-            'Select other sections (space bar to select):',
-            choices=choices).ask()
+        if othersec:
+            selected_segments = othersec.split(",")
+        else:
+            choices = [s.name().split('.')[-1] for s in ctg.other_sec]
+            selected_segments = questionary.checkbox(
+                'Select other sections (space bar to select):',
+                choices=choices).ask()
         
-    section_selected = "soma"
+    section_selected = sec_split
     
-    cellsec = getattr(ctg.template,section_selected)
+    #cellsec = getattr(ctg.template,section_selected)
+    cellsec = eval('ctg.template.'+section_selected)
+
     mechs = [mech.name() for mech in cellsec(0.5) if not mech.name().endswith("_ion")]
     ions = [mech.name() for mech in cellsec(0.5) if mech.name().endswith("_ion")]
     cellmechvars = []
@@ -1050,12 +1064,13 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
         column_index = ctg.add_column(window_index)
         plot_widget = PlotWidget(tstop=tstop)
         sec_text = segment+"(.5)"
-        plot_widget.add_expr(getattr(ctg.template,segment)(0.5)._ref_v,sec_text)
+        cellsec = eval('ctg.template.'+segment)
+        plot_widget.add_expr(cellsec(0.5)._ref_v,sec_text)
 
         ctg.add_widget(window_index,column_index,plot_widget)
 
         widget = PointMenuWidget(None)
-        iclamp = widget.iclamp(getattr(ctg.template,segment)(float(inj_loc)),0,0,0)
+        iclamp = widget.iclamp(cellsec(float(inj_loc)),0,0,0)
         ctg.register_iclamp(iclamp)
         widget_index = ctg.add_widget(window_index, column_index,widget)
         
@@ -1083,7 +1098,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
 
     ctg.add_widget(window_index,column_index,fir_widget)
 
-    plot_widget = VoltagePlotWidget(ctg.root_sec.cell(),section="soma")
+    plot_widget = VoltagePlotWidget(ctg.root_sec.cell(),section=section_selected)
     plot_widget.add_act_inf(variables=infvars)#ctg.mechanism_dict)
     ctg.add_widget(window_index,column_index,plot_widget)
     
@@ -1124,7 +1139,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     widget = SegregationSelectorWidget(ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict,all_sec=True,variables=segvars)
     ctg.add_widget(window_index,column_index,widget)
 
-    widget = SegregationPassiveWidget(fir_widget,ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict)
+    widget = SegregationPassiveWidget(fir_widget,ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict,gleak_var=gleak,eleak_var=eleak)
     ctg.add_widget(window_index,column_index,widget)
 
     widget = SegregationFIRFitWidget(fir_widget)

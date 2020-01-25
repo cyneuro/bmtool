@@ -54,19 +54,20 @@ class SameCellValuePanel:
         #self._val = h.ref(init_val)
         
         try:
-            self._val_obj = getattr(getattr(original_cell,section)(0.5),"_ref_"+prop)
+            self._val_obj = getattr(eval("original_cell."+section)(0.5),"_ref_"+prop)
         except AttributeError as e:
-            try:
-                self._val_obj = getattr(getattr(original_cell,section),"_ref_"+prop)
-            except AttributeError as e:
-                pass
+            self._val_obj = getattr(eval("original_cell."+section),"_ref_"+prop)
+            
 
 
-        self._val =  h.Pointer(self._val_obj)
+        try:
+            self._val =  h.Pointer(self._val_obj)
+        except Exception as e:
+            import pdb;pdb.set_trace()
         self._vals = []
 
         all_sections = [sec for sec in h.allsec()]
-        primary_section = getattr(original_cell,section)
+        primary_section = eval("original_cell."+section)
 
         if all_sec:
             for osection in all_sections:
@@ -79,7 +80,7 @@ class SameCellValuePanel:
 
         else:
             for cell in other_cells:
-                self._vals.append(h.Pointer(getattr(getattr(cell,section)(0.5),"_ref_"+prop)))
+                self._vals.append(h.Pointer(getattr(eval("cell."+section)(0.5),"_ref_"+prop)))
                 #print(self._vals[-1].val)
         #import pdb;pdb.set_trace()
         h.xvalue(label, self._val_obj, True, self._bounds_check)
@@ -132,7 +133,8 @@ class MultiSecMenuWidget(Widget):
 
     def get_variables(self):
         variables = [("diam","diam (um)"),("cm", "cm (uF/cm2)")]
-        mechs = [mech.name() for mech in getattr(self.cell,self.section)(0.5) if not mech.name().endswith("_ion")]
+        cellsec = eval('self.cell.'+self.section)
+        mechs = [mech.name() for mech in cellsec(0.5) if not mech.name().endswith("_ion")]
         #ctg.mechanism_dict["kdr"]["NEURON"]["USEION"]["READ"]
         #['eleak']
         # if they're in the useion read then ignore as 
@@ -163,12 +165,14 @@ class MultiSecMenuWidget(Widget):
     def execute(self):
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
-        cellsec = getattr(self.cell,"soma")
         for var in self.variables:
             if var[1] not in self.defined_vars:
-                panel=SameCellValuePanel(self.cell, self.other_cells, self.section, var[0], label=var[1])
-                self.panels.append(panel)
-                self.defined_vars.append(var[1])
+                try:
+                    panel=SameCellValuePanel(self.cell, self.other_cells, self.section, var[0], label=var[1])
+                    self.panels.append(panel)
+                    self.defined_vars.append(var[1])
+                except AttributeError as e:
+                    print(e)
         h.xpanel()
         return
 
@@ -190,7 +194,8 @@ class SegregationSelectorWidget(Widget):
 
         self.vps=[]#ValuePanels
         self.labels=[]
-        self.mechs = [mech.name() for mech in getattr(cell,section)(0.5) if not mech.name().endswith("_ion")]
+        cellsec = eval("cell."+section)
+        self.mechs = [mech.name() for mech in cellsec(0.5) if not mech.name().endswith("_ion")]
         
 
         self.variables = variables
@@ -259,30 +264,36 @@ class SegregationPassiveWidget(Widget):
         self.other_cells = other_cells
         self.section = section
         self.mechanism_dict = mechanism_dict
-        self.mechs = [mech.name() for mech in getattr(cell,section)(0.5) if not mech.name().endswith("_ion")]
+        
+        self.segment = eval("cell."+section+"(0.5)") #getattr(cell,section)(0.5)
+        self.mechs = [mech.name() for mech in self.segment if not mech.name().endswith("_ion")]
 
-        self.segment = getattr(cell,section)(0.5)
+        
         self.eleak_var = ""
         self.gleak_var = ""
+        self.eleak_not_found = False
+        self.gleak_not_found = False
         if not gleak_var:
             if hasattr(self.segment,"gbar_leak"):
                 self.gleak_var = "gbar_leak"
             elif hasattr(self.segment,"g_bar_leak"):
                 self.gleak_var = "g_bar_leak"
             else:
-                raise AttributeError("Leak channel gbar not found, specify gleak_var in SegregationPassiveWidget")
+                #raise AttributeError("Leak channel gbar not found, specify gleak_var in SegregationPassiveWidget")
+                self.gleak_not_found = True
         else:
             self.gleak_var = gleak_var
         
-        if not gleak_var:
+        if not eleak_var:
             if hasattr(self.segment,"eleak"):
                 self.eleak_var = "eleak"
             elif hasattr(self.segment,"e_leak"):
-                self.gleak_var = "e_leak"
+                self.eleak_var = "e_leak"
             else:
-                raise AttributeError("Leak channel reversal not found, specify eleak_var in SegregationPassiveWidget")
+                #raise AttributeError("Leak channel reversal not found, specify eleak_var in SegregationPassiveWidget")
+                self.eleak_not_found = True
         else:
-            self.gleak_var = gleak_var
+            self.eleak_var = eleak_var
         
         #import pdb;pdb.set_trace()
 
@@ -318,7 +329,7 @@ class SegregationPassiveWidget(Widget):
                 setattr(self.segment,"cm",cm)
 
                 for cell in self.other_cells:
-                    segment = getattr(cell,self.section)(0.5)
+                    segment = eval("cell."+self.section+"(0.5)") #getattr(cell,self.section)(0.5)
                     setattr(segment,self.eleak_var,eleak)
                     setattr(segment,self.gleak_var,g_bar_leak)
                     setattr(segment,"cm",cm)
@@ -338,19 +349,26 @@ class SegregationPassiveWidget(Widget):
             def stop_event():
                 nonlocal spw
                 if not spw.is_calculating:
-                    spw.v_rest.val = round(self.fir_widget.v_rest,4)
-                    spw.r_in.val = round(float(self.fir_widget.r_in/1e6),4)
-                    spw.tau.val = round(self.fir_widget.tau,4)  
+                    if self.gleak_var and self.eleak_var:
+                        spw.v_rest.val = round(self.fir_widget.v_rest,4)
+                        spw.r_in.val = round(float(self.fir_widget.r_in/1e6),4)
+                        spw.tau.val = round(self.fir_widget.tau,4)  
                 else:
                     spw.is_calculating = False           
             cvode.event(ctstop, stop_event)           
 
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
-        self.v_rest=ValuePanel(label='V Rest (mV)',slider=False,lower_limit=-1000,upper_limit=1000)
-        self.r_in=ValuePanel(label='R in (MOhm)',slider=False,lower_limit=0,upper_limit=100000)
-        self.tau=ValuePanel(label='Tau (ms)',slider=False,lower_limit=-100,upper_limit=100)
-        h.xbutton('Fit Passive Properties (Run)', calculate)
+        if self.gleak_var and self.eleak_var:
+            self.v_rest=ValuePanel(label='V Rest (mV)',slider=False,lower_limit=-1000,upper_limit=1000)
+            self.r_in=ValuePanel(label='R in (MOhm)',slider=False,lower_limit=0,upper_limit=100000)
+            self.tau=ValuePanel(label='Tau (ms)',slider=False,lower_limit=-100,upper_limit=100)
+            h.xbutton('Fit Passive Properties (Run)', calculate)
+        else:
+            if self.gleak_not_found:
+                h.xlabel("Leak conductance (gleak) not found")
+            if self.eleak_not_found:
+                h.xlabel("Leak reversal (eleak) not found")
         h.xpanel()
 
         return commands
@@ -427,7 +445,7 @@ class AutoVInitWidget(Widget):
             cvode.event(ctstop, stop_event)           
 
         h.xpanel('xvarlabel')
-        h.xcheckbox('Auto set v_init to V Rest at end of simulation', (self, 'vinitcheckbox'))#, self.vinitcheckboxpressed)
+        h.xcheckbox('Auto-set v_init to v_rest at end of simulation', (self, 'vinitcheckbox'))#, self.vinitcheckboxpressed)
         h.xpanel()
 
         return commands
@@ -676,7 +694,7 @@ class VoltagePlotWidget(Widget):
         self.graph = None
         self.color = 1
         self.expressions = {}
-        self.segment = getattr(self.cell,section)
+        self.segment = eval("self.cell."+section) #getattr(self.cell,section)
         self.minx = minx
         self.maxx = maxx
         self.miny = miny
