@@ -1263,7 +1263,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
         addr = tk_email_input()
         usernotes = tk_email_input(title="Usernotes",prompt="Enter any notes you want to include with the email. Click cancel for no notes, and send.")
         experiment_hoc = "run_experiment.hoc"
-        ctg.write_hoc(experiment_hoc,mechanisms_dir="./",templates_dir="./")
+        ctg.write_hoc(experiment_hoc,mechanism_dir="./",template_dir="./")
 
         template_zip = template+".zip"
 
