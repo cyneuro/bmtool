@@ -785,7 +785,7 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
     return np.array(data_ret), np.array(sources_ret), np.array(targets_ret)
 
 
-def tk_email_input(title="Send Model Files (with simplified GUI)",prompt="Enter your email address:"):
+def tk_email_input(title="Send Model Files (with simplified GUI)",prompt="Enter your email address. (CHECK YOUR SPAM FOLDER)"):
     import tkinter as tk
     from tkinter import simpledialog
     root = tk.Tk()
@@ -820,6 +820,5 @@ def send_mail(send_from, send_to, subject, text, files=None,server="127.0.0.1"):
         part['Content-Disposition'] = 'attachment; filename="%s"' % basename(f)
         msg.attach(part)
     smtp = smtplib.SMTP(server)
-    import pdb;pdb.set_trace()
     smtp.sendmail(send_from, send_to, msg.as_string())
     smtp.close()
