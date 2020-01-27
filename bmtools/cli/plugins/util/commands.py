@@ -65,8 +65,8 @@ def cell(ctx,hoc_folder,mod_folder,template,hoc,prefab,prefab_repo,prefab_branch
                 click.echo(colored.red("Refresh selected -- Change directory to parent directory (cd ..) and re-run to refresh"))
 
         else: # Check if current directory contains the repository
+            dl = False
             if os.path.exists("./" + prefab_directory + "/" + prefab_dict_file):
-                dl = False
                 if prefab_refresh:
                     shutil.rmtree("./"+prefab_directory)
                     dl = True
