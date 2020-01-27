@@ -791,5 +791,5 @@ def tk_email_input():
     root = tk.Tk()
     root.withdraw()
     # the input dialog
-    user_inp = simpledialog.askstring(title="Send Model Dialog", prompt="Enter your email address:")
+    user_inp = simpledialog.askstring(title="Send Model Files (with simplified GUI)", prompt="Enter your email address. (Custom parameters will not be saved)")
     return user_inp
