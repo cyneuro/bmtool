@@ -1346,11 +1346,11 @@ class CellTunerGUI:
         return
 
     def write_hoc(self, filename,write_cell_params=False,mechanism_dir=None,template_dir=None):
-        if not mechansim_dir:
+        if not mechanism_dir:
             mechanism_dir = self.mechanism_dir
         if not template_dir:
             template_dir = self.template_dir
-            
+
         print("Writing hoc file to " + filename)
         if os.path.exists(filename):
             try:

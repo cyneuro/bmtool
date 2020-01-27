@@ -1276,10 +1276,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
             shutil.copy2(file,dirpath)
         
         shutil.copy2(experiment_hoc,dirpath)
-
-
         shutil.make_archive(template,"zip",dirpath)
-
         shutil.rmtree(dirpath)
 
         if usernotes:
