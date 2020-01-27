@@ -785,11 +785,41 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
     return np.array(data_ret), np.array(sources_ret), np.array(targets_ret)
 
 
-def tk_email_input():
+def tk_email_input(title="Send Model Files (with simplified GUI)",prompt="Enter your email address:"):
     import tkinter as tk
     from tkinter import simpledialog
     root = tk.Tk()
     root.withdraw()
     # the input dialog
-    user_inp = simpledialog.askstring(title="Send Model Files (with simplified GUI)", prompt="Enter your email address. (Custom parameters will not be saved)")
+    user_inp = simpledialog.askstring(title=title, prompt=prompt)
     return user_inp
+
+import smtplib
+from os.path import basename
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import COMMASPACE, formatdate
+
+
+def send_mail(send_from, send_to, subject, text, files=None,server="127.0.0.1"):
+    assert isinstance(send_to, list)
+    msg = MIMEMultipart()
+    msg['From'] = send_from
+    msg['To'] = COMMASPACE.join(send_to)
+    msg['Date'] = formatdate(localtime=True)
+    msg['Subject'] = subject
+    msg.attach(MIMEText(text))
+    for f in files or []:
+        with open(f, "rb") as fil:
+            part = MIMEApplication(
+                fil.read(),
+                Name=basename(f)
+            )
+        # After the file is closed
+        part['Content-Disposition'] = 'attachment; filename="%s"' % basename(f)
+        msg.attach(part)
+    smtp = smtplib.SMTP(server)
+    import pdb;pdb.set_trace()
+    smtp.sendmail(send_from, send_to, msg.as_string())
+    smtp.close()

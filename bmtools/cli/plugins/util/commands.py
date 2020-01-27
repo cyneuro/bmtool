@@ -4,6 +4,9 @@ import logging
 import os
 import questionary
 import json
+import tempfile
+import shutil
+import glob
 
 from clint.textui import puts, colored, indent
 
@@ -969,7 +972,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget,PointMenuWidget, MultiSecMenuWidget
     from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget, AutoVInitWidget, SingleButtonWidget
-    from .util import tk_email_input
+    from .util import tk_email_input, send_mail
 
     hoc_folder = ctx.obj["hoc_folder"]
     mod_folder = ctx.obj["mod_folder"]
@@ -1258,9 +1261,54 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
 
     def email_func():
         addr = tk_email_input()
-        ctg.write_hoc("run_experiment.hoc")
+        usernotes = tk_email_input(title="Usernotes",prompt="Enter any notes you want to include with the email. Click cancel for no notes, and send.")
+        experiment_hoc = "run_experiment.hoc"
+        ctg.write_hoc(experiment_hoc,mechanisms_dir="./",templates_dir="./")
 
-        print(addr)
+        template_zip = template+".zip"
+
+        source = "bmtool-cell-prefab-master"
+        dirpath = tempfile.mkdtemp()
+
+        for file in glob.glob(os.path.join(hoc_folder,"*.hoc")):
+            shutil.copy2(file,dirpath)
+        for file in glob.glob(os.path.join(mod_folder,"*.mod")):
+            shutil.copy2(file,dirpath)
+        
+        shutil.copy2(experiment_hoc,dirpath)
+
+
+        shutil.make_archive(template,"zip",dirpath)
+
+        shutil.rmtree(dirpath)
+
+        if usernotes:
+            usernotes = "User notes: " + usernotes
+        else:
+            usernotes = ""
+        
+        message_subject = "Your \"" + template + "\" model from cyneuro.org"
+        message_text = """
+Dear BMTool User,
+
+Thank you for using bmtool. Your {} cell is attached. You can view the cell on your computer
+by unziping the attached zip file and double clicking the enclosed {} file. You will need to 
+have NEURON installed (https://neuron.yale.edu/).
+
+{}
+
+TB
+University of Missouri
+Cyneuro.org
+
+        """.format(template,experiment_hoc,)
+        if addr:
+            send_mail("bmtool@cyneuro.org",[addr],message_subject,message_text,[])
+
+        os.remove(experiment_hoc)
+        os.remove(template_zip)
+        #print(addr)
+
 
     emailer_widget = SingleButtonWidget("Email this model",email_func)
     widget_index = ctg.add_widget(window_index, column_index,emailer_widget)

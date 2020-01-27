@@ -1345,7 +1345,12 @@ class CellTunerGUI:
 
         return
 
-    def write_hoc(self, filename,write_cell_params=False):
+    def write_hoc(self, filename,write_cell_params=False,mechanism_dir=None,template_dir=None):
+        if not mechansim_dir:
+            mechanism_dir = self.mechanism_dir
+        if not template_dir:
+            template_dir = self.template_dir
+            
         print("Writing hoc file to " + filename)
         if os.path.exists(filename):
             try:
@@ -1370,10 +1375,10 @@ class CellTunerGUI:
             f.write("\n")
             
             #LOAD MECHANISMS
-            if self.mechanism_dir != './' and self.mechanism_dir != '.':
+            if mechanism_dir != './' and mechanism_dir != '.':
                 f.write("//Loading mechanisms in other folder\n")
-                f.write("nrn_load_dll(\""+self.mechanism_dir+"/x86_64/.libs/libnrnmech.so\")\n")#UNIX
-                f.write("nrn_load_dll(\""+self.mechanism_dir+"/nrnmech.dll\")\n")#WINDOWS
+                f.write("nrn_load_dll(\""+mechanism_dir+"/x86_64/.libs/libnrnmech.so\")\n")#UNIX
+                f.write("nrn_load_dll(\""+mechanism_dir+"/nrnmech.dll\")\n")#WINDOWS
             f.write("\n")
 
             #LOAD TEMPLATES
@@ -1383,7 +1388,7 @@ class CellTunerGUI:
             #hoc_templates = glob.glob("*.hoc")
             #os.chdir(cwd)
             for hoc_template in self.hoc_templates:
-                f.write("{load_file(\"" + os.path.join(self.template_dir,hoc_template).replace('\\','/') + "\")}\n")
+                f.write("{load_file(\"" + os.path.join(template_dir,hoc_template).replace('\\','/') + "\")}\n")
 
             f.write("\n")
             f.write("tstop = " + str(self.tstop) + "\n")
@@ -1966,7 +1971,7 @@ class CellTunerGUI:
             if self.mechanism_dir != './' and self.mechanism_dir != '.' and self.mechanism_dir != '././':
                 neuron.load_mechanisms(self.mechanism_dir)
             h_base = dir(h)
-            
+
             cwd = os.getcwd()
             os.chdir(self.template_dir)
             if not hoc_template_file:
