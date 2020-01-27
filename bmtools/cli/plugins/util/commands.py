@@ -3,6 +3,7 @@ import click
 import logging
 import os
 import questionary
+import json
 
 from clint.textui import puts, colored, indent
 
@@ -35,41 +36,86 @@ def check_neuron_installed(confirm=True):
 @click.option('--template', type=click.STRING, default=None, help="supply template name and skip interactive mode question")
 @click.option('--hoc', type=click.STRING, default=None, help="loads a single hoc file, best for directories with multiple NON-Template hoc files, specify --hoc TEMPLATE_FILE.hoc")
 @click.option('--prefab',type=click.BOOL,default=False,is_flag=True,help="Downloads a set of pre-defined cells to the current directory")
-@click.option('--prefab-repo', type=click.STRING, default=None, help="Override the github repository URL to download pre-defined cells from")
+@click.option('--prefab-repo', type=click.STRING, default="https://github.com/tjbanks/bmtool-cell-prefab", help="Override the github repository URL to download pre-defined cells from (default: https://github.com/tjbanks/bmtool-cell-prefab)")
+@click.option('--prefab-branch', type=click.STRING, default="master", help="Override the github repository branch (default: master)")
 @click.pass_context
-def cell(ctx,hoc_folder,mod_folder,template,hoc,prefab,prefab_repo):
+def cell(ctx,hoc_folder,mod_folder,template,hoc,prefab,prefab_repo,prefab_branch):
   
     if not check_neuron_installed():
         return   
 
     hoc_template_file = None
-    
-    if hoc:
-        if not hoc_folder:
-            hoc_folder = './'
-        if not mod_folder:
-            mod_folder = './'
-        hoc_template_file = hoc
-    elif not hoc_folder or not mod_folder:
-        try:
-            cfg = load_config(ctx.obj['config'])
+    prefab_dict = None
+    prefab_zip_url = prefab_repo + "/archive/" + prefab_branch + ".zip"
+    prefab_repo_name = prefab_repo.split("/")[-1]
+    prefab_directory = "./" + prefab_repo_name + "-" + prefab_branch
+    prefab_dict_file = "PREFAB.bmtool"
+    prefab_template_file = "templates.hoc"
+
+    if prefab: # User has elected to use prefab cells
+        if os.path.exists("./"+prefab_dict_file): #If the current directory contains the repository continue
+            mod_folder = "./" + os.path.relpath("./").replace("\\","/")
+            hoc_folder = "./" + os.path.relpath("./").replace("\\","/")
+            hoc_template_file = prefab_template_file
+
+
+        else: # Check if current directory contains the repository
+            if os.path.exists("./" + prefab_directory + "/" + prefab_dict_file):
+                pass # Nothing to be done
+            else: # Download the repo
+                click.echo(colored.green("Downloading premade cells from " + prefab_zip_url))
+                import requests, zipfile, io
+                r = requests.get(prefab_zip_url)
+                z = zipfile.ZipFile(io.BytesIO(r.content))
+                z.extractall()
+                click.echo(colored.green("Compiling mod files..."))
+                cwd = os.getcwd()
+
+                os.chdir(prefab_directory)
+                ret = os.system("nrnivmodl")
+                os.chdir(cwd)
+
+                if not ret:
+                    click.echo(colored.green("COMPILATION COMPLETE"))
+                else:
+                    click.echo(colored.red("nrnivmodl may not have been run, execute nrnivmodl or mknrndll manually in the `")+colored.green(prefab_directory)+colored.red("` folder then press enter..."))
+                    input()
+                
+            mod_folder = "./" + os.path.relpath(prefab_directory).replace("\\","/")
+            hoc_folder = "./" + os.path.relpath(prefab_directory).replace("\\","/")
+            hoc_template_file = prefab_template_file
+            
+        with open(os.path.join(hoc_folder,prefab_dict_file), 'r') as f:
+            prefab_dict = json.load(f)
+
+    else:
+        if hoc:
             if not hoc_folder:
-                hoc_folder = cfg['components']['templates_dir']
+                hoc_folder = './'
             if not mod_folder:
-                mod_folder = cfg['components']['mechanisms_dir']  
-        except Exception as e:
-            #lazy way of passing cases where sim config is not found and template provided
-            if not hoc_folder:
-                print("Setting hoc folder to ./")
-                hoc_folder = '.'
-            if not mod_folder:
-                print("Setting mod folder to ./")
-                mod_folder = '.'
+                mod_folder = './'
+            hoc_template_file = hoc
+        elif not hoc_folder or not mod_folder:
+            try:
+                cfg = load_config(ctx.obj['config'])
+                if not hoc_folder:
+                    hoc_folder = cfg['components']['templates_dir']
+                if not mod_folder:
+                    mod_folder = cfg['components']['mechanisms_dir']  
+            except Exception as e:
+                #lazy way of passing cases where sim config is not found and template provided
+                if not hoc_folder:
+                    print("Setting hoc folder to ./")
+                    hoc_folder = '.'
+                if not mod_folder:
+                    print("Setting mod folder to ./")
+                    mod_folder = '.'
 
     ctx.obj["hoc_folder"] = hoc_folder
     ctx.obj["mod_folder"] = mod_folder
     ctx.obj["hoc_template_file"] = hoc_template_file
     ctx.obj["cell_template"] = template
+    ctx.obj["prefab"] = prefab_dict
     
     return
 
@@ -929,9 +975,11 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     mod_folder = ctx.obj["mod_folder"]
     hoc_template_file = ctx.obj["hoc_template_file"]
     template = ctx.obj["cell_template"]
+    prefab_dict = ctx.obj["prefab"]
 
     ctg = CellTunerGUI(hoc_folder,mod_folder,tstop=tstop,print_debug=debug)
-       
+    
+    
     # Cell selector
     hoc_templates = ctg.get_templates(hoc_template_file=hoc_template_file)
     if not template:
