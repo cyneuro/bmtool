@@ -785,3 +785,11 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
     return np.array(data_ret), np.array(sources_ret), np.array(targets_ret)
 
 
+def tk_email_input():
+    import tkinter as tk
+    from tkinter import simpledialog
+    root = tk.Tk()
+    root.withdraw()
+    # the input dialog
+    user_inp = simpledialog.askstring(title="Send Model Dialog", prompt="Enter your email address:")
+    return user_inp

@@ -116,8 +116,18 @@ class SameCellValuePanel:
 
 # 1WQ2E -- Morgan 1/20/2020 @ ~9:30pm
 
+class SingleButtonWidget(Widget):
+    def __init__(self,text,on_press):
+        self.text = text
+        self.on_press = on_press
+
+    def execute(self):
+        h.xpanel("SingleButton")
+        h.xbutton(self.text, self.on_press)
+        h.xpanel()
+
 class MultiSecMenuWidget(Widget):
-    def __init__(self,cell,other_cells,section,md,label=""):
+    def __init__(self,cell,other_cells,section,md,label="",x="0.5",vartype=1):
         super(MultiSecMenuWidget, self).__init__()
         self.cell = cell
         self.other_cells = other_cells
@@ -126,6 +136,8 @@ class MultiSecMenuWidget(Widget):
         self.label = label
         self.panels = []
         self.defined_vars = []
+        self.x = x
+        self.vartype = vartype
 
         if self.label == "":
             self.label = self.cell.hname() + "." + section + "(0.5)" + " (Parameters)"
@@ -178,6 +190,14 @@ class MultiSecMenuWidget(Widget):
 
     def add_var(self):
         pass
+
+    def hoc_display_str_list(self,**kwargs):
+        ctg = kwargs["ctg"]
+        ret = []
+        #ret.append("$o2.soma nrnsecmenu(.5,1)")
+        cell = ctg.hoc_ref(self.cell)
+        ret.append(cell + "."+ self.section + " nrnsecmenu("+str(self.x)+","+str(self.vartype)+")")
+        return ret
 
 class SegregationSelectorWidget(Widget):
     def __init__(self,cell, other_cells, section, mechanism_dict, all_sec=False, variables=None):
@@ -416,7 +436,7 @@ class SegregationFIRFitWidget(Widget):
         h.xpanel('xvarlabel')
         h.xlabel(self.label)
         for amp in self.fir_widget.amps:
-            vp = ValuePanel(label=str(round(amp,2)) + " (nA)",slider=False,lower_limit=0,upper_limit=1000)
+            vp = ValuePanel(label=str(int(amp*1000)) + " (pA)",slider=False,lower_limit=0,upper_limit=1000)
             self.vps.append(vp)
         h.xbutton('Fit FIR Curve (Run) [Plots User FIR]', calculate)
         h.xpanel()
@@ -893,7 +913,7 @@ class FICurveWidget(Widget):
             self.cells.append(cell)
 
         self.lenvec = None
-        self.ampvec = h.Vector(self.amps)
+        self.ampvec = h.Vector([i*1e3 for i in self.amps])
 
         self.passive_amp = passive_amp/1e3
         self.passive_cell = eval('h.'+self.template_name+'()')
@@ -980,7 +1000,7 @@ class FICurveWidget(Widget):
                 cvgraph.color(1)
                 cvgraph.label(ctemplate_name + " FI Curve")
                 plot = lenvec.plot(cvgraph,ampvec,1,1)
-                cvgraph.size(0,max(camps),0,max(lenvec)+1)
+                cvgraph.size(0,max([i*1e3 for i in camps]),0,max(lenvec)+1)
                 
                 #cfir_widget.passive_vec[int(cfir_widget.tstop)-20]
                 index_v_rest = int(((1000/h.dt)/1000 * cfir_widget.tstart))
@@ -1325,7 +1345,7 @@ class CellTunerGUI:
 
         return
 
-    def write_hoc(self, filename):
+    def write_hoc(self, filename,write_cell_params=False):
         print("Writing hoc file to " + filename)
         if os.path.exists(filename):
             try:
@@ -1433,7 +1453,11 @@ class CellTunerGUI:
                             newline = True
                         if newline:
                             f.write("\n")
-
+            
+            # Define custom cell parameters here if present
+            if write_cell_params:
+                pass
+            
             for window_index, window in enumerate(self.display):
                 window_method_prefix = "DisplayWindow"
                 f.write("proc " + window_method_prefix + str(window_index+1) + "() { local i\n")
@@ -1469,7 +1493,7 @@ class CellTunerGUI:
 
             f.write("\n")
             for window_index, window in enumerate(self.display):
-                f.write(window_method_prefix + str(window_index+1) + "()")
+                f.write(window_method_prefix + str(window_index+1) + "()\n")
 
         return
 

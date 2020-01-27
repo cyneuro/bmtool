@@ -34,8 +34,10 @@ def check_neuron_installed(confirm=True):
 @click.option('--mod-folder', type=click.STRING, default=None, help="override the default simulation config mod file location")
 @click.option('--template', type=click.STRING, default=None, help="supply template name and skip interactive mode question")
 @click.option('--hoc', type=click.STRING, default=None, help="loads a single hoc file, best for directories with multiple NON-Template hoc files, specify --hoc TEMPLATE_FILE.hoc")
+@click.option('--prefab',type=click.BOOL,default=False,is_flag=True,help="Downloads a set of pre-defined cells to the current directory")
+@click.option('--prefab-repo', type=click.STRING, default=None, help="Override the github repository URL to download pre-defined cells from")
 @click.pass_context
-def cell(ctx,hoc_folder,mod_folder,template,hoc):
+def cell(ctx,hoc_folder,mod_folder,template,hoc,prefab,prefab_repo):
   
     if not check_neuron_installed():
         return   
@@ -838,7 +840,7 @@ def cell_vhsegbuild(ctx,title,tstop,outhoc,outfolder,outappend,debug,build,fminp
     sec_text = ctg.root_sec.hname().split('.')[-1]+"(.5)"
 
     plot_widget.add_expr(ctg.root_sec(0.5)._ref_v,sec_text)
-    plot_widget.add_expr(eval("fir_widget.passive_cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),"Passive @"+str(round(float(fir_widget.passive_amp),2))+"nA")
+    plot_widget.add_expr(eval("fir_widget.passive_cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),"Passive @"+str(int(fir_widget.passive_amp*1e3))+"pA")
     ctg.add_widget(window_index,column_index,plot_widget)
 
     ctg.add_widget(window_index,column_index,fir_widget)
@@ -912,11 +914,17 @@ def cell_vhsegbuild(ctx,title,tstop,outhoc,outfolder,outappend,debug,build,fminp
 @click.option('--eleak',type=click.STRING,default=None,help="Specify the eleak var manually")
 @click.option('--gleak',type=click.STRING,default=None,help="Specify the gleak var manually")
 @click.option('--othersec',type=click.STRING,default=None,help="Specify other sections that a window should be generated for (Comma separated, eg: dend[0],dend[1])")
+@click.option('--clampsec',type=click.STRING,default=None,help="Specify sections that a current clamp should be attached. Root section will always have a clamp. (Comma separated, eg: dend[0],dend[1])")
+@click.option('--synsec',type=click.STRING,default=None,help="Specify sections that a synapse should be attached. Exp2Syn default, unless --syntype specified. (Comma separated, eg: dend[0],dend[1])")
+@click.option('--syntype',type=click.STRING,default="Exp2Syn",help="Specify the synapse mechanism that will be attached to the cell (Single type)")
+@click.option('--synloc',type=click.STRING,default="0.5",help="Specify the synapse location (Default: 0.5)")
 @click.pass_context
-def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fincrement,infvars,segvars,eleak,gleak,othersec):
+def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fincrement,infvars,segvars,eleak,gleak,othersec,clampsec,synsec,syntype,synloc):
     
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget,PointMenuWidget, MultiSecMenuWidget
-    from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget, AutoVInitWidget
+    from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget, AutoVInitWidget, SingleButtonWidget
+    from .util import tk_email_input
+
     hoc_folder = ctx.obj["hoc_folder"]
     mod_folder = ctx.obj["mod_folder"]
     hoc_template_file = ctx.obj["hoc_template_file"]
@@ -1002,7 +1010,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     if infvars:
         infvars = infvars.split(",")
     else:
-        question_text = 'Select inf variables to plot (space bar to select): '
+        question_text = 'Select inf variables to plot (with respect to membrane potential) (space bar to select): '
         inf_choices = inf_choices + [list_global_text]
         infvars = questionary.checkbox(
             question_text,
@@ -1031,6 +1039,31 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
             choices=global_choices).ask()
             segvars = segvars + globalsegvars
 
+    #clampsec,synsec,syntype
+    clampme = []
+    synme = []
+    if selected_segments:
+        if not clampsec:
+            do_clamps = questionary.confirm("Attach a current clamp to other section? (root section ["+section_selected+"] automatically attached) (default: No)",default=False).ask()        
+
+            if do_clamps:
+                clampme = questionary.checkbox(
+                'Select other sections to attach a current clamp to (space bar to select):',
+                choices=selected_segments).ask()
+        else:
+            clampsec = clampsec.split(",")
+
+        if not synsec:
+            do_syns = questionary.confirm("Attach a synapse to other section? (root section ["+section_selected+"] automatically attached) (default: No)",default=False).ask()        
+
+            if do_syns:
+                synme = questionary.checkbox(
+                'Select sections to attach an artifical synapse (space bar to select):',
+                choices=selected_segments).ask()
+        else:
+            synsec.split(",")
+        
+    
     
     #FIR Properties
     min_pa = fminpa
@@ -1059,20 +1092,25 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     other_cells = fir_widget.cells + [fir_widget.passive_cell]
 
     for segment in selected_segments:
-        window_index = ctg.add_window(title="(" + segment + ")" + title, width=650)
+        width = 650
+        if segment in synme:
+            width = 850
+        window_index = ctg.add_window(title="(" + segment + ")" + title, width=width)
         # Column 1
         column_index = ctg.add_column(window_index)
         plot_widget = PlotWidget(tstop=tstop)
         sec_text = segment+"(.5)"
         cellsec = eval('ctg.template.'+segment)
-        plot_widget.add_expr(cellsec(0.5)._ref_v,sec_text)
+        plot_widget.add_expr(cellsec(0.5)._ref_v,sec_text,hoc_text="%s."+segment+".v(0.5)",hoc_text_obj=ctg.template)
 
         ctg.add_widget(window_index,column_index,plot_widget)
 
-        widget = PointMenuWidget(None)
-        iclamp = widget.iclamp(cellsec(float(inj_loc)),0,0,0)
-        ctg.register_iclamp(iclamp)
-        widget_index = ctg.add_widget(window_index, column_index,widget)
+        if segment in clampme:
+            widget = PointMenuWidget(None)
+            iclamp = widget.iclamp(cellsec(float(inj_loc)),0,0,0)
+            ctg.register_iclamp(iclamp)
+            widget_index = ctg.add_widget(window_index, column_index,widget)
+            
         
         widget = ControlMenuWidget()
         ctg.add_widget(window_index,column_index,widget)
@@ -1081,6 +1119,26 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
         column_index = ctg.add_column(window_index)
         widget = MultiSecMenuWidget(ctg.root_sec.cell(), other_cells,segment,ctg.mechanism_dict)
         ctg.add_widget(window_index,column_index,widget)
+
+        if segment in synme:
+            column_index = ctg.add_column(window_index)
+
+            interval = 50 #int(questionary.text("Enter default netstim interval (ms (mean) time between spikes): ",default="50").ask())
+            number = 0 #int(questionary.text("Enter default netstim number of events ((average) number of spikes): ",default="10").ask())
+            start = 0 #int(questionary.text("Enter default netstim start (ms (most likely) start time of first spike): ",default="0").ask())
+            noise = 0 #float(questionary.text("Enter default netstim noise (range 0 to 1. Fractional randomness.): ",default="0").ask())
+            weight = 1 #float(questionary.text("Enter default netcon weight (range 0 to 1. Default: 1): ",default="1").ask())
+            
+            widget = PointMenuWidget(None)
+            widget_extra = PointMenuWidget(None)
+            synapse = widget_extra.synapse(eval("ctg.template."+segment),synloc,syntype)
+            netstim,netcon = widget.netstim(interval,number,start,noise,target=synapse,weight=weight)
+            ctg.register_netstim(netstim)
+            ctg.register_netcon(netcon)
+            ctg.register_synapse(synapse)
+
+            widget_index_extra = ctg.add_widget(window_index, column_index, widget_extra)
+            widget_index = ctg.add_widget(window_index, column_index, widget)
     
 
     #Window 1
@@ -1092,8 +1150,8 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     plot_widget = PlotWidget(tstop=tstop)
     sec_text = ctg.root_sec.hname().split('.')[-1]+"(.5)"
 
-    plot_widget.add_expr(ctg.root_sec(0.5)._ref_v,sec_text)
-    plot_widget.add_expr(eval("fir_widget.passive_cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),"Passive @"+str(round(float(fir_widget.passive_amp),2))+"nA")
+    plot_widget.add_expr(ctg.root_sec(0.5)._ref_v,sec_text,hoc_text="%s."+section_selected+".v(0.5)",hoc_text_obj=ctg.template)
+    plot_widget.add_expr(eval("fir_widget.passive_cell." + rec_sec_split + "("+ rec_loc+")._ref_v"),"Passive @"+str(int(fir_widget.passive_amp*1e3))+"pA")
     ctg.add_widget(window_index,column_index,plot_widget)
 
     ctg.add_widget(window_index,column_index,fir_widget)
@@ -1115,6 +1173,23 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     #widget = SecMenuWidget(ctg.root_sec,x=float(inj_loc))
     #widget_index = ctg.add_widget(window_index, column_index,widget) 
 
+    interval = 50 #int(questionary.text("Enter default netstim interval (ms (mean) time between spikes): ",default="50").ask())
+    number = 0 #int(questionary.text("Enter default netstim number of events ((average) number of spikes): ",default="10").ask())
+    start = 0 #int(questionary.text("Enter default netstim start (ms (most likely) start time of first spike): ",default="0").ask())
+    noise = 0 #float(questionary.text("Enter default netstim noise (range 0 to 1. Fractional randomness.): ",default="0").ask())
+    weight = 1 #float(questionary.text("Enter default netcon weight (range 0 to 1. Default: 1): ",default="1").ask())
+    
+    widget = PointMenuWidget(None)
+    widget_extra = PointMenuWidget(None)
+    synapse = widget_extra.synapse(eval("ctg.template."+section_selected),synloc,syntype)
+    netstim,netcon = widget.netstim(interval,number,start,noise,target=synapse,weight=weight)
+    ctg.register_netstim(netstim)
+    ctg.register_netcon(netcon)
+    ctg.register_synapse(synapse)
+
+    widget_index_extra = ctg.add_widget(window_index, column_index, widget_extra)
+    widget_index = ctg.add_widget(window_index, column_index, widget)
+
     #Column 3
     column_index = ctg.add_column(window_index)
     widget = ControlMenuWidget()
@@ -1133,6 +1208,15 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     vinit_widget = AutoVInitWidget(fir_widget)
     widget_index = ctg.add_widget(window_index, column_index,vinit_widget)
 
+    def email_func():
+        addr = tk_email_input()
+        ctg.write_hoc("run_experiment.hoc")
+
+        print(addr)
+
+    emailer_widget = SingleButtonWidget("Email this model",email_func)
+    widget_index = ctg.add_widget(window_index, column_index,emailer_widget)
+
     #Column 4
     column_index = ctg.add_column(window_index)
     
@@ -1146,6 +1230,8 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     ctg.add_widget(window_index,column_index,widget)
 
     ctg.show(auto_run=True,on_complete_fih=text_widget.update_fir_passive,run_count=2)
+
+    
 
     return
 
