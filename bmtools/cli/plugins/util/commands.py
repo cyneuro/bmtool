@@ -1298,7 +1298,7 @@ TB
 University of Missouri
 Cyneuro.org
 
-        """.format(template,experiment_hoc,)
+        """.format(template,experiment_hoc,usernotes)
         if addr:
             send_mail("bmtool@cyneuro.org",[addr],message_subject,message_text,[])
 
