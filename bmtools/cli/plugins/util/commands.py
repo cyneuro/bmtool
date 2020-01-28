@@ -956,9 +956,9 @@ def cell_vhsegbuild(ctx,title,tstop,outhoc,outfolder,outappend,debug,build,fminp
 @cell.command('vhseg', help="Alturki et al. (2016) V1/2 Automated Segregation Interface, simplify tuning by separating channel activation")
 @click.option('--title',type=click.STRING,default=None)
 @click.option('--tstop',type=click.INT,default=1150)
-@click.option('--outhoc',type=click.STRING,default="segmented_template.hoc",help="Specify the file you want the modified cell template written to")
-@click.option('--outfolder',type=click.STRING,default="./",help="Specify the directory you want the modified cell template and mod files written to (default: _seg)")
-@click.option('--outappend',type=click.BOOL,default=False,is_flag=True,help="Append out instead of overwriting (default: False)")
+#@click.option('--outhoc',type=click.STRING,default="segmented_template.hoc",help="Specify the file you want the modified cell template written to")
+#@click.option('--outfolder',type=click.STRING,default="./",help="Specify the directory you want the modified cell template and mod files written to (default: _seg)")
+#@click.option('--outappend',type=click.BOOL,default=False,is_flag=True,help="Append out instead of overwriting (default: False)")
 #@click.option('--skipmod',type=click.BOOL,default=False,is_flag=True,help="Skip new mod file generation")
 @click.option('--debug',type=click.BOOL,default=False,is_flag=True,help="Print all debug statements")
 @click.option('--fminpa',type=click.INT,default=0,help="Starting FIR Curve amps (default: 0)")
@@ -974,11 +974,11 @@ def cell_vhsegbuild(ctx,title,tstop,outhoc,outfolder,outappend,debug,build,fminp
 @click.option('--syntype',type=click.STRING,default="Exp2Syn",help="Specify the synapse mechanism that will be attached to the cell (Single type)")
 @click.option('--synloc',type=click.STRING,default="0.5",help="Specify the synapse location (Default: 0.5)")
 @click.pass_context
-def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fincrement,infvars,segvars,eleak,gleak,othersec,clampsec,synsec,syntype,synloc):
+def cell_vhseg(ctx,title,tstop,debug,fminpa,fmaxpa,fincrement,infvars,segvars,eleak,gleak,othersec,clampsec,synsec,syntype,synloc):
     
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget,PointMenuWidget, MultiSecMenuWidget
     from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget, AutoVInitWidget, SingleButtonWidget
-    from .util import tk_email_input, send_mail
+    from .util import tk_email_input, send_mail, popupmsg
 
     hoc_folder = ctx.obj["hoc_folder"]
     mod_folder = ctx.obj["mod_folder"]
@@ -998,6 +998,8 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
         choices=hoc_templates).ask()
     
     ctg.load_template(template)
+
+    original_cell_values = ctg.get_current_cell_values()
 
     if prefab_dict.get("cells") and prefab_dict["cells"].get(template) and prefab_dict["cells"][template].get("vhseg"):
         prefab_dictvh = prefab_dict["cells"][template]["vhseg"]
@@ -1299,16 +1301,18 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
     vinit_widget = AutoVInitWidget(fir_widget)
     widget_index = ctg.add_widget(window_index, column_index,vinit_widget)
 
+    
+
     def email_func():
         addr = tk_email_input()
         if addr:
             usernotes = tk_email_input(title="Usernotes",prompt="Enter any notes you want to include with the email. Click cancel for no notes, and send.")
             experiment_hoc = "run_experiment.hoc"
-            ctg.write_hoc(experiment_hoc,mechanism_dir="./",template_dir="./")
-
+            changed_cell_values = ctg.get_current_cell_values(change_dict=original_cell_values)
+            ctg.write_hoc(experiment_hoc,mechanism_dir="./",template_dir="./", val_set={ctg.template:changed_cell_values})
+            report_file = write_report(exp_hoc=experiment_hoc)
             template_zip = template+".zip"
 
-            source = "bmtool-cell-prefab-master"
             dirpath = tempfile.mkdtemp()
 
             for file in glob.glob(os.path.join(hoc_folder,"*.hoc")):
@@ -1317,6 +1321,7 @@ def cell_vhseg(ctx,title,tstop,outhoc,outfolder,outappend,debug,fminpa,fmaxpa,fi
                 shutil.copy2(file,dirpath)
             
             shutil.copy2(experiment_hoc,dirpath)
+            shutil.copy2(report_file,dirpath)
             shutil.make_archive(template,"zip",dirpath)
             shutil.rmtree(dirpath)
 
@@ -1334,7 +1339,7 @@ Thank you for using bmtool. Your "{}" model cell is enclosed in the attached zip
 1. You'll need to have NEURON installed (https://neuron.yale.edu/)
 2. Unzip the {} file.
 3. Compile the .mod files using `mknrndll` (Windows) or `nrnivmodl` (Mac/Linux), included with NEURON. 
-4. Finally, double clicking the `{}` file to view the user interface.
+4. Finally, double click the `{}` file to view the user interface.
 
 {}
 
@@ -1350,11 +1355,22 @@ https://github.com/tjbanks/bmtool
             send_mail("BMTool@cyneuro.org",[addr],message_subject,message_text,files=[os.path.abspath(template_zip)])
 
             os.remove(experiment_hoc)
+            os.remove(report_file)
             os.remove(template_zip)
 
 
+    def save_func():
+        experiment_hoc = "run_experiment.hoc"
+        write_report(experiment_hoc)
+        changed_cell_values = ctg.get_current_cell_values(change_dict=original_cell_values)
+        ctg.write_hoc(experiment_hoc,val_set={ctg.template:changed_cell_values})
+        popupmsg("Saved to ./"+experiment_hoc)
+
     emailer_widget = SingleButtonWidget("Email this model",email_func)
     widget_index = ctg.add_widget(window_index, column_index,emailer_widget)
+
+    save_widget = SingleButtonWidget("Save Hoc GUI with parameters",save_func)
+    widget_index = ctg.add_widget(window_index, column_index,save_widget)
 
     #Column 4
     column_index = ctg.add_column(window_index)
@@ -1362,11 +1378,78 @@ https://github.com/tjbanks/bmtool
     widget = SegregationSelectorWidget(ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict,all_sec=True,variables=segvars)
     ctg.add_widget(window_index,column_index,widget)
 
-    widget = SegregationPassiveWidget(fir_widget,ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict,gleak_var=gleak,eleak_var=eleak)
+    segpassivewidget = SegregationPassiveWidget(fir_widget,ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict,gleak_var=gleak,eleak_var=eleak)
     ctg.add_widget(window_index,column_index,widget)
 
     widget = SegregationFIRFitWidget(fir_widget)
     ctg.add_widget(window_index,column_index,widget)
+
+
+    def write_report(exp_hoc=""):
+        report_file = "Report and Instructions.txt"
+
+        uvrest = str(round(fir_widget.v_rest,2))
+        if segpassivewidget.v_rest:
+            uvrest = str(round(segpassivewidget.v_rest.val,2))
+        
+        urin = str(round(fir_widget.r_in/1e6,2))
+        if segpassivewidget.r_in:
+            urin = str(round(segpassivewidget.r_in.val,2))
+
+        utau = str(round(fir_widget.tau,2))
+        if segpassivewidget.tau:
+            utau = str(round(segpassivewidget.tau.val,2))
+
+        vrest = str(round(fir_widget.v_rest,2))
+        rin = str(round(fir_widget.r_in/1e6,2))
+        tau = str(round(fir_widget.tau,2))
+
+        spikes = [str(round(i,0)) for i in fir_widget.plenvec]
+        amps = fir_widget.amps
+        ficurve = " | ".join("["+str(round(a*1e3,0))+" pA]:"+n for a,n in zip(amps,spikes))
+
+        report_text = """
+Report generated by BMTools (https://github.com/tjbanks/bmtools)
+
+Thank you for using bmtool to model your "{}" cell. To view your cell:
+
+1. You'll need to have NEURON installed (https://neuron.yale.edu/)
+2. Compile the .mod files using `mknrndll` (Windows) or `nrnivmodl` (Mac/Linux), included with NEURON. 
+3. Finally, double click the `{}` file to view the user interface.
+
+Cell template: {}
+
+=== User supplied info (can be prefilled) ===
+
+Passive Properties:
+V_rest = {} (mV)
+R_in = {} (MOhms)
+tau = {} (ms)
+
+=== Cell info ===
+
+Passive Properties:
+V_rest = {} (mV)
+R_in = {} (MOhms)
+tau = {} (ms)
+
+FI Curve: 
+{}
+
+Cell values:
+
+""".format(template,exp_hoc,template,uvrest,urin,utau,vrest,rin,tau,ficurve)
+        changed_cell_values = ctg.get_current_cell_values()
+
+        with open(report_file,"w+") as f:
+            f.write(report_text)
+            for sec,vals in changed_cell_values.items():
+                f.write(sec+"\n")
+                for key,val in vals.items():
+                    f.write("\t" + key + " = " + str(round(val,6)) + "\n")
+
+        return report_file
+
 
     ctg.show(auto_run=True,on_complete_fih=text_widget.update_fir_passive,run_count=2)
 

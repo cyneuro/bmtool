@@ -794,6 +794,18 @@ def tk_email_input(title="Send Model Files (with simplified GUI)",prompt="Enter 
     user_inp = simpledialog.askstring(title=title, prompt=prompt)
     return user_inp
 
+def popupmsg(msg):
+    import tkinter as tk
+    from tkinter import ttk
+    popup = tk.Tk()
+    popup.wm_title("!")
+    NORM_FONT = ("Helvetica", 10)
+    label = ttk.Label(popup, text=msg, font=NORM_FONT)
+    label.pack(side="top", fill="x", pady=10)
+    B1 = ttk.Button(popup, text="Okay", command = popup.destroy)
+    B1.pack()
+    popup.mainloop()
+
 import smtplib
 from os.path import basename
 from email.mime.application import MIMEApplication

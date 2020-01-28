@@ -1345,7 +1345,7 @@ class CellTunerGUI:
 
         return
 
-    def write_hoc(self, filename,write_cell_params=False,mechanism_dir=None,template_dir=None):
+    def write_hoc(self, filename,mechanism_dir=None,template_dir=None,val_set=None):
         if not mechanism_dir:
             mechanism_dir = self.mechanism_dir
         if not template_dir:
@@ -1460,8 +1460,13 @@ class CellTunerGUI:
                             f.write("\n")
             
             # Define custom cell parameters here if present
-            if write_cell_params:
-                pass
+            if val_set:
+                for cell,section in val_set.items():
+                    cell_prefix = self.hoc_ref(cell)
+                    for section,values in section.items():
+                        for param,val in values.items():
+                            f.write(cell_prefix+"."+section+"."+param+" = " + str(round(val,12))+"\n")
+                f.write("\n")
             
             for window_index, window in enumerate(self.display):
                 window_method_prefix = "DisplayWindow"
@@ -1990,3 +1995,72 @@ class CellTunerGUI:
             self.templates = [x for x in h_loaded if x not in h_base]
 
         return self.templates
+
+    def get_current_cell_values(self,cell=None,change_dict=None):
+        if not cell:
+            cell = self.template       
+        
+        #change_dict={'soma': {'g_kdrseg': 0.0, 'gbar_kdrseg': 0.3, 'ik_kdrseg': 0.0, 'inf_kdrseg': 0.0, 'n_kdrseg': 0.0, 'nk_kdrseg': -11.8, 'nseg_kdrseg': -999.0, 'nvhalf_kdrseg': 12.3, 'tau_kdrseg': 0.0, 'g_naseg': 0.0, 'gbar_naseg': 0.3, 'h_naseg': 0.0, 'hinf_naseg': 0.0, 'htau_naseg': 0.0, 'ina_naseg': 0.0, 'm_naseg': 0.0, 'minf_naseg': 0.0, 'mk_naseg': -5.29, 'mseg_naseg': -999.0, 'mtau_naseg': 0.0, 'mvhalf_naseg': 25.5, 'gbar_leak': 3e-05, 'ileak_leak': 0.0, 'dik_dv_': 0.0, 'ek': -80.0, 'ik': 0.0, 'ki': 54.4, 'ko': 2.5, 'dina_dv_': 0.0, 'ena': 50.0, 'ina': 0.0, 'nai': 10.0, 'nao': 140.0, 'dileak_dv_': 0.0, 'eleak': -60.0, 'ileak': 0.0, 'leaki': 1.0, 'leako': 1.0}}
+        allsec = [a for a in h.allsec()]
+        primary_cell_secs = []
+        for s in allsec:
+            if s.cell() == cell:
+                primary_cell_secs.append(s)
+        
+        sections = {}
+
+        for cellsec in primary_cell_secs:
+            mechs = [mech.name() for mech in cellsec(0.5) if not mech.name().endswith("_ion")]
+            ions = [mech.name() for mech in cellsec(0.5) if mech.name().endswith("_ion")]
+            cellmechvars = []
+    
+            for mech in mechs:
+                if hasattr(cellsec(0.5),mech):
+                    mechobj = getattr(cellsec(0.5),mech)
+                else:
+                    print(mech + " not found on " + cellsec.name())
+                    continue
+                
+                attribs = [at for at in dir(mechobj) if not at.startswith("__") and at !="name"]
+                for attrib in attribs:
+                    ref = attrib+"_"+mech
+                    if hasattr(cellsec(0.5),ref):
+                        cellmechvars.append(ref)
+
+            for ion in ions:
+                if hasattr(cellsec(0.5),ion):
+                    ionobj = getattr(cellsec(0.5),ion)
+                else:
+                    print(ion + " not found on " + cellsec.name())
+                    continue
+                attribs = [at for at in dir(ionobj) if not at.startswith("__") and at !="name"]
+                for attrib in attribs:
+                    ref = attrib
+                    if hasattr(cellsec(0.5),ref):
+                        cellmechvars.append(ref)
+
+            secname = cellsec.hname().split(".")[-1]
+            sections[secname] = cellmechvars
+
+        ret = {}
+        for secname, values in sections.items():
+            valpairs = {}
+            compared = None
+            if change_dict and change_dict.get(secname):
+                compared = change_dict.get(secname)
+
+            for v in values:
+                if hasattr(eval("cell."+secname),v):
+                    key = v
+                    value = eval("cell."+secname+"."+v)
+                    add = True
+                    if compared and (compared.get(key) or (compared.get(key) == 0 and value == 0)):
+                        if compared.get(key) == value:
+                            add = False
+                    if add:
+                        valpairs[key]=value
+
+            ret[secname] = valpairs
+        #import pdb;pdb.set_trace()
+
+        return ret
