@@ -2012,7 +2012,7 @@ class CellTunerGUI:
         for cellsec in primary_cell_secs:
             mechs = [mech.name() for mech in cellsec(0.5) if not mech.name().endswith("_ion")]
             ions = [mech.name() for mech in cellsec(0.5) if mech.name().endswith("_ion")]
-            cellmechvars = []
+            cellmechvars = ["cm","diam"]
     
             for mech in mechs:
                 if hasattr(cellsec(0.5),mech):

@@ -1379,7 +1379,7 @@ https://github.com/tjbanks/bmtool
     ctg.add_widget(window_index,column_index,widget)
 
     segpassivewidget = SegregationPassiveWidget(fir_widget,ctg.root_sec.cell(), other_cells,section_selected,ctg.mechanism_dict,gleak_var=gleak,eleak_var=eleak)
-    ctg.add_widget(window_index,column_index,widget)
+    ctg.add_widget(window_index,column_index,segpassivewidget)
 
     widget = SegregationFIRFitWidget(fir_widget)
     ctg.add_widget(window_index,column_index,widget)
