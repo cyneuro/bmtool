@@ -1339,6 +1339,11 @@ def cell_vhseg(ctx,title,tstop,debug,fminpa,fmaxpa,fincrement,infvars,segvars,el
             for file in glob.glob(os.path.join(mod_folder,"*.mod")):
                 shutil.copy2(file,dirpath)
             
+            mod_mod_folder = os.path.join(mod_folder,"modfiles")
+            if os.path.exists(mod_mod_folder):
+                for file in glob.glob(os.path.join(mod_mod_folder,"*.mod")):
+                    shutil.copy2(file,dirpath)
+            
             shutil.copy2(experiment_hoc,dirpath)
             shutil.copy2(report_file,dirpath)
             shutil.make_archive(template,"zip",dirpath)
