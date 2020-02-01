@@ -42,8 +42,9 @@ def check_neuron_installed(confirm=True):
 @click.option('--prefab-repo', type=click.STRING, default="https://github.com/tjbanks/bmtool-cell-prefab", help="Override the github repository URL to download pre-defined cells from (default: https://github.com/tjbanks/bmtool-cell-prefab)")
 @click.option('--prefab-branch', type=click.STRING, default="master", help="Override the github repository branch (default: master)")
 @click.option('--prefab-refresh',type=click.BOOL,default=False,is_flag=True,help="Delete cached cells directory and re-download from prefab repository (WARNING: deletes everything in the folder)")
+@click.option('--prefab-no-compile',type=click.BOOL,default=False,is_flag=True,help="Don't attempt to (re-)compile prefab cell mod files")
 @click.pass_context
-def cell(ctx,hoc_folder,mod_folder,template,hoc,prefab,prefab_repo,prefab_branch,prefab_refresh):
+def cell(ctx,hoc_folder,mod_folder,template,hoc,prefab,prefab_repo,prefab_branch,prefab_refresh,prefab_no_compile):
   
     if not check_neuron_installed():
         return   
@@ -54,49 +55,67 @@ def cell(ctx,hoc_folder,mod_folder,template,hoc,prefab,prefab_repo,prefab_branch
     prefab_repo_name = prefab_repo.split("/")[-1]
     prefab_directory = "./" + prefab_repo_name + "-" + prefab_branch
     prefab_dict_file = "PREFAB.bmtool"
-    prefab_template_file = "templates.hoc"
+    prefab_template_file = "template.hoc"
+    prefab_location = ""
 
+    dl = False
     if prefab: # User has elected to use prefab cells
         if os.path.exists("./"+prefab_dict_file): #If the current directory contains the repository continue
-            mod_folder = "./" + os.path.relpath("./").replace("\\","/")
-            hoc_folder = "./" + os.path.relpath("./").replace("\\","/")
-            hoc_template_file = prefab_template_file
+            prefab_location = "./"
+
+            #mod_folder = "./" + os.path.relpath("./").replace("\\","/")
+            #hoc_folder = "./" + os.path.relpath("./").replace("\\","/")
+            #hoc_template_file = prefab_template_file
             if prefab_refresh:
                 click.echo(colored.red("Refresh selected -- Change directory to parent directory (cd ..) and re-run to refresh"))
 
         else: # Check if current directory contains the repository
-            dl = True
+
             if os.path.exists("./" + prefab_directory + "/" + prefab_dict_file):
-                dl = False
                 if prefab_refresh:
                     shutil.rmtree("./"+prefab_directory)
                     dl = True
+            else: # The folder/file we're looking for doesn't exist
+                dl = True
+
             if dl: # Download the repo
                 click.echo(colored.green("Downloading premade cells from " + prefab_zip_url))
                 import requests, zipfile, io
                 r = requests.get(prefab_zip_url)
                 z = zipfile.ZipFile(io.BytesIO(r.content))
                 z.extractall()
-                click.echo(colored.green("Compiling mod files..."))
-                cwd = os.getcwd()
-
-                os.chdir(prefab_directory)
-                ret = os.system("nrnivmodl")
-                os.chdir(cwd)
-
-                if not ret:
-                    click.echo(colored.green("COMPILATION COMPLETE"))
-                else:
-                    click.echo(colored.red("nrnivmodl may not have been run, execute nrnivmodl or mknrndll manually in the `")+colored.green(prefab_directory)+colored.red("` folder then press enter..."))
-                    input()
                 
-            mod_folder = "./" + os.path.relpath(prefab_directory).replace("\\","/")
-            hoc_folder = "./" + os.path.relpath(prefab_directory).replace("\\","/")
-            hoc_template_file = prefab_template_file
+            prefab_location = "./" + os.path.relpath(prefab_directory).replace("\\","/")
+  
             
-        with open(os.path.join(hoc_folder,prefab_dict_file), 'r') as f:
+        with open(os.path.join(prefab_location,prefab_dict_file), 'r') as f:
             prefab_dict = json.load(f)
 
+        
+        prefab_cells = prefab_dict.get("cells") or []
+        
+        if not template:
+            template = questionary.select(
+            "Select a cell:",
+            choices=prefab_cells).ask()
+
+        mod_folder = prefab_location + "/" + prefab_cells.get(template).get("mod_folder").replace("\\","/")
+        hoc_folder = prefab_location + "/" + prefab_cells.get(template).get("hoc_folder").replace("\\","/")
+        hoc_template_file =  prefab_cells.get(template).get("hoc_template_file").replace("\\","/")
+
+        if not prefab_no_compile:
+            click.echo(colored.green("Compiling mod files..."))
+            cwd = os.getcwd()
+            os.chdir(mod_folder)
+            ret = os.system("nrnivmodl")
+            os.chdir(cwd)
+
+            if not ret:
+                click.echo(colored.green("COMPILATION COMPLETE"))
+            else:
+                click.echo(colored.red("nrnivmodl may not have been run, execute nrnivmodl or mknrndll manually in the `")+colored.green(os.path.abspath(mod_folder))+colored.red("` folder then press enter... SKIP THIS IF YOU HAVE ALREADY COMPILED"))
+                input()
+            
     else:
         if hoc:
             if not hoc_folder:
@@ -1001,7 +1020,7 @@ def cell_vhseg(ctx,title,tstop,debug,fminpa,fmaxpa,fincrement,infvars,segvars,el
 
     original_cell_values = ctg.get_current_cell_values()
 
-    if prefab_dict.get("cells") and prefab_dict["cells"].get(template) and prefab_dict["cells"][template].get("vhseg"):
+    if prefab_dict and prefab_dict.get("cells") and prefab_dict["cells"].get(template) and prefab_dict["cells"][template].get("vhseg"):
         prefab_dictvh = prefab_dict["cells"][template]["vhseg"]
 
     if not title:
@@ -1305,7 +1324,7 @@ def cell_vhseg(ctx,title,tstop,debug,fminpa,fmaxpa,fincrement,infvars,segvars,el
 
     def email_func():
         addr = tk_email_input()
-        if addr:
+        if addr is not None:
             usernotes = tk_email_input(title="Usernotes",prompt="Enter any notes you want to include with the email. Click cancel for no notes, and send.")
             experiment_hoc = "run_experiment.hoc"
             changed_cell_values = ctg.get_current_cell_values(change_dict=original_cell_values)
@@ -1325,7 +1344,7 @@ def cell_vhseg(ctx,title,tstop,debug,fminpa,fmaxpa,fincrement,infvars,segvars,el
             shutil.make_archive(template,"zip",dirpath)
             shutil.rmtree(dirpath)
 
-            if usernotes:
+            if usernotes is not None:
                 usernotes = "User notes: " + usernotes
             else:
                 usernotes = ""
@@ -1364,7 +1383,7 @@ https://github.com/tjbanks/bmtool
         write_report(experiment_hoc)
         changed_cell_values = ctg.get_current_cell_values(change_dict=original_cell_values)
         ctg.write_hoc(experiment_hoc,val_set={ctg.template:changed_cell_values})
-        popupmsg("Saved to ./"+experiment_hoc)
+        popupmsg("Saved to " + os.path.abspath("./"+experiment_hoc))
 
     emailer_widget = SingleButtonWidget("Email this model",email_func)
     widget_index = ctg.add_widget(window_index, column_index,emailer_widget)
