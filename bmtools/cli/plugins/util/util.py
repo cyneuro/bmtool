@@ -6,8 +6,8 @@ import numpy as np
 from numpy import genfromtxt
 
 #from bmtk.utils.io.cell_vars import CellVarsFile
-from bmtk.analyzer.cell_vars import _get_cell_report
-from bmtk.analyzer.io_tools import load_config
+#from bmtk.analyzer.cell_vars import _get_cell_report
+#from bmtk.analyzer.io_tools import load_config
 
 def get_argparse(use_description):
     parser = argparse.ArgumentParser(description=use_description, formatter_class=RawTextHelpFormatter,usage=SUPPRESS)
@@ -170,7 +170,7 @@ class CellVarsFile(object):
         return data.T if multi_compartments else data
     
 def load_config(config_file):
-    import bmtk.simulator.utils.config as config
+    import bmtk.simulator.core.simulation_config as config
     conf = config.from_json(config_file)
     #from bmtk.simulator import bionet
     #conf = bionet.Config.from_json(config_file, validate=True)
@@ -554,7 +554,8 @@ def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sou
     var_report = None
     if time>=0 and report:
         cfg = load_config(config)
-        report_full, report_file = _get_cell_report(config,report)
+        #report_full, report_file = _get_cell_report(config,report)
+        report_file = report # Same difference
         var_report = EdgeVarsFile(os.path.join(cfg['output']['output_dir'],report_file+'.h5'))
 
     def weight_hist_relationship(**kwargs):
@@ -736,7 +737,8 @@ def get_synapse_vars(config,report,var_name,target_gids,source_gids=None,compart
     """
     if not var_report:
         cfg = load_config(config)
-        report, report_file = _get_cell_report(config,report)
+        #report, report_file = _get_cell_report(config,report)
+        report_file = report # Same difference
         var_report = EdgeVarsFile(os.path.join(cfg['output']['output_dir'],report_file+'.h5'))
 
     if type(target_gids) is int:
