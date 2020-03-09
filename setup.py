@@ -25,8 +25,7 @@ setup(
         'numpy',
         'pandas',
         'questionary',
-        'pynmodlt',
-        'smtplib'
+        'pynmodlt'
     ],
     classifiers=[
         'Intended Audience :: Developers',
