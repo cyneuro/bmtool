@@ -57,6 +57,149 @@ Commands:
 ```
 ![bmtools](./figure.png "Positions Figure")
 
+## Plotting Configuration
+
+BMTools utilizes the default `simulation-config.json` file to know which data files built by BMTK to read. to change this, specify the config after the `plot` command. Eg:
+
+```
+bmtool plot --config simulation-config-23.json [FUNCTION] 
+```
+
+## Ploting Connections
+
+All connection tools can be customized by supplying additional arguments. 
+
+```
+Options:
+  --title TEXT      change the plot's title
+  --save-file TEXT  save plot to path supplied
+  --sources TEXT    comma separated list of source node types [default:all]
+  --targets TEXT    comma separated list of target node types [default:all]
+  --sids TEXT       comma separated list of source node identifiers
+                    [default:node_type_id]
+  --tids TEXT       comma separated list of target node identifiers
+                    [default:node_type_id]
+  --no-prepend-pop  When set don't prepend the population name to the unique
+                    ids [default:False]
+```
+
+#### `--sources`  and `--targets`
+Are supplied as comma separated lists and corrospond with the population name specified in your model. Eg:
+```
+#initialize the networks in build_network.py
+net = NetworkBuilder('hippocampus')
+exp0net = NetworkBuilder('exp0input')
+```
+Default behavior is to plot connections between all populations but you can specify only a few to simplify your plots.
+
+#### `--sids` and `--tids`
+Comma separated lists of node identifiers replace the default `cell_id` automatically given to a cell population by BMTK. Any parameter passed to `NetworkBuilder.add_nodes` is stored in network `.h5` files and can be used to identify cells while connecting or producing plots. Eg:
+
+```
+# Adding nodes in build_network.py
+net.add_nodes(N=inpTotal, pop_name='EC',
+    positions=p_EC,
+    model_type='biophysical',
+    model_template='hoc:IzhiCell_EC2',
+    morphology='blank.swc'
+    )
+```
+We could then use the pop_name to alter the output of our connection plots.
+
+```
+bmtool plot connection --sids pop_name --tids pop_name [FUNCTION]
+```
+#### `--no-prepend-pop`
+
+Default behavior of bmtools is to print the population name before the cell id (or sid/tid) followed by an underscore. Eg: `hippocampus_100`. By supplying `--no-prepend-pop` the cell name becomes `100` unless specified otherwise.
+
+#### `All together`
+
+Using these optional switches we can see the difference in our plot output below.
+
+```
+bmtool plot connection total
+```
+vs.
+```
+bmtool plot connection --sources hippocampus --targets hippocampus --sids pop_name --tids pop_name --no-prepend-pop --title 'Hippocampus Total Connections' total
+```
+![bmtools](./connection.png "Connection Figure")
+
+### Plot Total Connections
+
+To plot the total number of connections between two populations of cells run 
+```
+bmtool plot connection total
+```
+Remember to customize the output using the instructions above.
+
+![bmtools](./connection_total.png "Connection Total Figure")
+
+### Plot Average Convergence/Divergence
+
+To plot the average convergence or divergence of a single cell excute one of the following commands:
+
+```
+bmtool plot connection convergence
+bmtool plot connection divergence
+```
+![bmtools](./connection_con.png "Connection Convergence Figure")
+
+### Plot Connection Diagram
+
+To plot a rough sketch of cell type connectivity and the type of synapse used between cells run:
+
+```
+bmtool plot connection network-graph
+```
+![bmtools](./connection_graph.png "Connection Graph Figure")
+
+
+`--edge-property` is an option available to change the synapse name if supplied to `NetworkBuilder.add_edges` when building the network. Default: `model_template`
+
+### Edge Property Histograms
+
+To view the distribution of an edge property between cell types run:
+
+```
+bmtool plot connection property-histogram-matrix
+```
+
+The following figure was generated using 
+```
+bmtool plot connection --sources hippocampus --targets hippocampus --sids pop_name --tids pop_name --no-prepend-pop --title 'Synaptic Weight Distribution between Cell Types' property-histogram-matrix
+```
+
+![bmtools](./connection_hist.png "Connection Histogram Figure")
+
+By default the `property-histogram-matrix` looks at the `syn_weight` value specified in the `NetworkBuilder.add_edges` function when building your network. You can change this by specifying the `--edge-property`. Eg: 
+```
+bmtool plot connection property-histogram-matrix --edge-property [PROPERTY]
+```
+
+#### Plotting edge values during/after runtime
+
+BMTools is capable of plotting connection properties obtained after runtime from reports. This is useful for synaptic weights that change over time. 
+
+First, you must explicitly record the connection property in your `simulation_config.json`
+
+```
+"reports": {}
+```
+
+Second, run the following referencing the report specified above:
+
+```
+bmtool plot connection property-histogram-matrix --edge-property pyr2pyr_w --report syns.h5 --time 10000
+```
+
+The `--time-compare` option can be be used to show the weight distribution change between the specified times. Eg: ` --time 0 --time-compare 10000`
+
+**TODO**: Documentation WIP - edge runtime reports
+
+## Cell Tuning
+
 ### Single Cell Tuning
 
 From a BMTK Model directory containing a `simulation_config.json` file:
