@@ -185,18 +185,28 @@ BMTools is capable of plotting connection properties obtained after runtime from
 First, you must explicitly record the connection property in your `simulation_config.json`
 
 ```
-"reports": {}
+  "reports": {
+    "syn_report": {
+      "cells": "hippocampus",
+      "variable_name": "W_nmda",
+      "module": "netcon_report",
+      "sections": "soma",
+      "syn_type": "pyr2pyr",
+      "file_name": "syns.h5"
+    }
+  }
 ```
+Where `pyr2pyr` is the `POINT_PROCESS` name for the synapse you're attempting to record, and the `variable_name` is a `RANGE` variable listed int the `NEURON` block of the synapse `.mod` file.
 
-Second, run the following referencing the report specified above:
+Once the simulation has been run un the following referencing the report specified above:
 
 ```
-bmtool plot connection property-histogram-matrix --edge-property pyr2pyr_w --report syns.h5 --time 10000
+bmtool plot connection property-histogram-matrix --edge-property pyr2pyr_w --report output/syns.h5 --time 9999
 ```
 
 The `--time-compare` option can be be used to show the weight distribution change between the specified times. Eg: ` --time 0 --time-compare 10000`
 
-**TODO**: Documentation WIP - edge runtime reports
+See the [BMTK Commit](https://github.com/AllenInstitute/bmtk/pull/67/files) for more details.
 
 ## Cell Tuning
 
