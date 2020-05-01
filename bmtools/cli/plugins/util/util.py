@@ -383,7 +383,7 @@ def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], pre
         
     return cells_by_id
 
-def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None,return_type=float):
+def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None,return_type=float,drop_point_process=False):
     
     import pandas as pd
     
@@ -423,8 +423,12 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                 do_process=True
         if not do_process: # This is not seen as an input, don't process it.
             continue
-        total_source_cell_types = total_source_cell_types + len(list(set(nodes[source][sid])))
-        nodes_src = pd.DataFrame(nodes[source])
+        
+        if drop_point_process:
+            nodes_src = pd.DataFrame(nodes[source][nodes[source]['model_type']!='point_process'])
+        else:
+            nodes_src = pd.DataFrame(nodes[source])
+        total_source_cell_types = total_source_cell_types + len(list(set(nodes_src[sid])))
         unique_ = nodes_src[sid].unique()
         source_uids.append(unique_)
         prepend_str = ""
@@ -442,8 +446,14 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                 do_process=True
         if not do_process:
             continue
-        total_target_cell_types = total_target_cell_types + len(list(set(nodes[target][tid])))
-        nodes_trg = pd.DataFrame(nodes[target])
+
+        if drop_point_process:
+            nodes_trg = pd.DataFrame(nodes[target][nodes[target]['model_type']!='point_process'])
+        else:
+            nodes_trg = pd.DataFrame(nodes[target])
+
+        total_target_cell_types = total_target_cell_types + len(list(set(nodes_trg[tid])))
+        
         unique_ = nodes_trg[tid].unique()
         target_uids.append(unique_)
         prepend_str = ""
@@ -457,7 +467,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
     e_matrix = np.zeros((total_source_cell_types,total_target_cell_types),dtype=return_type)
     sources_start =  np.cumsum(source_totals) -source_totals
     target_start = np.cumsum(target_totals) -target_totals
-
+    
     for s, source in enumerate(sources):
         for t, target in enumerate(targets):
             e_name = source+"_to_"+target
@@ -551,6 +561,7 @@ def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
         t_list = kwargs["target_nodes"]
         s_list = kwargs["source_nodes"]
 
+        
         """
         count = 1
 
@@ -600,18 +611,20 @@ def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
                 cols = ['source_pos_z','target_pos_z']
             else:
                 cols = []
-            
+
+
             ret = df.loc[:,cols].apply(_dist,axis=1)
+            
             return ret
 
         relevant_edges = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
         connected_distances = eudist(relevant_edges,dist_X,dist_Y,dist_Z).tolist()
-
+        
         sl = s_list[s_list[source_id_type]==source_id]
         tl = t_list[t_list[target_id_type]==target_id]
         
         target_rows = ["target_pos_x","target_pos_y","target_pos_z"]
-
+        
         all_distances = []
         for target in tl.iterrows():
             target = target[1]
@@ -626,7 +639,7 @@ def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
         #import pdb;pdb.set_trace()
         # edges contains all edges
 
-    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=connection_relationship,return_type=object)
+    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=connection_relationship,return_type=object,drop_point_process=True)
 
 
 def connection_graph_edge_types(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,edge_property='model_template'):

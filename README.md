@@ -245,6 +245,8 @@ bmtools plot connection --sources hippocampus --targets hippocampus --no-prepend
 
 This will plot cells in the `hippocampus` network, using the `pop_name` as the cell identifier. There will be `10` bins created to group the cell distances. A `line` plot will be generated instead of the default `bar` chart. All values for each plot will be printed to the console due to the `verbose` flag.
 
+All  `point_process` cell types will be ignored since they do not have physical locations.
+
 ## Cell Tuning
 
 ### Single Cell Tuning
