@@ -54,6 +54,67 @@ def percent_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=Non
     plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
     return
 
+def probability_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, 
+                            no_prepend_pop=False,save_file=None, dist_X=True,dist_Y=True,dist_Z=True,bins=8,line_plot=False,verbose=False):
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
+    sources = sources.split(",")
+    targets = targets.split(",")
+    if sids:
+        sids = sids.split(",")
+    else:
+        sids = []
+    if tids:
+        tids = tids.split(",")
+    else:
+        tids = []
+
+    data, source_labels, target_labels = util.connection_probabilities(nodes=None,
+        edges=None,sources=sources,targets=targets,sids=sids,tids=tids,
+        prepend_pop=not no_prepend_pop,dist_X=dist_X,dist_Y=dist_Y,dist_Z=dist_Z,num_bins=bins)
+    
+    #plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
+
+    plt.clf()# clears previous plots
+    np.seterr(divide='ignore', invalid='ignore')
+    num_src, num_tar = data.shape
+    fig, axes = plt.subplots(nrows=num_src, ncols=num_tar, figsize=(12,12))
+    fig.subplots_adjust(hspace=0.5, wspace=0.5)
+
+    for x in range(num_src):
+        for y in range(num_tar):
+            ns = data[x][y]["ns"]
+            bins = data[x][y]["bins"]
+            
+            XX = bins[:-1]
+            YY = ns[0]/ns[1]
+
+            if line_plot:
+                axes[x,y].plot(XX,YY)
+            else:
+                axes[x,y].bar(XX,YY)
+
+            if x == num_src-1:
+                axes[x,y].set_xlabel(target_labels[y])
+            if y == 0:
+                axes[x,y].set_ylabel(source_labels[x])
+
+            if verbose:
+                print("Source: [" + source_labels[x] + "] | Target: ["+ target_labels[y] +"]")
+                print("X:")
+                print(XX)
+                print("Y:")
+                print(YY)
+
+    tt = "Distance Probability Matrix"
+    if title:
+        tt = title
+    st = fig.suptitle(tt, fontsize=14)
+    fig.text(0.5, 0.04, 'Target', ha='center')
+    fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
+    plt.draw()
+
+    return
 
 def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False):
     if not sources or not targets:

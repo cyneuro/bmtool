@@ -208,6 +208,43 @@ The `--time-compare` option can be be used to show the weight distribution chang
 
 See the [BMTK Commit](https://github.com/AllenInstitute/bmtk/pull/67/files) for more details.
 
+### Plotting Distance Probability Matrix between cell types
+
+![bmtools](./connection_dist.png "Connection Histogram Figure")
+
+To show the probability of a cell type being connected to another cell type based on distance run:
+
+```
+bmtool plot connection prob
+```
+
+Full summary of options:
+
+```
+> bmtool plot connection prob --help
+Usage: bmtool plot connection prob [OPTIONS]
+
+  Probabilities for a connection between given populations. Distance and
+  type dependent
+
+Options:
+  --axis TEXT  comma separated list of axis to use for distance measure eg:
+               x,y,z or x,y
+  --bins TEXT  number of bins to separate distances into (resolution) -
+               default: 8
+  --line       Create a line plot instead of a binned bar plot
+  --verbose    Print plot values for use in another script
+  --help       Show this message and exit.
+```
+
+A more complete command (used for image above) may look similar to
+
+```
+bmtools plot connection --sources hippocampus --targets hippocampus --no-prepend-pop --sids pop_name --tids pop_name prob --bins 10 --line --verbose
+```
+
+This will plot cells in the `hippocampus` network, using the `pop_name` as the cell identifier. There will be `10` bins created to group the cell distances. A `line` plot will be generated instead of the default `bar` chart. All values for each plot will be printed to the console due to the `verbose` flag.
+
 ## Cell Tuning
 
 ### Single Cell Tuning

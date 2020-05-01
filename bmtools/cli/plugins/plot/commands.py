@@ -6,7 +6,7 @@ from clint.textui import puts, colored, indent
 from .plot import (conn_matrix, percent_conn_matrix,
                 divergence_conn_matrix,plot_3d_positions,
                 edge_histogram_matrix,plot_network_graph,
-                raster,plot_report_default)
+                raster,plot_report_default,probability_conn_matrix)
 import matplotlib.pyplot as plt
 
 @click.group('plot')
@@ -69,6 +69,23 @@ def connection_divergence(ctx):
 @click.pass_context
 def connection_convergence(ctx):
     divergence_conn_matrix(ctx.obj['config'],**ctx.obj['connection'],convergence=True)
+    if ctx.obj['display']:
+        plt.show()
+
+@connection.command('prob',help="Probabilities for a connection between given populations. Distance and type dependent")
+@click.option('--axis', type=click.STRING, default='x,y,z', help="comma separated list of axis to use for distance measure eg: x,y,z or x,y")
+@click.option('--bins', type=click.STRING, default='8', help="number of bins to separate distances into (resolution) - default: 8")
+@click.option('--line', type=click.BOOL, is_flag=True, default=False, help="Create a line plot instead of a binned bar plot")
+@click.option('--verbose', type=click.BOOL, is_flag=True, default=False, help="Print plot values for use in another script")
+@click.pass_context
+def connection_probabilities(ctx,axis,bins,line,verbose):
+    axis = axis.lower().split(',')
+    dist_X = True if 'x' in axis else False
+    dist_Y = True if 'y' in axis else False
+    dist_Z = True if 'z' in axis else False
+    bins = int(bins)
+    print("Working... this may take a few moments depending on the size of your network, please wait...")
+    probability_conn_matrix(ctx.obj['config'],**ctx.obj['connection'],dist_X=dist_X,dist_Y=dist_Y,dist_Z=dist_Z,bins=bins,line_plot=line,verbose=verbose)
     if ctx.obj['display']:
         plt.show()
 

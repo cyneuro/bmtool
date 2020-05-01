@@ -534,6 +534,101 @@ def connection_divergence_average(config=None,nodes=None,edges=None,sources=[],t
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
+def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
+    targets=[],sids=[],tids=[],prepend_pop=True,dist_X=True,dist_Y=True,dist_Z=True,num_bins=10):
+    
+    import pandas as pd
+    from scipy.spatial import distance
+    import matplotlib.pyplot as plt
+    pd.options.mode.chained_assignment = None
+
+    def connection_relationship(**kwargs):
+        edges = kwargs["edges"]
+        source_id_type = kwargs["sid"]
+        target_id_type = kwargs["tid"]
+        source_id = kwargs["source_id"]
+        target_id = kwargs["target_id"]
+        t_list = kwargs["target_nodes"]
+        s_list = kwargs["source_nodes"]
+
+        """
+        count = 1
+
+        if convergence:
+            vc = t_list.apply(pd.Series.value_counts)
+            vc = vc[target_id_type].dropna().sort_index()
+            count = vc.ix[target_id]#t_list[t_list[target_id_type]==target_id]
+        else:
+            vc = s_list.apply(pd.Series.value_counts)
+            vc = vc[source_id_type].dropna().sort_index()
+            count = vc.ix[source_id]#count = s_list[s_list[source_id_type]==source_id]
+
+        total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)].count()
+        total = total.source_node_id # may not be the best way to pick
+        return round(total/count,1)
+        """
+        
+        def eudist(df,use_x=True,use_y=True,use_z=True):
+
+            def _dist(x):
+                if len(x) == 6:
+                    return distance.euclidean((x[0],x[1],x[2]),(x[3],x[4],x[5]))
+                elif len(x) == 4:
+                    return distance.euclidean((x[0],x[1]),(x[2],x[3]))
+                elif len(x) == 2:
+                    return distance.euclidean((x[0]),(x[1]))
+                else:
+                    return -1
+
+            if use_x and use_y and use_z: #(XYZ)
+                cols = ['source_pos_x','source_pos_y','source_pos_z',
+                    'target_pos_x','target_pos_y','target_pos_z']
+            elif use_x and use_y and not use_z: #(XY)
+                cols = ['source_pos_x','source_pos_y',
+                    'target_pos_x','target_pos_y',]
+            elif use_x and not use_y and use_z: #(XZ)
+                cols = ['source_pos_x','source_pos_z',
+                    'target_pos_x','target_pos_z']
+            elif not use_x and use_y and use_z: #(YZ)
+                cols = ['source_pos_y','source_pos_z',
+                    'target_pos_y','target_pos_z']
+            elif use_x and not use_y and not use_z: #(X)
+                cols = ['source_pos_x','target_pos_x']
+            elif not use_x and use_y and not use_z: #(Y)
+                cols = ['source_pos_y','target_pos_y']
+            elif not use_x and not use_y and use_z: #(Z)
+                cols = ['source_pos_z','target_pos_z']
+            else:
+                cols = []
+            
+            ret = df.loc[:,cols].apply(_dist,axis=1)
+            return ret
+
+        relevant_edges = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+        connected_distances = eudist(relevant_edges,dist_X,dist_Y,dist_Z).tolist()
+
+        sl = s_list[s_list[source_id_type]==source_id]
+        tl = t_list[t_list[target_id_type]==target_id]
+        
+        target_rows = ["target_pos_x","target_pos_y","target_pos_z"]
+
+        all_distances = []
+        for target in tl.iterrows():
+            target = target[1]
+            for new_col in target_rows:
+                sl[new_col] = target[new_col]
+            #sl[target_rows] = target.loc[target_rows].tolist()
+            row_distances = eudist(sl,dist_X,dist_Y,dist_Z).tolist()
+            all_distances = all_distances + row_distances
+
+        ns,bins,patches = plt.hist([connected_distances,all_distances],density=False,histtype='stepfilled',bins=num_bins)
+        return {"ns":ns,"bins":bins}
+        #import pdb;pdb.set_trace()
+        # edges contains all edges
+
+    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=connection_relationship,return_type=object)
+
+
 def connection_graph_edge_types(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,edge_property='model_template'):
 
     def synapse_type_relationship(**kwargs):
