@@ -116,7 +116,7 @@ def probability_conn_matrix(config=None,nodes=None,edges=None,title=None,sources
 
     return
 
-def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False):
+def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='avg'):
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -129,16 +129,24 @@ def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=
         tids = tids.split(",")
     else:
         tids = []
-    data, source_labels, target_labels = util.connection_divergence_average(nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,convergence=convergence)
+    data, source_labels, target_labels = util.connection_divergence(nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,convergence=convergence,method=method)
 
     
     #data, labels = util.connection_divergence_average(config=config,nodes=nodes,edges=edges,populations=populations)
 
     if title == None or title=="":
-        if convergence:
-            title = "Average Synaptic Convergence"
+
+        if method == 'min':
+            title = "Minimum "
+        elif method == 'max':
+            title = "Maximum "
         else:
-            title = "Average Synaptic Divergence"
+            title = "Average "
+
+        if convergence:
+            title = title + "Synaptic Convergence"
+        else:
+            title = title + "Synaptic Divergence"
 
     plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
     return

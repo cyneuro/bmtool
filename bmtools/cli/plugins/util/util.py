@@ -515,7 +515,7 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
         return total
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
-def connection_divergence_average(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False):
+def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False,method='avg'):
     
     import pandas as pd
 
@@ -529,18 +529,38 @@ def connection_divergence_average(config=None,nodes=None,edges=None,sources=[],t
         s_list = kwargs["source_nodes"]
         count = 1
 
-        if convergence:
-            vc = t_list.apply(pd.Series.value_counts)
-            vc = vc[target_id_type].dropna().sort_index()
-            count = vc.ix[target_id]#t_list[t_list[target_id_type]==target_id]
-        else:
-            vc = s_list.apply(pd.Series.value_counts)
-            vc = vc[source_id_type].dropna().sort_index()
-            count = vc.ix[source_id]#count = s_list[s_list[source_id_type]==source_id]
+        cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
 
+        if convergence:
+            if method == 'min':
+                count = cons.apply(pd.Series.value_counts).target_node_id.dropna().min()
+                return count
+            elif method == 'max':
+                count = cons.apply(pd.Series.value_counts).target_node_id.dropna().max()
+                return count
+            else: #avg
+                vc = t_list.apply(pd.Series.value_counts)
+                vc = vc[target_id_type].dropna().sort_index()
+                count = vc.loc[target_id]#t_list[t_list[target_id_type]==target_id]
+        else: #divergence
+            if method == 'min':
+                count = cons.apply(pd.Series.value_counts).source_node_id.dropna().min()
+                return count
+            elif method == 'max':
+                count = cons.apply(pd.Series.value_counts).source_node_id.dropna().max()
+                return count
+            else: #avg
+                vc = s_list.apply(pd.Series.value_counts)
+                vc = vc[source_id_type].dropna().sort_index()
+                count = vc.loc[source_id]#count = s_list[s_list[source_id_type]==source_id]
+
+        # Only executed when avg
         total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)].count()
         total = total.source_node_id # may not be the best way to pick
-        return round(total/count,1)
+        ret = round(total/count,1)
+        if ret == 0:
+            ret = None
+        return ret
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
