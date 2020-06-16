@@ -2,11 +2,11 @@ from setuptools import setup
 from setuptools import find_packages
 
 with open("README.md", "r") as fh:
-    long_description = 'fh.read()'
+    long_description = fh.read()
 
 setup(
     name="bmtool",
-    version="0.1.9",
+    version="0.2.1",
     author="Tyler Banks",
     author_email="tbanks@mail.missouri.edu",
     description="BMTools",

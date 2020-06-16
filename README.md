@@ -265,8 +265,8 @@ bmtools util cell --template TemplateFile.hoc --mod-folder ./ tune --builder
 ### FIR Curve plotting
 
 ```
-> bmtools util cell fir --help
-Usage: bmtools util cell fir [OPTIONS]
+> bmtools util cell fi --help
+Usage: bmtools util cell fi [OPTIONS]
 
   Creates a NEURON GUI window with FI curve and passive properties
 
@@ -281,7 +281,7 @@ Options:
                      points
   --help             Show this message and exit.
 
-> bmtools util cell fir
+> bmtools util cell fi
 ? Select a cell:  (Use arrow keys)
  » CA3PyramidalCell
    DGCell
@@ -322,9 +322,9 @@ Options:
                         template and mod files written to (default: _seg)
   --outappend           Append out instead of overwriting (default: False)
   --debug               Print all debug statements
-  --fminpa INTEGER      Starting FIR Curve amps (default: 0)
-  --fmaxpa INTEGER      Ending FIR Curve amps (default: 1000)
-  --fincrement INTEGER  Increment the FIR Curve amps by supplied pA (default:
+  --fminpa INTEGER      Starting FI Curve amps (default: 0)
+  --fmaxpa INTEGER      Ending FI Curve amps (default: 1000)
+  --fincrement INTEGER  Increment the FI Curve amps by supplied pA (default:
                         100)
   --infvars TEXT        Specify the inf variables to plot, skips the wizard.
                         (Comma separated, eg: inf_mech,minf_mech2,ninf_mech2)

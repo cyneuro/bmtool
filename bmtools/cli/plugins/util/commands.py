@@ -652,19 +652,20 @@ def cell_tune(ctx,easy,builder,write_hoc,hide,title,tstop,debug):#, title, popul
     if not hide:
         ctg.show()
 
-@cell.command('fir', help="Creates a NEURON GUI window with FI curve and passive properties")
+@cell.command('fi', help="Creates a NEURON GUI window with FI curve and passive properties")
 #@click.option('--easy', type=click.BOOL, default=None, is_flag=True, help="override the default simulation config mod file location")
 #@click.option('--write-hoc', type=click.STRING, default=None, help="write a standalone hoc file for your GUI, supply filename")
 #@click.option('--hide', type=click.BOOL, default=False, is_flag=True, help="hide the interface that shows automatically after building the GUI")
 @click.option('--title',type=click.STRING,default=None)
 @click.option('--min-pa',type=click.INT,default=0,help="Min pA for injection")
 @click.option('--max-pa',type=click.INT,default=1000,help="Max pA for injection")
+@click.option('--passive-delay',type=click.INT,default=650,help="Wait n ms before determining steadystate value (default: 650)")
 @click.option('--increment',type=click.FLOAT,default=100,help="Increment the injection by [i] pA")
-@click.option('--tstart',type=click.INT,default=50, help="Injection start time")
+@click.option('--tstart',type=click.INT,default=150, help="Injection start time")
 @click.option('--tdur',type=click.INT,default=1000,help="Duration of injection default:1000ms")
 @click.option('--advanced',type=click.BOOL,default=False,is_flag=True,help="Interactive dialog to select injection and recording points")
 @click.pass_context
-def cell_fir(ctx,title,min_pa,max_pa,increment,tstart,tdur,advanced):#, title, populations, group_by, save_file):
+def cell_fir(ctx,title,min_pa,max_pa,passive_delay,increment,tstart,tdur,advanced):#, title, populations, group_by, save_file):
     
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget
 
@@ -718,7 +719,7 @@ def cell_fir(ctx,title,min_pa,max_pa,increment,tstart,tdur,advanced):#, title, p
     window_index = ctg.add_window(title=title,width=800,height=650)
     #Column 1
     column_index = ctg.add_column(window_index)
-    fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa,tstart=tstart,tdur=tdur,
+    fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa,tstart=tstart,tdur=tdur,passive_delay=passive_delay,
         record_sec=rec_sec_split, record_loc=rec_loc, inj_sec=inj_sec_split, inj_loc=inj_loc)
 
     
@@ -980,8 +981,9 @@ def cell_vhsegbuild(ctx,title,tstop,outhoc,outfolder,outappend,debug,build,fminp
 #@click.option('--outappend',type=click.BOOL,default=False,is_flag=True,help="Append out instead of overwriting (default: False)")
 #@click.option('--skipmod',type=click.BOOL,default=False,is_flag=True,help="Skip new mod file generation")
 @click.option('--debug',type=click.BOOL,default=False,is_flag=True,help="Print all debug statements")
-@click.option('--fminpa',type=click.INT,default=0,help="Starting FIR Curve amps (default: 0)")
-@click.option('--fmaxpa',type=click.INT,default=1000,help="Ending FIR Curve amps (default: 1000)")
+@click.option('--fminpa',type=click.INT,default=0,help="Starting FI Curve amps (default: 0)")
+@click.option('--fmaxpa',type=click.INT,default=1000,help="Ending FI Curve amps (default: 1000)")
+@click.option('--passive-delay',type=click.INT,default=650,help="Wait n ms before determining steadystate value (default: 650)")
 @click.option('--fincrement',type=click.INT,default=100,help="Increment the FIR Curve amps by supplied pA (default: 100)")
 @click.option('--infvars',type=click.STRING,default=None,help="Specify the inf variables to plot, skips the wizard. (Comma separated, eg: inf_mech,minf_mech2,ninf_mech2)")
 @click.option('--segvars',type=click.STRING,default=None,help="Specify the segregation variables to globally set, skips the wizard. (Comma separated, eg: mseg_mech,nseg_mech2)")
@@ -993,7 +995,7 @@ def cell_vhsegbuild(ctx,title,tstop,outhoc,outfolder,outappend,debug,build,fminp
 @click.option('--syntype',type=click.STRING,default="Exp2Syn",help="Specify the synapse mechanism that will be attached to the cell (Single type)")
 @click.option('--synloc',type=click.STRING,default="0.5",help="Specify the synapse location (Default: 0.5)")
 @click.pass_context
-def cell_vhseg(ctx,title,tstop,debug,fminpa,fmaxpa,fincrement,infvars,segvars,eleak,gleak,othersec,clampsec,synsec,syntype,synloc):
+def cell_vhseg(ctx,title,tstop,debug,fminpa,fmaxpa,passive_delay,fincrement,infvars,segvars,eleak,gleak,othersec,clampsec,synsec,syntype,synloc):
     
     from .neuron.celltuner import CellTunerGUI, TextWidget, PlotWidget, ControlMenuWidget, SecMenuWidget, FICurveWidget,PointMenuWidget, MultiSecMenuWidget
     from .neuron.celltuner import VoltagePlotWidget, SegregationSelectorWidget, SegregationPassiveWidget, SegregationFIRFitWidget, AutoVInitWidget, SingleButtonWidget
@@ -1199,7 +1201,7 @@ def cell_vhseg(ctx,title,tstop,debug,fminpa,fmaxpa,fincrement,infvars,segvars,el
     dur = 1000
     amp = 0.2
 
-    fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa,tstart=tstart,tdur=tdur,
+    fir_widget = FICurveWidget(template,i_increment=increment,i_start=min_pa,i_stop=max_pa,tstart=tstart,tdur=tdur,passive_delay=passive_delay,
         record_sec=rec_sec_split, record_loc=rec_loc, inj_sec=inj_sec_split, inj_loc=inj_loc)
     other_cells = fir_widget.cells + [fir_widget.passive_cell]
 
