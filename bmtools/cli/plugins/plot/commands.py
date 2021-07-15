@@ -6,7 +6,9 @@ from clint.textui import puts, colored, indent
 from .plot import (conn_matrix, percent_conn_matrix,
                 divergence_conn_matrix,plot_3d_positions,
                 edge_histogram_matrix,plot_network_graph,
-                raster,plot_report_default,probability_conn_matrix)
+                raster,plot_report_default,probability_conn_matrix,
+                sim_setup,plot_I_clamps,plot_basic_cell_info,
+                plot_inspikes)
 import matplotlib.pyplot as plt
 
 @click.group('plot')
@@ -45,9 +47,10 @@ def connection(ctx,title,save_file,sources,targets,sids,tids,no_prepend_pop):
     }
     
 @connection.command('total',help="total connection matrix for a given set of populations")
+@click.option('--synfo', type=click.STRING, default='0', help=" 1 for mean and stdev;2 for .mod files used;3 for .json files used")
 @click.pass_context
-def connection_total(ctx):
-    conn_matrix(ctx.obj['config'],**ctx.obj['connection'])
+def connection_total(ctx,synfo):
+    conn_matrix(ctx.obj['config'],**ctx.obj['connection'],synaptic_info=synfo)
     if ctx.obj['display']:
         plt.show()
 
@@ -155,6 +158,37 @@ def plot_report(ctx, report_name, variables, gids):
                     gids=gids)
     if ctx.obj['display']:
         plt.show()
+
+# Additional commands by Matt Stroud
+@cli.command('summary', help="Plot connprobs,Iclamp,inptrains,#cells,#conn,3Dpos.")
+@click.option('--network', type=click.STRING, default=None, help="Name of the biophysical network you want to probe for prob connection plot")
+@click.pass_context
+def setup(ctx, network):
+    sim_setup(config_file=ctx.obj['config'],
+                    network=network)
+    if ctx.obj['display']:
+        plt.close(1)
+        plt.show(block=True)
+
+@cli.command('iclamp', help="Plot just the I-clamps involved in the simulation.")
+@click.pass_context
+def I_clamp(ctx):
+    plot_I_clamps(fp=ctx.obj['config'])
+    if ctx.obj['display']:
+        plt.show()
+
+@cli.command('cells', help="Print out cell information including virtual cells.")
+@click.pass_context
+def Cells(ctx):
+    plot_basic_cell_info(config_file=ctx.obj['config'])
+
+@cli.command('input', help="Plot just the input spike trains involved in the simulation.")
+@click.pass_context
+def Spikes(ctx):
+    plot_inspikes(fp=ctx.obj['config'])
+    if ctx.obj['display']:
+        plt.show()
+
 
 cli.add_command(connection)
 
