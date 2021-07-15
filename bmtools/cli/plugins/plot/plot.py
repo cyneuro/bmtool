@@ -13,8 +13,15 @@ import matplotlib.cm as cmx
 import matplotlib.colors as colors
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
+from IPython import get_ipython
+import math
+import pandas as pd
+import h5py
+import os
+import sys
+import time
 
-from ..util.util import CellVarsFile#, missing_units
+from ..util.util import CellVarsFile #, missing_units
 from bmtk.analyzer.utils import listify
 
 use_description = """
@@ -24,7 +31,7 @@ Plot BMTK models easily.
 python -m bmtools.plot 
 """
 
-def conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None):
+def conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,synaptic_info='0'):
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -37,25 +44,32 @@ def conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targe
         tids = tids.split(",")
     else:
         tids = []
-    data, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
+    text,num, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,synaptic_info=synaptic_info)
 
     if title == None or title=="":
         title = "Total Connections"
+    if synaptic_info=='1':
+        title = "Mean and Stdev # of Conn on Target"    
+    if synaptic_info=='2':
+        title = "All Synapse .mod Files Used"
+    if synaptic_info=='3':
+        title = "All Synapse .json Files Used"
 
-    plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
+    plot_connection_info(text,num,source_labels,target_labels,title, syn_info=synaptic_info, save_file=save_file)
     return
     
 def percent_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None):
-    data, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
+    text,num, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
 
     if title == None or title=="":
         title = "Percent Connectivity"
 
-    plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
+    plot_connection_info(text,num,source_labels,target_labels,title, save_file=save_file)
     return
 
 def probability_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, 
                             no_prepend_pop=False,save_file=None, dist_X=True,dist_Y=True,dist_Z=True,bins=8,line_plot=False,verbose=False):
+    np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -69,13 +83,16 @@ def probability_conn_matrix(config=None,nodes=None,edges=None,title=None,sources
     else:
         tids = []
 
-    data, source_labels, target_labels = util.connection_probabilities(nodes=None,
+    throwaway, data, source_labels, target_labels = util.connection_probabilities(config=config,nodes=None,
         edges=None,sources=sources,targets=targets,sids=sids,tids=tids,
         prepend_pop=not no_prepend_pop,dist_X=dist_X,dist_Y=dist_Y,dist_Z=dist_Z,num_bins=bins)
-    
+    if not data.any():
+        return
+    if data[0][0]==-1:
+        return
     #plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
 
-    plt.clf()# clears previous plots
+    #plt.clf()# clears previous plots
     np.seterr(divide='ignore', invalid='ignore')
     num_src, num_tar = data.shape
     fig, axes = plt.subplots(nrows=num_src, ncols=num_tar, figsize=(12,12))
@@ -112,7 +129,7 @@ def probability_conn_matrix(config=None,nodes=None,edges=None,title=None,sources
     st = fig.suptitle(tt, fontsize=14)
     fig.text(0.5, 0.04, 'Target', ha='center')
     fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
-    plt.draw()
+    fig.show()
 
     return
 
@@ -148,7 +165,7 @@ def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=
         else:
             title = title + "Synaptic Divergence"
 
-    plot_connection_info(data,source_labels,target_labels,title, save_file=save_file)
+    plot_connection_info(data,data,source_labels,target_labels,title, save_file=save_file)
     return
 
 def edge_histogram_matrix(**kwargs):
@@ -209,35 +226,51 @@ def edge_histogram_matrix(**kwargs):
     plt.draw()
 
 
-def plot_connection_info(data, source_labels,target_labels, title, save_file=None):
-    fig, ax = plt.subplots()
-    im = ax.imshow(data)
+def plot_connection_info(text, num, source_labels,target_labels, title, syn_info='0', save_file=None):
+    num_source=len(source_labels)
+    num_target=len(target_labels)
+    matplotlib.rc('image', cmap='viridis')
     
+    fig1, ax1 = plt.subplots(figsize=(num_source,num_target))
+    im1 = ax1.imshow(num)
+    #fig.colorbar(im, ax=ax,shrink=0.4)
     # We want to show all ticks...
-    ax.set_xticks(list(np.arange(len(target_labels))))
-    ax.set_yticks(list(np.arange(len(source_labels))))
+    ax1.set_xticks(list(np.arange(len(target_labels))))
+    ax1.set_yticks(list(np.arange(len(source_labels))))
     # ... and label them with the respective list entries
-    ax.set_xticklabels(target_labels)
-    ax.set_yticklabels(source_labels)
-
+    ax1.set_xticklabels(target_labels)
+    ax1.set_yticklabels(source_labels,size=12, weight = 'semibold')
     # Rotate the tick labels and set their alignment.
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
-            rotation_mode="anchor")
+    plt.setp(ax1.get_xticklabels(), rotation=45, ha="right",
+            rotation_mode="anchor", size=12, weight = 'semibold')
     
     # Loop over data dimensions and create text annotations.
-    for i in range(len(source_labels)):
-        for j in range(len(target_labels)):
-            text = ax.text(j, i, data[i, j],
-                        ha="center", va="center", color="w")
-    ax.set_ylabel('Source')
-    ax.set_xlabel('Target')
-    ax.set_title(title)
-    fig.tight_layout()
-    plt.draw()
+    for i in range(num_source):
+        for j in range(num_target):
+            edge_info = text[i,j]
+            if syn_info =='2' or syn_info =='3':
+                if num_source > 8 and num_source <20:
+                    fig_text = ax1.text(j, i, edge_info,
+                            ha="center", va="center", color="k",rotation=37.5, size=8, weight = 'semibold')
+                elif num_source > 20:
+                    fig_text = ax1.text(j, i, edge_info,
+                            ha="center", va="center", color="k",rotation=37.5, size=7, weight = 'semibold')
+                else:
+                    fig_text = ax1.text(j, i, edge_info,
+                            ha="center", va="center", color="k",rotation=37.5, size=11, weight = 'semibold')
+            else:
+                fig_text = ax1.text(j, i, edge_info,
+                            ha="center", va="center", color="k", size=11, weight = 'semibold')
+
+    ax1.set_ylabel('Source', size=11, weight = 'semibold')
+    ax1.set_xlabel('Target', size=11, weight = 'semibold')
+    ax1.set_title(title,size=20, weight = 'semibold')
+    #plt.tight_layout()
+    
+    fig1.show()
 
     if save_file:
         plt.savefig(save_file)
-
     return
 
 def raster_old(config=None,title=None,populations=['hippocampus']):
@@ -324,8 +357,7 @@ def plot_3d_positions(**kwargs):
 
     group_keys = group_keys.split(",")
     group_keys += (len(populations)-len(group_keys)) * ["node_type_id"] #Extend the array to default values if not enough given
-
-    fig = plt.figure()
+    fig = plt.figure(figsize=(10,10))
     ax = Axes3D(fig)
     handles = []
     for nodes_key,group_key in zip(list(nodes),group_keys):
@@ -352,9 +384,11 @@ def plot_3d_positions(**kwargs):
                 continue #can't plot them if there isn't an xy coordinate (may be virtual)
             h = ax.scatter(group_df["pos_x"],group_df["pos_y"],group_df["pos_z"],color=color,label=group_name)
             handles.append(h)
-    
+    if not handles:
+        return
     plt.title(title)
     plt.legend(handles=handles)
+    
     plt.draw()
 
     if save_file:
@@ -467,3 +501,157 @@ def plot_report_default(config, report_name, variables, gids):
     plot_report(config_file=config, report_file=report_file, report_name=report_name, variables=variables, gids=gids);
     
     return
+
+# The following code was developed by Matthew Stroud 7/15/21 neural engineering supervisor: Satish Nair
+# This is an extension of bmtools: a development of Tyler Banks. 
+# The goal of the sim_setup() function is to output relevant simulation information that can be gathered by providing only the main configuration file.
+
+
+def sim_setup(config_file='simulation_config.json',network=None):
+    if "JPY_PARENT_PID" in os.environ:
+        print("Inside a notebook:")
+        get_ipython().run_line_magic('matplotlib', 'tk')
+
+    
+    # Output tables that contain the cells involved in the configuration file given. Also returns the first biophysical network found
+    bio=plot_basic_cell_info(config_file)
+    if network == None:
+        network=bio
+
+    print("Please wait. This may take a while depending on your network size...")
+    # Plot connection probabilities
+    plt.close(1)
+    probability_conn_matrix(config=config_file,sources=network,targets=network, no_prepend_pop=True,sids= 'pop_name', tids= 'pop_name', bins=10,line_plot=True,verbose=False)
+    # Gives current clamp information
+    plot_I_clamps(config_file)
+    # Plot spike train info
+    plot_inspikes(config_file)
+    # Using bmtools, print total number of connections between cell groups
+    conn_matrix(config=config_file,sources='all',targets='all',sids='pop_name',tids='pop_name',title='All Connections found', size_scalar=2, no_prepend_pop=True, synaptic_info=0)
+    # Plot 3d positions of the network
+    plot_3d_positions(populations='all',config=config_file,group_by='pop_name',title='3D Positions',save_file=None)
+
+def plot_I_clamps(fp):
+    print("Plotting current clamp info...")
+    clamps = util.load_I_clamp_from_config(fp)
+    if not clamps:
+        print("     No current clamps were found.")
+        return
+    time=[]
+    num_clamps=0
+    fig, ax = plt.subplots()
+    ax = plt.gca()
+    for clinfo in clamps:
+        simtime=len(clinfo[0])*clinfo[1]
+        time.append(np.arange(0,simtime,clinfo[1]).tolist())
+
+        line,=ax.plot(time[num_clamps],clinfo[0],drawstyle='steps')
+        line.set_label('I Clamp to: '+str(clinfo[2]))
+        plt.legend()
+        num_clamps=num_clamps+1
+
+def plot_basic_cell_info(config_file,notebook=0):
+    print("Network and node info:")
+    nodes=util.load_nodes_from_config(config_file)
+    if not nodes:
+        print("No nodes were found.")
+        return
+    pd.set_option("display.max_rows", None, "display.max_columns", None)
+    bio=[]
+    i=0
+    j=0
+    for j in nodes:
+        node=nodes[j]
+        node_type_id=node['node_type_id']
+        num_cells=len(node['node_type_id'])
+        if node['model_type'][0]=='virtual':
+            CELLS=[]
+            count=1
+            for i in range(num_cells-1):
+                if(node_type_id[i]==node_type_id[i+1]):
+                    count+=1
+                else:
+                    node_type=node_type_id[i]
+                    pop_name=node['pop_name'][i]
+                    model_type=node['model_type'][i]
+                    CELLS.append([node_type,pop_name,model_type,count])
+                    count=1
+            else:
+                node_type=node_type_id[i]
+                pop_name=node['pop_name'][i]
+                model_type=node['model_type'][i]
+                CELLS.append([node_type,pop_name,model_type,count])
+                count=1
+            df1 = pd.DataFrame(CELLS, columns = ["node_type","pop_name","model_type","count"])
+            print(j+':')
+            print(df1)
+        elif node['model_type'][0]=='biophysical':
+            CELLS=[]
+            count=1
+            node_type_id=node['node_type_id']
+            num_cells=len(node['node_type_id'])
+            for i in range(num_cells-1):
+                if(node_type_id[i]==node_type_id[i+1]):
+                    count+=1
+                else:
+                    node_type=node_type_id[i]
+                    pop_name=node['pop_name'][i]
+                    model_type=node['model_type'][i]
+                    model_template=node['model_template'][i]
+                    morphology=node['morphology'][i]
+                    CELLS.append([node_type,pop_name,model_type,model_template,morphology,count])
+                    count=1
+            else:
+                node_type=node_type_id[i]
+                pop_name=node['pop_name'][i]
+                model_type=node['model_type'][i]
+                model_template=node['model_template'][i]
+                morphology=node['morphology'][i]
+                CELLS.append([node_type,pop_name,model_type,model_template,morphology,count])
+                count=1
+            df2 = pd.DataFrame(CELLS, columns = ["node_type","pop_name","model_type","model_template","morphology","count"])
+            print(j+':')
+            bio.append(j)
+            print(df2)
+    if len(bio)>0:      
+        return bio[0]        
+
+
+def plot_inspikes(fp):
+    
+    print("Plotting spike Train info...")
+    trains = util.load_inspikes_from_config(fp)
+    if not trains:
+        print("No spike trains were found.")
+    num_trains=len(trains)
+
+    time=[]
+    node=[]
+    fig, ax = plt.subplots(num_trains, figsize=(12,12),squeeze=False)
+    fig.subplots_adjust(hspace=0.5, wspace=0.5)
+
+    pos=0
+    for tr in trains:
+        node_group=tr[0][2]
+        if node_group=='':
+            node_group='Defined by gids (y-axis)'
+        time=[]
+        node=[]
+        for sp in tr:
+            node.append(sp[1])
+            time.append(sp[0])
+
+        #plotting spike train
+        
+        ax[pos,0].scatter(time,node,s=1)
+        ax[pos,0].title.set_text('Input Spike Train to: '+node_group)
+        plt.xticks(rotation = 45)
+        if num_trains <=4:
+            ax[pos,0].xaxis.set_major_locator(plt.MaxNLocator(20))
+        if num_trains <=9 and num_trains >4:
+            ax[pos,0].xaxis.set_major_locator(plt.MaxNLocator(4))
+        elif num_trains <9:
+            ax[pos,0].xaxis.set_major_locator(plt.MaxNLocator(2))
+        #fig.suptitle('Input Spike Train to: '+node_group, fontsize=14)
+        fig.show()
+        pos+=1

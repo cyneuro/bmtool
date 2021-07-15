@@ -1,9 +1,11 @@
 import argparse
 from argparse import RawTextHelpFormatter,SUPPRESS
 import glob, json, os, re, sys
-
+import math
 import numpy as np
 from numpy import genfromtxt
+import h5py
+import pandas as pd
 
 #from bmtk.utils.io.cell_vars import CellVarsFile
 #from bmtk.analyzer.cell_vars import _get_cell_report
@@ -23,7 +25,6 @@ def verify_parse(parser):
     except:
         parser.print_help()
         sys.exit(0)
-        
         
 use_description = """
 BMTK model utilties.
@@ -175,7 +176,6 @@ def load_config(config_file):
     #from bmtk.simulator import bionet
     #conf = bionet.Config.from_json(config_file, validate=True)
     return conf
-    
 
 def load_nodes_edges_from_config(fp):
     if fp is None:
@@ -193,7 +193,7 @@ def load_nodes(nodes_file, node_types_file):
 def load_nodes_from_config(config):
     if config is None:
         config = 'simulation_config.json'
-    networks = load_config('simulation_config.json')['networks']
+    networks = load_config(config)['networks']
     return load_nodes_from_paths(networks['nodes'])
 
 def load_nodes_from_paths(node_paths):
@@ -286,7 +286,9 @@ def load_nodes_from_paths(node_paths):
 
     return region_dict
     
-def load_edges_from_config(config='simulation_config.json'):
+def load_edges_from_config(config):
+    if config is None:
+        config = 'simulation_config.json'
     networks = load_config(config)['networks']
     return load_edges_from_paths(networks['edges'])
 
@@ -318,7 +320,6 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
 
     #connections = [re.findall('^[A-Za-z0-9]+_[A-Za-z0-9][^_]+', os.path.basename(n))[0] for n in edges_h5_fpaths]
     edges_dict = {}
-
     def get_edge_table(edges_file, edge_types_file,population=None):
         
         cm_df = pd.read_csv(edge_types_file, sep=' ')
@@ -334,7 +335,7 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
 
         conn_grp = connections_h5['/edges'][population]
         c_df = pd.DataFrame({'edge_type_id': conn_grp['edge_type_id'], 'source_node_id': conn_grp['source_node_id'],
-                             'target_node_id': conn_grp['target_node_id']})
+                                'target_node_id': conn_grp['target_node_id']})
         if conn_grp.get('0'):
             custom_props = conn_grp['0']
             for prop in custom_props:
@@ -348,7 +349,7 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
                             left_index=True,
                             right_index=True) 
         return nodes_df, population
-    
+
     #for edges_dict, conn_models_file, conns_file in zip(connections, edge_types_fpaths, edges_h5_fpaths):
     #    connections_dict[connection] = get_connection_table(conn_models_file,conns_file)
 
@@ -383,7 +384,7 @@ def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], pre
         
     return cells_by_id
 
-def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None,return_type=float,drop_point_process=False):
+def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None,return_type=float,drop_point_process=False,synaptic_info='0'):
     
     import pandas as pd
     
@@ -465,6 +466,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
         target_map[target] = len(target_uids) -1
 
     e_matrix = np.zeros((total_source_cell_types,total_target_cell_types),dtype=return_type)
+    syn_info = np.zeros((total_source_cell_types,total_target_cell_types),dtype=object)
     sources_start =  np.cumsum(source_totals) -source_totals
     target_start = np.cumsum(target_totals) -target_totals
     
@@ -488,20 +490,81 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                             how='left',
                             left_on='target_node_id',
                             right_index=True)
-
+                
                 sm = source_map[source]
                 tm = target_map[target]
+                
+                def syn_info_func(**kwargs):
+                    edges = kwargs["edges"]
+                    source_id_type = kwargs["sid"]
+                    target_id_type = kwargs["tid"]
+                    source_id = kwargs["source_id"]
+                    target_id = kwargs["target_id"]
+                    if edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]["dynamics_params"].count()!=0:
+                        params = str(edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]["dynamics_params"].drop_duplicates().values[0])
+                        params = params[:-5]
+                        mod = str(edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]["model_template"].drop_duplicates().values[0])
+                        if mod and synaptic_info=='1':
+                            return mod
+                        elif params and synaptic_info=='2':
+                            return params
+                        else:
+                            return None
+
+
+                def conn_mean_func(**kwargs):
+                    edges = kwargs["edges"]
+                    source_id_type = kwargs["sid"]
+                    target_id_type = kwargs["tid"]
+                    source_id = kwargs["source_id"]
+                    target_id = kwargs["target_id"]
+                    mean = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]['target_node_id'].value_counts().mean()
+                    return mean
+
+                def conn_stdev_func(**kwargs):
+                    edges = kwargs["edges"]
+                    source_id_type = kwargs["sid"]
+                    target_id_type = kwargs["tid"]
+                    source_id = kwargs["source_id"]
+                    target_id = kwargs["target_id"]
+                    stdev = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]['target_node_id'].value_counts().std()
+                    return stdev
+
                 for s_type_ind,s_type in enumerate(source_uids[sm]):
                     for t_type_ind,t_type in enumerate(target_uids[tm]): 
                         source_index = int(s_type_ind+sources_start[sm])
                         target_index = int(t_type_ind+target_start[tm])
                 
-                        value = relation_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
-                        e_matrix[source_index,target_index]=value
+                        total = relation_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
+                        mean = conn_mean_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
+                        stdev = conn_stdev_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
+                        if math.isnan(mean):
+                            mean=0
+                        if math.isnan(stdev):
+                            stdev=0 
+                        if synaptic_info=='0':
+                            syn_info[source_index,target_index] = str(total)
+                        elif synaptic_info=='1':
+                            mean
+                            syn_info[source_index,target_index] = str(round(mean,1)) + '\n'+ str(round(stdev,1))
+                        elif synaptic_info=='2':
+                            syn_list = syn_info_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
+                            if syn_list is None:
+                                syn_info[source_index,target_index] = ""
+                            else:
+                                syn_info[source_index,target_index] = syn_list
+                        elif synaptic_info=='3':
+                            syn_list = syn_info_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
+                            if syn_list is None:
+                                syn_info[source_index,target_index] = ""
+                            else:
+                                syn_info[source_index,target_index] = syn_list
+                        
+                        e_matrix[source_index,target_index]=total
+                             
+    return syn_info, e_matrix, source_pop_names, target_pop_names
 
-    return e_matrix, source_pop_names, target_pop_names
-
-def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
+def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,synaptic_info='0'):
     
     def total_connection_relationship(**kwargs):
         edges = kwargs["edges"]
@@ -509,11 +572,11 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
         target_id_type = kwargs["tid"]
         source_id = kwargs["source_id"]
         target_id = kwargs["target_id"]
-        
+
         total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)].count()
         total = total.source_node_id # may not be the best way to pick
         return total
-    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
+    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship,synaptic_info=synaptic_info)
 
 def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False,method='avg'):
     
@@ -600,7 +663,6 @@ def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
         """
         
         def eudist(df,use_x=True,use_y=True,use_z=True):
-
             def _dist(x):
                 if len(x) == 6:
                     return distance.euclidean((x[0],x[1],x[2]),(x[3],x[4],x[5]))
@@ -632,14 +694,19 @@ def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
             else:
                 cols = []
 
-
-            ret = df.loc[:,cols].apply(_dist,axis=1)
+            if ('source_pos_x' in df and 'target_pos_x' in df) or ('source_pos_y' in df and 'target_pos_y' in df) or ('source_pos_' in df and 'target_pos_z' in df):
+                ret = df.loc[:,cols].apply(_dist,axis=1)
+            else:
+                print('No x, y, or z positions defined')
+                ret=np.zeros(1)
             
             return ret
 
         relevant_edges = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
         connected_distances = eudist(relevant_edges,dist_X,dist_Y,dist_Z).tolist()
-        
+        if len(connected_distances)>0:
+            if connected_distances[0]==0:
+                return -1
         sl = s_list[s_list[source_id_type]==source_id]
         tl = t_list[t_list[target_id_type]==target_id]
         
@@ -653,8 +720,9 @@ def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
             #sl[target_rows] = target.loc[target_rows].tolist()
             row_distances = eudist(sl,dist_X,dist_Y,dist_Z).tolist()
             all_distances = all_distances + row_distances
-
+        plt.ioff()
         ns,bins,patches = plt.hist([connected_distances,all_distances],density=False,histtype='stepfilled',bins=num_bins)
+        plt.ion()
         return {"ns":ns,"bins":bins}
         #import pdb;pdb.set_trace()
         # edges contains all edges
@@ -964,3 +1032,127 @@ def send_mail(send_from, send_to, subject, text, files=None,server="127.0.0.1"):
     smtp = smtplib.SMTP(server)
     smtp.sendmail(send_from, send_to, msg.as_string())
     smtp.close()
+
+def load_csv(csvfile):
+    # TODO: make the separator more flexible
+    if isinstance(csvfile, pd.DataFrame):
+        return csvfile
+
+    # TODO: check if it is csv object and convert to a pd dataframe
+    return pd.read_csv(csvfile, sep=' ', na_values='NONE')
+
+# The following code was developed by Matthew Stroud 7/15/21: Neural engineering group supervisor: Satish Nair
+# This is an extension of bmtools: a development of Tyler Banks. 
+# These are helper functions for I_clamps and spike train information.
+
+def load_I_clamp_from_paths(Iclamp_paths):
+    # Get info from .h5 files
+    if Iclamp_paths.endswith('.h5'):
+        f = h5py.File(Iclamp_paths, 'r')
+        if 'amplitudes' in f and 'dts' in f and 'gids' in f:
+            [amplitudes]=f['amplitudes'][:].tolist()
+            dts=list(f['dts'])
+            dts=dts[0]
+            dset=f['gids']
+            gids = dset[()]
+            if gids == 'all':
+                gids=' All biophysical cells'
+            clamp=[amplitudes,dts,gids]
+        else:
+            raise Exception('.h5 file is not in the format "amplitudes","dts","gids". Cannot parse.')
+    else:
+        raise Exception('Input file is not of type .h5. Cannot parse.')
+    return clamp
+
+def load_I_clamp_from_config(fp):
+    if fp is None:
+        fp = 'config.json'
+    config = load_config(fp)
+    inputs=config['inputs']
+    # Load in all current clamps
+    ICLAMPS=[]
+    for i in inputs:
+        if inputs[i]['input_type']=="current_clamp":
+            I_clamp=inputs[i]
+            # Get current clamp info where an input file is provided
+            if 'input_file' in I_clamp:
+                ICLAMPS.append(load_I_clamp_from_paths(I_clamp['input_file']))
+            # Get current clamp info when provided in "amp", "delay", "duration" format
+            elif 'amp' in I_clamp and 'delay' in I_clamp and 'duration' in I_clamp:
+                # Get simulation info from config
+                run=config['run']
+                dts=run['dt']
+                if 'tstart' in run:
+                    tstart=run['tstart']
+                else:
+                    tstart=0
+                tstop=run['tstop']
+                simlength=tstop-tstart
+                nstep=int(simlength/dts)
+                # Get input info from config
+                amp=I_clamp['amp']
+                gids=I_clamp['node_set']
+                delay=I_clamp['delay']
+                duration=I_clamp['duration']
+                # Create a list with amplitude at each time step in the simulation
+                amplitude=[]
+                for i in range(nstep):
+                    if i*dts>=delay and i*dts<=delay+duration:
+                        amplitude.append(amp)
+                    else:
+                        amplitude.append(0)
+                ICLAMPS.append([amplitude,dts,gids])
+            else:
+                raise Exception('No information found about this current clamp.')
+    return ICLAMPS
+
+def load_inspikes_from_paths(inspike_paths):
+    # Get info from .h5 files
+    if inspike_paths.endswith('.h5'):
+        f = h5py.File(inspike_paths, 'r')
+        # This is assuming that the first object in the file is named 'spikes'
+        spikes=f['spikes']
+        for i in spikes:
+            inp=spikes[i]
+            if 'node_ids' in inp and 'timestamps' in inp:
+                node_ids=list(inp['node_ids'])
+                timestamps=list(inp['timestamps'])
+        data=[]        
+        for j in range(len(node_ids)):
+            data.append([str(timestamps[j]),str(node_ids[j]),''])
+        data=np.array(data, dtype=object)
+    elif inspike_paths.endswith('.csv'):
+        # Loads in .csv and if it is of the form (timestamps node_ids population) it skips the conditionals.
+        data=np.loadtxt(open(inspike_paths, 'r'), delimiter=" ",dtype=object,skiprows=1)
+        if len(data[0])==2:   #This assumes gid in first column and spike times comma separated in second column
+            temp=[]
+            for i in data:
+                timestamps=i[1]
+                timestamps=timestamps.split(',')
+                for j in timestamps:
+                    temp.append([j,i[0],''])
+            data=np.array(temp, dtype=object)
+        #If the .csv is not in the form (timestamps node_ids population) or (gid timestamps)
+        elif not len(data[0])==3:   
+            print('The .csv spike file '+ inspike_paths +' is not in the correct format')
+            return
+    else:
+        raise Exception('Input file is not of type .h5 or .csv. Cannot parse.')
+    return data
+
+def load_inspikes_from_config(fp):
+    if fp is None:
+        fp = 'config.json'
+    config = load_config(fp)
+    inputs=config['inputs']
+    # Load in all current clamps
+    INSPIKES=[]
+    for i in inputs:
+        if inputs[i]['input_type']=="spikes":
+            INPUT=inputs[i]
+            # Get current clamp info where an input file is provided
+            if 'input_file' in INPUT:
+                INSPIKES.append(load_inspikes_from_paths(INPUT['input_file']))
+            else:
+                raise Exception('No information found about this current clamp.')
+    return INSPIKES
