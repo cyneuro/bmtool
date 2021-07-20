@@ -134,6 +134,11 @@ bmtool plot connection total
 ```
 Remember to customize the output using the instructions above.
 
+#### `--synfo`
+This is an additional flag that can be used in the total connections plot. By default it is set to '0' which plots total connections. 
+If it is specified as '1', it plots the mean and standard deviation number of connections. If it is '2', it plots the .mod files used for that connection type.
+Finally if it is '3', it plots the parameter file (.json) used for the connection.
+
 ![bmtools](./connection_total.png "Connection Total Figure")
 
 ### Plot Average Convergence/Divergence
@@ -246,6 +251,29 @@ bmtools plot connection --sources hippocampus --targets hippocampus --no-prepend
 This will plot cells in the `hippocampus` network, using the `pop_name` as the cell identifier. There will be `10` bins created to group the cell distances. A `line` plot will be generated instead of the default `bar` chart. All values for each plot will be printed to the console due to the `verbose` flag.
 
 All  `point_process` cell types will be ignored since they do not have physical locations.
+
+### Plotting Current Clamp and Spike Train Info
+To plot all current clamp info involved in a simulation, use the following command (uses 'simulation_config.json' as default)
+```
+bmtools plot --config simulation_config_foo.json iclamp
+```
+
+To plot all spike trains and their target cells,
+```
+bmtools plot --config simulation_config_foo.json input
+```
+
+### Printing basic cell information involved in a simulation
+```
+bmtools plot --config simulation_config_foo.json cells
+```
+
+### Simulation Summary
+
+Using previous functions, plots connection probability as a function of distance, total connections, cell information, current clamp information, input spike train information, and a 3D plot of the network if specified. 
+```
+bmtools plot --config simulation_config_foo.json summary
+```
 
 ## Cell Tuning
 

@@ -31,7 +31,7 @@ Plot BMTK models easily.
 python -m bmtools.plot 
 """
 
-def conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,synaptic_info='0'):
+def conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, size_scalar=1,no_prepend_pop=False,save_file=None,synaptic_info='0'):
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -527,7 +527,7 @@ def sim_setup(config_file='simulation_config.json',network=None):
     # Plot spike train info
     plot_inspikes(config_file)
     # Using bmtools, print total number of connections between cell groups
-    conn_matrix(config=config_file,sources='all',targets='all',sids='pop_name',tids='pop_name',title='All Connections found', size_scalar=2, no_prepend_pop=True, synaptic_info=0)
+    conn_matrix(config=config_file,sources='all',targets='all',sids='pop_name',tids='pop_name',title='All Connections found', size_scalar=2, no_prepend_pop=True, synaptic_info='0')
     # Plot 3d positions of the network
     plot_3d_positions(populations='all',config=config_file,group_by='pop_name',title='3D Positions',save_file=None)
 

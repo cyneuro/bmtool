@@ -469,7 +469,9 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
     syn_info = np.zeros((total_source_cell_types,total_target_cell_types),dtype=object)
     sources_start =  np.cumsum(source_totals) -source_totals
     target_start = np.cumsum(target_totals) -target_totals
-    
+    total = 0
+    stdev=0
+    mean=0
     for s, source in enumerate(sources):
         for t, target in enumerate(targets):
             e_name = source+"_to_"+target
@@ -511,7 +513,6 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                         else:
                             return None
 
-
                 def conn_mean_func(**kwargs):
                     edges = kwargs["edges"]
                     source_id_type = kwargs["sid"]
@@ -536,16 +537,15 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                         target_index = int(t_type_ind+target_start[tm])
                 
                         total = relation_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
-                        mean = conn_mean_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
-                        stdev = conn_stdev_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
-                        if math.isnan(mean):
-                            mean=0
-                        if math.isnan(stdev):
-                            stdev=0 
                         if synaptic_info=='0':
-                            syn_info[source_index,target_index] = str(total)
+                            syn_info[source_index,target_index] = total
                         elif synaptic_info=='1':
-                            mean
+                            mean = conn_mean_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
+                            stdev = conn_stdev_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
+                            if math.isnan(mean):
+                                mean=0
+                            if math.isnan(stdev):
+                                stdev=0 
                             syn_info[source_index,target_index] = str(round(mean,1)) + '\n'+ str(round(stdev,1))
                         elif synaptic_info=='2':
                             syn_list = syn_info_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
@@ -561,7 +561,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                                 syn_info[source_index,target_index] = syn_list
                         
                         e_matrix[source_index,target_index]=total
-                             
+                                                
     return syn_info, e_matrix, source_pop_names, target_pop_names
 
 def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,synaptic_info='0'):
