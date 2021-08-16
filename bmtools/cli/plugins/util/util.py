@@ -385,7 +385,7 @@ def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], pre
     return cells_by_id
 
 def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,relation_func=None,return_type=float,drop_point_process=False,synaptic_info='0'):
-    
+     
     import pandas as pd
     
     if not nodes and not edges:
@@ -579,7 +579,7 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship,synaptic_info=synaptic_info)
 
 def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False,method='avg'):
-    
+
     import pandas as pd
 
     def total_connection_relationship(**kwargs):

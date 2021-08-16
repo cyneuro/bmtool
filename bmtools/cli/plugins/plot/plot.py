@@ -146,7 +146,8 @@ def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=
         tids = tids.split(",")
     else:
         tids = []
-    data, source_labels, target_labels = util.connection_divergence(nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,convergence=convergence,method=method)
+
+    syn_info, data, source_labels, target_labels = util.connection_divergence(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,convergence=convergence,method=method)
 
     
     #data, labels = util.connection_divergence_average(config=config,nodes=nodes,edges=edges,populations=populations)
