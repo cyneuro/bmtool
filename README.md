@@ -148,6 +148,8 @@ To plot the average convergence or divergence of a single cell excute one of the
 ```
 bmtool plot connection convergence
 bmtool plot connection divergence
+
+Add --method (std, min, or max) for additional function
 ```
 ![bmtools](./connection_con.png "Connection Convergence Figure")
 

@@ -133,7 +133,7 @@ def probability_conn_matrix(config=None,nodes=None,edges=None,title=None,sources
 
     return
 
-def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='avg'):
+def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean'):
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -158,8 +158,10 @@ def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=
             title = "Minimum "
         elif method == 'max':
             title = "Maximum "
+        elif method == 'std':
+            title = "Standard Deviation "
         else:
-            title = "Average "
+            title = "Mean "
 
         if convergence:
             title = title + "Synaptic Convergence"
@@ -228,6 +230,8 @@ def edge_histogram_matrix(**kwargs):
 
 
 def plot_connection_info(text, num, source_labels,target_labels, title, syn_info='0', save_file=None):
+    #num = pd.DataFrame(num).fillna('nc').to_numpy() # replace nan with nc * does not work with imshow
+    
     num_source=len(source_labels)
     num_target=len(target_labels)
     matplotlib.rc('image', cmap='viridis')

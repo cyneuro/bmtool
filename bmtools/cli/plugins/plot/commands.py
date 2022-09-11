@@ -62,7 +62,7 @@ def connection_percent(ctx):
         plt.show()
 
 @connection.command('divergence',help="divergence matrix for a given set of populations")
-@click.option('--method', type=click.STRING, default='avg', help="avg, min, max (default: avg)")
+@click.option('--method', type=click.STRING, default='mean', help="mean, std, min, max (default: mean)")
 @click.pass_context
 def connection_divergence(ctx,method):
     divergence_conn_matrix(ctx.obj['config'],**ctx.obj['connection'],method=method)
@@ -70,7 +70,7 @@ def connection_divergence(ctx,method):
         plt.show()
 
 @connection.command('convergence',help="convergence matrix for a given set of populations")
-@click.option('--method', type=click.STRING, default='avg', help="avg, min, max (default: avg)")
+@click.option('--method', type=click.STRING, default='mean', help="mean, std, min, max (default: mean)")
 @click.pass_context
 def connection_convergence(ctx,method):
     divergence_conn_matrix(ctx.obj['config'],**ctx.obj['connection'],convergence=True,method=method)
