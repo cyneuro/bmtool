@@ -29,7 +29,7 @@ def verify_parse(parser):
 use_description = """
 BMTK model utilties.
 
-python -m bmtools.util 
+python -m bmtool.util 
 """
 
 if __name__ == '__main__':
@@ -352,13 +352,18 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
 
     #for edges_dict, conn_models_file, conns_file in zip(connections, edge_types_fpaths, edges_h5_fpaths):
     #    connections_dict[connection] = get_connection_table(conn_models_file,conns_file)
-
-    for nodes in edge_paths:
-        edges_file = nodes["edges_file"]
-        edge_types_file = nodes["edge_types_file"]
-        region, region_name = get_edge_table(edges_file,edge_types_file)
-        edges_dict[region_name] = region
-
+    try:
+        for nodes in edge_paths:
+            edges_file = nodes["edges_file"]
+            edge_types_file = nodes["edge_types_file"]
+            region, region_name = get_edge_table(edges_file,edge_types_file)
+            edges_dict[region_name] = region
+    except Exception as e:
+        print(repr(e))
+        print("Hint: Are you loading the correct simulation config file?")
+        print("Command Line: bmtool plot --config yourconfig.json <rest of command>")
+        print("Python: bmplot.connection_matrix(config='yourconfig.json')")
+    
     return edges_dict
 
 def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], prepend_pop=True):
@@ -1048,7 +1053,7 @@ def load_csv(csvfile):
     return pd.read_csv(csvfile, sep=' ', na_values='NONE')
 
 # The following code was developed by Matthew Stroud 7/15/21: Neural engineering group supervisor: Satish Nair
-# This is an extension of bmtools: a development of Tyler Banks. 
+# This is an extension of bmtool: a development of Tyler Banks. 
 # These are helper functions for I_clamps and spike train information.
 
 def load_I_clamp_from_paths(Iclamp_paths):

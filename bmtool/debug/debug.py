@@ -1,9 +1,9 @@
-from . import util
+from ..util import util
 
 use_description = """
 Debug BMTK models easily.
 
-python -m bmtools.debug
+python -m bmtool.debug
 
 """
 

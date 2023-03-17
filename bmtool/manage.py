@@ -4,9 +4,9 @@ import os
 
 from clint.textui import puts, colored, indent
 
-from .plugins.debug import commands as debug_commands
-from .plugins.plot import commands as plot_commands
-from .plugins.util import commands as util_commands
+from .debug import commands as debug_commands
+from . import plot_commands
+from .util import commands as util_commands
 
 @click.group()
 @click.option('--verbose', is_flag=True, default=False, help='Verbose printing')

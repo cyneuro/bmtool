@@ -2,7 +2,7 @@
 Want to be able to take multiple plot names in and plot them all at the same time, to save time
 https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-plots-so-that-the-computation-can-continue
 """
-from ..util import util
+from .util import util
 
 import argparse,os,sys
 
@@ -21,17 +21,17 @@ import os
 import sys
 import time
 
-from ..util.util import CellVarsFile #, missing_units
+from .util.util import CellVarsFile #, missing_units
 from bmtk.analyzer.utils import listify
 
 use_description = """
 
 Plot BMTK models easily.
 
-python -m bmtools.plot 
+python -m bmtool.plot 
 """
 
-def conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, size_scalar=1,no_prepend_pop=False,save_file=None,synaptic_info='0'):
+def connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, size_scalar=1,no_prepend_pop=False,save_file=None,synaptic_info='0'):
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -58,7 +58,7 @@ def conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targe
     plot_connection_info(text,num,source_labels,target_labels,title, syn_info=synaptic_info, save_file=save_file)
     return
     
-def percent_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None):
+def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None):
     text,num, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
 
     if title == None or title=="":
@@ -67,7 +67,7 @@ def percent_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=Non
     plot_connection_info(text,num,source_labels,target_labels,title, save_file=save_file)
     return
 
-def probability_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, 
+def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, 
                             no_prepend_pop=False,save_file=None, dist_X=True,dist_Y=True,dist_Z=True,bins=8,line_plot=False,verbose=False):
     np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
     if not sources or not targets:
@@ -133,7 +133,10 @@ def probability_conn_matrix(config=None,nodes=None,edges=None,title=None,sources
 
     return
 
-def divergence_conn_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean'):
+def convergence_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean'):
+    return divergence_connection_matrix(config,nodes ,edges ,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method)
+
+def divergence_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean'):
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -508,7 +511,7 @@ def plot_report_default(config, report_name, variables, gids):
     return
 
 # The following code was developed by Matthew Stroud 7/15/21 neural engineering supervisor: Satish Nair
-# This is an extension of bmtools: a development of Tyler Banks. 
+# This is an extension of bmtool: a development of Tyler Banks. 
 # The goal of the sim_setup() function is to output relevant simulation information that can be gathered by providing only the main configuration file.
 
 
@@ -526,13 +529,13 @@ def sim_setup(config_file='simulation_config.json',network=None):
     print("Please wait. This may take a while depending on your network size...")
     # Plot connection probabilities
     plt.close(1)
-    probability_conn_matrix(config=config_file,sources=network,targets=network, no_prepend_pop=True,sids= 'pop_name', tids= 'pop_name', bins=10,line_plot=True,verbose=False)
+    probability_connection_matrix(config=config_file,sources=network,targets=network, no_prepend_pop=True,sids= 'pop_name', tids= 'pop_name', bins=10,line_plot=True,verbose=False)
     # Gives current clamp information
     plot_I_clamps(config_file)
     # Plot spike train info
     plot_inspikes(config_file)
-    # Using bmtools, print total number of connections between cell groups
-    conn_matrix(config=config_file,sources='all',targets='all',sids='pop_name',tids='pop_name',title='All Connections found', size_scalar=2, no_prepend_pop=True, synaptic_info='0')
+    # Using bmtool, print total number of connections between cell groups
+    connection_matrix(config=config_file,sources='all',targets='all',sids='pop_name',tids='pop_name',title='All Connections found', size_scalar=2, no_prepend_pop=True, synaptic_info='0')
     # Plot 3d positions of the network
     plot_3d_positions(populations='all',config=config_file,group_by='pop_name',title='3D Positions',save_file=None)
 
@@ -603,7 +606,7 @@ def plot_basic_cell_info(config_file,notebook=0):
                     pop_name=node['pop_name'][i]
                     model_type=node['model_type'][i]
                     model_template=node['model_template'][i]
-                    morphology=node['morphology'][i]
+                    morphology=node['morphology'][i] if node.get('morphology') else ''
                     CELLS.append([node_type,pop_name,model_type,model_template,morphology,count])
                     count=1
             else:
@@ -611,7 +614,7 @@ def plot_basic_cell_info(config_file,notebook=0):
                 pop_name=node['pop_name'][i]
                 model_type=node['model_type'][i]
                 model_template=node['model_template'][i]
-                morphology=node['morphology'][i]
+                morphology=node['morphology'][i] if node.get('morphology') else ''
                 CELLS.append([node_type,pop_name,model_type,model_template,morphology,count])
                 count=1
             df2 = pd.DataFrame(CELLS, columns = ["node_type","pop_name","model_type","model_template","morphology","count"])
