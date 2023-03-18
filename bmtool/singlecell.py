@@ -231,10 +231,6 @@ class Profiler():
         self.template_dir = None
         self.mechanism_dir = None
         
-        if self.config:
-            # load config and specified template/mech dirs
-            pass
-
         if not self.template_dir:
             self.template_dir = template_dir
         if not self.mechanism_dir:
