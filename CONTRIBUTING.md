@@ -32,9 +32,9 @@ python -m pip install example-pkg-your-username
 
 ## All together
 ```
-python -m pip install --user --upgrade setuptools wheel
+python -m pip install --upgrade setuptools wheel
 python setup.py sdist bdist_wheel
-python -m pip install --user --upgrade twine
+python -m pip install --upgrade twine
 python -m twine upload dist/*
 
 ```

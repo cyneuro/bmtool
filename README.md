@@ -161,7 +161,7 @@ Python or Jupyter Notebook
 ```
 from bmtool import bmplot
 
-bmplot.connection_matrix(config="simulation_config.json")
+bmplot.connection_matrix(config="simulation_config.json", sources="hippocampus", targets="hippocampus")
 ```
 Remember to customize the output using the instructions above.
 
@@ -345,6 +345,20 @@ bmtool plot --config simulation_config_foo.json summary
 ```
 
 ## Cell Tuning
+
+### Python/Jupyter
+
+Single Cell Profiler
+
+```
+from bmtool.singlecell import Profiler
+
+#Example usage
+profiler = Profiler(template_dir='./components/templates', mechanism_dir='./components/mechanisms/modfiles')
+profiler.passive_properties('Cell_Cf')
+profiler.fi_curve('Cell_Cf')
+profiler.current_injection('Cell_Cf', post_init_function="insert_mechs(123)", inj_amp=300, inj_delay=100)
+```
 
 ### Single Cell Tuning
 
