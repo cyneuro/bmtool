@@ -381,7 +381,7 @@ class Profiler():
         
 
 #Example usage
-profiler = Profiler('./temp/templates', './temp/mechanisms/modfiles')
-profiler.passive_properties('Cell_Cf')
+#profiler = Profiler('./temp/templates', './temp/mechanisms/modfiles')
+#profiler.passive_properties('Cell_Cf')
 #profiler.fi_curve('Cell_Cf')
 #profiler.current_injection('Cell_Cf', post_init_function="insert_mechs(123)", inj_amp=300, inj_delay=100)
