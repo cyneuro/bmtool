@@ -187,8 +187,8 @@ def load_nodes_edges_from_config(fp):
 
 def load_nodes(nodes_file, node_types_file):
     nodes_arr = [{"nodes_file":nodes_file,"node_types_file":node_types_file}]
-    nodes = load_nodes_from_paths(nodes_arr)
-    return nodes
+    nodes = list(load_nodes_from_paths(nodes_arr).items())[0]  # single item
+    return nodes  # return (population, nodes_df)
 
 def load_nodes_from_config(config):
     if config is None:
@@ -227,6 +227,8 @@ def load_nodes_from_paths(node_paths):
     #regions = [re.findall('^[^_]+', os.path.basename(n))[0] for n in nodes_h5_fpaths]
     region_dict = {}
 
+    pos_labels = ('pos_x', 'pos_y', 'pos_z')
+
     #Need to get all cell groups for each region
     def get_node_table(cell_models_file, cells_file, population=None):
         cm_df = pd.read_csv(cells_file, sep=' ')
@@ -240,44 +242,47 @@ def load_nodes_from_paths(node_paths):
                 population = list(cells_h5['/nodes'])[0]
 
         nodes_grp = cells_h5['/nodes'][population]
-        c_df = pd.DataFrame({'node_id': nodes_grp['node_id'], 'node_type_id': nodes_grp['node_type_id']})
+        c_df = pd.DataFrame({key: nodes_grp[key] for key in ('node_id', 'node_type_id')})
         c_df.set_index('node_id', inplace=True)
 
-        nodes_df = pd.merge(left=c_df,
-                            right=cm_df,
-                            how='left',
-                            left_on='node_type_id',
-                            right_index=True)  # use 'model_id' key to merge, for right table the "model_id" is an index
-        
-        if 'positions' in list(nodes_grp['0']):
-            #cpos = pd.DataFrame({'node_id': nodes_grp['node_id'],"pos_x":nodes_grp['0']['positions'][:,0],"pos_y":nodes_grp['0']['positions'][:,1],"pos_z":nodes_grp['0']['positions'][:,2]})
+        nodes_df = pd.merge(left=c_df, right=cm_df, how='left',
+                            left_on='node_type_id', right_index=True)  # use 'model_id' key to merge, for right table the "model_id" is an index
 
-            #Possibly a problem when not all nodes have positions. Those without positions 
-            #should be placed at the end of your simulation (point processes)
-            di = pd.DataFrame({'node_id': nodes_grp['node_id']})
-            dx = pd.DataFrame({"pos_x":nodes_grp['0']['positions'][:,0]})
-            dy = pd.DataFrame({"pos_y":nodes_grp['0']['positions'][:,1]})
-            dz = pd.DataFrame({"pos_z":nodes_grp['0']['positions'][:,2]})
-            cpos = pd.concat([di,dx,dy,dz],ignore_index=True,axis=1)
-            cpos.rename(index=str,columns={0:di.columns[0],1:dx.columns[0],2:dy.columns[0],3:dz.columns[0]},inplace=True)
-            #End
+        # extra properties of individual nodes (see SONATA Data format)
+        if nodes_grp.get('0'):
+            node_id = nodes_grp['node_id'][()]
+            node_group_id = nodes_grp['node_group_id'][()]
+            node_group_index = nodes_grp['node_group_index'][()]
+            n_group = node_group_id.max() + 1
+            prop_dtype = {}
+            for group_id in range(n_group):
+                group = nodes_grp[str(group_id)]
+                idx = node_group_id == group_id
+                for prop in group:
+                    if prop == 'positions':
+                        positions = group[prop][node_group_index[idx]]
+                        for i in range(positions.shape[1]):
+                            if pos_labels[i] not in nodes_df:
+                                nodes_df[pos_labels[i]] = np.nan
+                            nodes_df.loc[node_id, pos_labels[i]] = positions[:, i]
+                    else:
+                        # create new column with NaN if property does not exist
+                        if prop not in nodes_df: 
+                            nodes_df[prop] = np.nan
+                        nodes_df.loc[idx, prop] = tuple(group[prop][node_group_index[idx]])
+                        prop_dtype[prop] = group[prop].dtype
+            # convert to original data type if possible
+            for prop, dtype in prop_dtype.items():
+                nodes_df[prop] = nodes_df[prop].astype(dtype, errors='ignore')
 
-            cpos.set_index('node_id', inplace=True)            
-            
-            nodes_df = pd.merge(left=nodes_df,
-                                right=cpos,
-                                how='left',
-                                left_index=True,
-                                right_index=True)
+        return population, nodes_df
 
-        return nodes_df, population
-    
     #for region, cell_models_file, cells_file in zip(regions, node_types_fpaths, nodes_h5_fpaths):
     #    region_dict[region] = get_node_table(cell_models_file,cells_file,population=region)
     for nodes in node_paths:
         cell_models_file = nodes["nodes_file"]
         cells_file = nodes["node_types_file"]
-        region, region_name = get_node_table(cell_models_file,cells_file)
+        region_name, region = get_node_table(cell_models_file, cells_file)
         region_dict[region_name] = region
 
     #cell_num = 2
@@ -294,8 +299,8 @@ def load_edges_from_config(config):
 
 def load_edges(edges_file, edge_types_file):
     edges_arr = [{"edges_file":edges_file,"edge_types_file":edge_types_file}]
-    edges = load_edges_from_paths(edges_arr)
-    return edges
+    edges = list(load_edges_from_paths(edges_arr).items())[0]  # single item
+    return edges  # return (population, edges_df)
 
 def load_edges_from_paths(edge_paths):#network_dir='network'):
     """
@@ -320,35 +325,52 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
 
     #connections = [re.findall('^[A-Za-z0-9]+_[A-Za-z0-9][^_]+', os.path.basename(n))[0] for n in edges_h5_fpaths]
     edges_dict = {}
-    def get_edge_table(edges_file, edge_types_file,population=None):
-        
+    def get_edge_table(edges_file, edge_types_file, population=None):
+
+        # dataframe where each row is an edge type
         cm_df = pd.read_csv(edge_types_file, sep=' ')
         cm_df.set_index('edge_type_id', inplace=True)
 
-        connections_h5 = h5py.File(edges_file, 'r')
+        with h5py.File(edges_file, 'r') as connections_h5:
+            if population is None:
+                if len(connections_h5['/edges']) > 1:
+                    raise Exception('Multiple populations in edges file. Not currently implemented, should not be hard to do, contact Tyler')
+                else:
+                    population = list(connections_h5['/edges'])[0]
+            conn_grp = connections_h5['/edges'][population]
 
-        if population is None:
-            if len(connections_h5['/edges']) > 1:
-                raise Exception('Multiple populations in edges file. Not currently implemented, should not be hard to do, contact Tyler')
-            else:
-                population = list(connections_h5['/edges'])[0]
+            # dataframe where each row is an edge
+            c_df = pd.DataFrame({key: conn_grp[key] for key in (
+                'edge_type_id', 'source_node_id', 'target_node_id')})
 
-        conn_grp = connections_h5['/edges'][population]
-        c_df = pd.DataFrame({'edge_type_id': conn_grp['edge_type_id'], 'source_node_id': conn_grp['source_node_id'],
-                                'target_node_id': conn_grp['target_node_id']})
-        if conn_grp.get('0'):
-            custom_props = conn_grp['0']
-            for prop in custom_props:
-                c_df[prop] = list(conn_grp['0'][prop])
+            c_df.reset_index(inplace=True)
+            c_df.rename(columns={'index': 'edge_id'}, inplace=True)
+            c_df.set_index('edge_type_id', inplace=True)
 
-        c_df.set_index('edge_type_id', inplace=True)
+            # add edge type properties to df of edges
+            edges_df = pd.merge(left=c_df, right=cm_df, how='left',
+                                left_index=True, right_index=True)
 
-        nodes_df = pd.merge(left=c_df,
-                            right=cm_df,
-                            how='left',
-                            left_index=True,
-                            right_index=True) 
-        return nodes_df, population
+            # extra properties of individual edges (see SONATA Data format)
+            if conn_grp.get('0'):
+                edge_group_id = conn_grp['edge_group_id'][()]
+                edge_group_index = conn_grp['edge_group_index'][()]
+                n_group = edge_group_id.max() + 1
+                prop_dtype = {}
+                for group_id in range(n_group):
+                    group = conn_grp[str(group_id)]
+                    idx = edge_group_id == group_id
+                    for prop in group:
+                        # create new column with NaN if property does not exist
+                        if prop not in edges_df: 
+                            edges_df[prop] = np.nan
+                        edges_df.loc[idx, prop] = tuple(group[prop][edge_group_index[idx]])
+                        prop_dtype[prop] = group[prop].dtype
+                # convert to original data type if possible
+                for prop, dtype in prop_dtype.items():
+                    edges_df[prop] = edges_df[prop].astype(dtype, errors='ignore')
+
+        return population, edges_df
 
     #for edges_dict, conn_models_file, conns_file in zip(connections, edge_types_fpaths, edges_h5_fpaths):
     #    connections_dict[connection] = get_connection_table(conn_models_file,conns_file)
@@ -356,7 +378,7 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
         for nodes in edge_paths:
             edges_file = nodes["edges_file"]
             edge_types_file = nodes["edge_types_file"]
-            region, region_name = get_edge_table(edges_file,edge_types_file)
+            region_name, region = get_edge_table(edges_file, edge_types_file)
             edges_dict[region_name] = region
     except Exception as e:
         print(repr(e))
