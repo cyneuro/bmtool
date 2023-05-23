@@ -75,12 +75,9 @@ class CurrentClamp():
         return (list(self.t_vec), list(self.cell_vec))
 
 class Passive(CurrentClamp):
-    def __init__(self, template_name, post_init_function=None, record_sec="soma", record_loc="0.5", tstop=1200,
-                 inj_sec="soma", inj_loc="0.5", inj_amp=-100,inj_delay=200, inj_dur=1000):
-        super(Passive, self).__init__(template_name=template_name,post_init_function=post_init_function,
-                                      record_sec=record_sec, record_loc=record_loc,
-                                      tstop=tstop, inj_sec=inj_sec, inj_loc=inj_loc,
-                                      inj_amp=inj_amp, inj_delay=inj_delay, inj_dur=inj_dur)
+    def __init__(self, template_name, tstop=1200, inj_amp=-100,inj_delay=200, inj_dur=1000, **kwargs):
+        super(Passive, self).__init__(template_name=template_name, tstop=tstop,
+                                      inj_amp=inj_amp, inj_delay=inj_delay, inj_dur=inj_dur, **kwargs)
 
         self.cell_v_final = 0
         self.v_t_const = 0
@@ -154,10 +151,10 @@ class Passive(CurrentClamp):
         #return (self.v_rest, self.r_in/1e6, self.tau)
 
 class FI():
-    def __init__(self,template_name, post_init_function=None, i_increment=100,i_start=0,i_stop=1050,tstart=50, tdur=1000,
-            record_sec="soma", record_loc="0.5", inj_sec="soma", inj_loc="0.5"):
-        """ Takes in values of pA
-        """
+    def __init__(self,template_name, post_init_function=None,
+                 i_increment=100, i_start=0, i_stop=1050, tstart=50, tdur=1000,
+                 record_sec="soma", record_loc="0.5", inj_sec="soma", inj_loc="0.5"):
+        """ Takes in values of pA """
         super(FI, self).__init__()
         self.template_name = template_name
         self.post_init_function = post_init_function
@@ -292,7 +289,8 @@ class Profiler():
         return self.templates
     
     def passive_properties(self, template_name:str, post_init_function:str=None, 
-                           record_sec:str='soma', inj_sec:str='soma', plot:bool=True) -> Tuple[float,float,float]:
+                           record_sec:str='soma', inj_sec:str='soma', plot:bool=True,
+                           **kwargs) -> Tuple[list,list]:
         """
         Calculates passive properties for the specified cell template_name
 
@@ -308,9 +306,11 @@ class Profiler():
             section of the cell you want to inject current (default: soma)
         plot:bool
             automatically plot the cell profile
-        
+        **kwargs:
+            extra key word arguments for Passive()
     """
-        passive = Passive(template_name, post_init_function=post_init_function, record_sec=record_sec, inj_sec=inj_sec)
+        passive = Passive(template_name, post_init_function=post_init_function,
+                          record_sec=record_sec, inj_sec=inj_sec, **kwargs)
         time_vec, amp_vec = passive.execute()
 
         if plot:
@@ -323,14 +323,12 @@ class Profiler():
 
         return (time_vec, amp_vec)
     
-    def current_injection(self, template_name:str, post_init_function=None, plot=True, 
-                          record_sec="soma", record_loc="0.5",  tstop=1000,
-                          inj_sec="soma", inj_loc="0.5", inj_amp=100, inj_delay=100, inj_dur=1000) -> Tuple[list,list]:
+    def current_injection(self, template_name:str, post_init_function:str=None, 
+                          record_sec:str='soma', inj_sec:str='soma', plot:bool=True,
+                          **kwargs) -> Tuple[list,list]:
         
         ccl = CurrentClamp(template_name, post_init_function=post_init_function, 
-                                      record_sec=record_sec, record_loc=record_loc,
-                                      tstop=tstop, inj_sec=inj_sec, inj_loc=inj_loc,
-                                      inj_amp=inj_amp, inj_delay=inj_delay, inj_dur=inj_dur)
+                           record_sec=record_sec, inj_sec=inj_sec, **kwargs)
         time_vec, amp_vec = ccl.execute()
 
         if plot:
@@ -340,12 +338,13 @@ class Profiler():
             plt.xlabel('Time (ms)')
             plt.ylabel('Membrane Potential (mV)')
             plt.show()
-        
+
         return (time_vec, amp_vec)
     
     
     def fi_curve(self, template_name:str, post_init_function=None, 
-                 record_sec:str='soma', inj_sec:str='soma', plot:bool=True) -> Tuple[list,list]:
+                 record_sec:str='soma', inj_sec:str='soma', plot:bool=True,
+                 **kwargs) -> Tuple[list,list]:
         """
         Calculates an FI curve for the specified cell template_name
 
@@ -366,7 +365,8 @@ class Profiler():
             list(amps), list(spikes)
 
         """
-        fi = FI(template_name, post_init_function=post_init_function, record_sec=record_sec, inj_sec=inj_sec)
+        fi = FI(template_name, post_init_function=post_init_function,
+                record_sec=record_sec, inj_sec=inj_sec, **kwargs)
         amp_vec, spike_vec = fi.execute()
 
         if plot:
@@ -378,7 +378,7 @@ class Profiler():
             plt.show()
 
         return (amp_vec, spike_vec)
-        
+
 
 #Example usage
 #profiler = Profiler('./temp/templates', './temp/mechanisms/modfiles')
