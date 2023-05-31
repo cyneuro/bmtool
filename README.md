@@ -321,6 +321,34 @@ This will plot cells in the `hippocampus` network, using the `pop_name` as the c
 
 All  `point_process` cell types will be ignored since they do not have physical locations.
 
+### Plot 3d cell location and rotation
+Plot the location and rotation of your cells. Plot all of your cells with a single command
+```
+bmtool plot cell rotation
+```
+![bmtool](./figures/rotation3d_1.png "3d Rotation Figure")
+
+Customize your plot by limiting the cells you want or selecting a max number of cells to plot.
+```
+bmtool plot --config simulation_configECP.json cell rotation --group-by pop_name --group CR --max-cells 100 --quiver-length 100 --arrow-length-ratio 0.25
+```
+![bmtool](./figures/rotation3d_2.png "3d Rotation Figure")
+
+Code
+```
+from bmtool import
+from bmtool import bmplot
+
+bmplot.cell_rotation_3d(config=config,
+                     populations=populations,
+                     group_by=group_by,
+                     group=group,
+                     title=title,
+                     max_cells=max_cells,
+                     quiver_length=quiver_length,
+                     arrow_length_ratio=arrow_length_ratio)
+```
+
 ### Plotting Current Clamp and Spike Train Info
 To plot all current clamp info involved in a simulation, use the following command (uses 'simulation_config.json' as default)
 ```
