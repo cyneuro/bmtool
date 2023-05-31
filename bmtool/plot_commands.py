@@ -133,7 +133,7 @@ def cell(ctx,title,save_file):
 @click.option('--populations', type=click.STRING, default='all', help="comma separated list of populations to plot [default:all]")
 @click.option('--group-by', type=click.STRING, default='node_type_id', help="comma separated list of identifiers [default: node_type_id] (pop_name is a good one)")
 @click.option('--group', type=click.STRING, default=None, help="Conditional for cell selection (comma delimited). Eg if group-by was pop_name group would be PNc [default:None]")
-@click.option('--max-cells', type=click.INT, default=None, help="max number of cells to display")
+@click.option('--max-cells', type=click.INT, default=999999999, help="max number of cells to display [default: 999999999]")
 @click.option('--quiver-length', type=click.FLOAT, default=10, help="how long the arrows should be [default: 10]")
 @click.option('--arrow-length-ratio', type=click.FLOAT, default=0.2, help="ratio for the arrow of the quiver [default: 0.2]")
 @click.pass_context
