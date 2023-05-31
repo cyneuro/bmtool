@@ -8,7 +8,7 @@ from .bmplot import (connection_matrix, percent_connection_matrix,
                 edge_histogram_matrix,plot_network_graph,
                 raster,plot_report_default,probability_connection_matrix,
                 sim_setup,plot_I_clamps,plot_basic_cell_info,
-                plot_inspikes)
+                plot_inspikes, cell_rotation_3d)
 import matplotlib.pyplot as plt
 
 @click.group('plot')
@@ -118,6 +118,37 @@ def connection_network_graph(ctx,edge_property):
     if ctx.obj['display']:
         plt.show()
 
+@click.group('cell', help='Plot information regarding cells in the model')
+@click.option('--title', type=click.STRING, default=None, help="change the plot's title")
+@click.option('--save-file', type=click.STRING, default=None, help="save plot to path supplied")
+@click.pass_context
+def cell(ctx,title,save_file):
+
+    ctx.obj["cell"] = {
+        'title':title,
+        'save_file':save_file
+    }
+    
+@cell.command('rotation',help="Plot a 3d plot for cell rotation")
+@click.option('--populations', type=click.STRING, default='all', help="comma separated list of populations to plot [default:all]")
+@click.option('--group-by', type=click.STRING, default='node_type_id', help="comma separated list of identifiers [default: node_type_id] (pop_name is a good one)")
+@click.option('--group', type=click.STRING, default=None, help="Conditional for cell selection (comma delimited). Eg if group-by was pop_name group would be PNc [default:None]")
+@click.option('--max-cells', type=click.INT, default=None, help="max number of cells to display")
+@click.option('--quiver-length', type=click.FLOAT, default=10, help="how long the arrows should be [default: 10]")
+@click.option('--arrow-length-ratio', type=click.FLOAT, default=0.2, help="ratio for the arrow of the quiver [default: 0.2]")
+@click.pass_context
+def rotation_3d(ctx,populations,group_by,group,max_cells,quiver_length,arrow_length_ratio):
+    cell_rotation_3d(config=ctx.obj['config'],**ctx.obj['cell'],
+                     populations=populations,
+                     group_by=group_by,
+                     group=group,
+                     max_cells=max_cells,
+                     quiver_length=quiver_length,
+                     arrow_length_ratio=arrow_length_ratio)
+    if ctx.obj['display']:
+        plt.show()
+
+
 @cli.command('positions', help="Plot cell positions for a given set of populations")
 @click.option('--title', type=click.STRING, default='Cell 3D Positions', help="change the plot's title")
 @click.option('--populations', type=click.STRING, default='all', help="comma separated list of populations to plot [default:all]")
@@ -191,6 +222,7 @@ def Spikes(ctx):
 
 
 cli.add_command(connection)
+cli.add_command(cell)
 
 if __name__ == "__main__":
     cli()
