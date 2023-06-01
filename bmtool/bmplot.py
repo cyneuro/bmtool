@@ -483,13 +483,17 @@ def cell_rotation_3d(**kwargs):
             uvw = pd.DataFrame([U,V,W]).T
             init_vector = init_vector.split(',')
             init_vector = np.repeat([init_vector],len(X),axis=0)
+            
             # To get the final cell orientation after rotation, 
             # you need to use function Rotaion.apply(init_vec), 
             # where init_vec is a vector of the initial orientation of a cell
-            rots = R.from_euler('xyz', uvw).apply(init_vector.astype(float))
-            rots = R.from_euler('xyz', pd.DataFrame([rots[:,0],rots[:,1],rots[:,2]]).T).as_rotvec().T
+            #rots = R.from_euler('xyz', uvw).apply(init_vector.astype(float))
+            #rots = R.from_euler('xyz', pd.DataFrame([rots[:,0],rots[:,1],rots[:,2]]).T).as_rotvec().T
 
+            rots = R.from_euler('zyx', uvw).apply(init_vector.astype(float)).T
             h = ax.quiver(X, Y, Z, rots[0],rots[1],rots[2],color=color,label=group_name, arrow_length_ratio = arrow_length_ratio, length=quiver_length)
+
+            #h = ax.quiver(X, Y, Z, rots[0],rots[1],rots[2],color=color,label=group_name, arrow_length_ratio = arrow_length_ratio, length=quiver_length)
             ax.scatter(X,Y,Z,color=color,label=group_name)
             handles.append(h)
     if not handles:
