@@ -136,15 +136,17 @@ def cell(ctx,title,save_file):
 @click.option('--max-cells', type=click.INT, default=999999999, help="max number of cells to display [default: 999999999]")
 @click.option('--quiver-length', type=click.FLOAT, default=10, help="how long the arrows should be [default: 10]")
 @click.option('--arrow-length-ratio', type=click.FLOAT, default=0.2, help="ratio for the arrow of the quiver [default: 0.2]")
+@click.option('--init-vector', type=click.STRING, default="1,0,0", help="comma delimited initial rotation vector specified by pt3dadd [default: 0,0,1]")
 @click.pass_context
-def rotation_3d(ctx,populations,group_by,group,max_cells,quiver_length,arrow_length_ratio):
+def rotation_3d(ctx,populations,group_by,group,max_cells,quiver_length,arrow_length_ratio,init_vector):
     cell_rotation_3d(config=ctx.obj['config'],**ctx.obj['cell'],
                      populations=populations,
                      group_by=group_by,
                      group=group,
                      max_cells=max_cells,
                      quiver_length=quiver_length,
-                     arrow_length_ratio=arrow_length_ratio)
+                     arrow_length_ratio=arrow_length_ratio,
+                     init_vector=init_vector)
     if ctx.obj['display']:
         plt.show()
 
