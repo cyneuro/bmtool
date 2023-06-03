@@ -529,7 +529,7 @@ class Profiler():
             plt.ylabel('Current Injection (nA)')
 
             plt.figure()
-            plt.plot(*sim4.get_impedance(smooth=smooth))
+            plt.plot(*zap.get_impedance(smooth=smooth))
             plt.title('Impedance Amplitude Profile')
             plt.xlabel('Frequency (Hz)')
             plt.ylabel('Impedance (MOhms)')
