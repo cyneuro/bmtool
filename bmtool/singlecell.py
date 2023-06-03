@@ -31,8 +31,8 @@ def get_target_site(cell, sec=('soma', 0), loc=0.5, site=''):
 
 
 class CurrentClamp(object):
-    def __init__(self, template_name, post_init_function=None, record_sec='soma', record_loc=0.5, tstop=1000.,
-                 inj_sec='soma', inj_loc=0.5, inj_amp=100., inj_delay=100., inj_dur=1000.):
+    def __init__(self, template_name, post_init_function=None, record_sec='soma', record_loc=0.5,
+                 inj_sec='soma', inj_loc=0.5, inj_amp=100., inj_delay=100., inj_dur=1000., tstop=1000.):
         """
         template_name: str, name of the cell template located in hoc
         post_init_function: str, function of the cell to be called after the cell has been initialized
@@ -52,7 +52,7 @@ class CurrentClamp(object):
         self.inj_sec = inj_sec
         self.inj_loc = inj_loc
 
-        self.tstop = tstop
+        self.tstop = max(tstop, inj_delay + inj_dur)
         self.inj_delay = inj_delay # use x ms after start of inj to calculate r_in, etc
         self.inj_dur = inj_dur
         self.inj_amp = inj_amp * 1e-3 # pA to nA
@@ -60,18 +60,12 @@ class CurrentClamp(object):
         self.cell = getattr(h, self.template_name)()
         if post_init_function:
             eval(f"self.cell.{post_init_function}")
-        self.cell_src = None
-        self.v_vec = None
-        self.t_vec = h.Vector()
 
         self.setup()
 
     def setup(self):
-        self.t_vec.record(h._ref_t)
-
         inj_seg, _ = get_target_site(self.cell, self.inj_sec, self.inj_loc, 'injection')
         self.cell_src = h.IClamp(inj_seg)
-
         self.cell_src.delay = self.inj_delay
         self.cell_src.dur = self.inj_dur
         self.cell_src.amp = self.inj_amp
@@ -79,6 +73,9 @@ class CurrentClamp(object):
         rec_seg, _ = get_target_site(self.cell, self.record_sec, self.record_loc, 'recording')
         self.v_vec = h.Vector()
         self.v_vec.record(rec_seg._ref_v)
+
+        self.t_vec = h.Vector()
+        self.t_vec.record(h._ref_t)
 
         print(f'Injection location: {inj_seg}')
         print(f'Recording: {rec_seg}._ref_v')
@@ -93,8 +90,8 @@ class CurrentClamp(object):
 
 
 class Passive(CurrentClamp):
-    def __init__(self, template_name, tstop=1200., inj_amp=-100., inj_delay=200., inj_dur=1000.,
-                 method=None, **kwargs):
+    def __init__(self, template_name, inj_amp=-100., inj_delay=200., inj_dur=1000.,
+                 tstop=1200., method=None, **kwargs):
         """
         method: {'simple', 'exp2'}, optional.
             Method to estimate membrane time constant. Default is 'simple'
@@ -102,23 +99,24 @@ class Passive(CurrentClamp):
             exponential curve to the membrane potential response.
         """
         assert(inj_amp != 0)
-        super(Passive, self).__init__(template_name=template_name, tstop=tstop,
-                                      inj_amp=inj_amp, inj_delay=inj_delay, inj_dur=inj_dur, **kwargs)
+        super().__init__(template_name=template_name, tstop=tstop,
+                         inj_amp=inj_amp, inj_delay=inj_delay, inj_dur=inj_dur, **kwargs)
         self.inj_stop = inj_delay + inj_dur
-        self.method = method or 'simple'
+        self.method = method
+        self.tau_methods = {'simple': self.tau_simple, 'exp2': self.tau_double_exponential}
 
     def tau_simple(self):
         v_t_const = self.cell_v_final - self.v_diff / np.e
-        index_v_tau = next(x for x, val in enumerate(self.v_vec) if val <= v_t_const)
-        self.tau = self.t_vec[index_v_tau] - self.v_rest_time # ms
+        index_v_tau = next(x for x, val in enumerate(self.v_vec_inj) if val <= v_t_const)
+        self.tau = self.t_vec[self.index_v_rest + index_v_tau] - self.v_rest_time # ms
 
         def print_calc():
             print()
             print('Tau Calculation: time until 63.2% of dV')
             print('v_rest + 0.632*(v_final-v_rest)')
             print(f'{self.v_rest:.2f} + 0.632*({self.cell_v_final:.2f}-({self.v_rest:.2f})) = {v_t_const:.2f} (mV)')
-            print(f'Time where V = {v_t_const:.2f} (mV) is {self.inj_delay + self.tau:.2f} (ms)')
-            print(f'{self.inj_delay + self.tau:.2f} - {self.inj_delay:g} = {self.tau:.2f} (ms)')
+            print(f'Time where V = {v_t_const:.2f} (mV) is {self.v_rest_time + self.tau:.2f} (ms)')
+            print(f'{self.v_rest_time + self.tau:.2f} - {self.v_rest_time:g} = {self.tau:.2f} (ms)')
             print()
         return print_calc
 
@@ -127,14 +125,9 @@ class Passive(CurrentClamp):
         return a0 + a1 * np.exp(-t / tau1) + a2 * np.exp(-t / tau2)
 
     def tau_double_exponential(self):
-        t_idx = slice(self.index_v_rest, self.index_v_final + 1)
-        v_vec = self.v_vec.as_numpy().copy()[t_idx]
-        t_vec = self.t_vec.as_numpy().copy()[t_idx]
-        t_vec -= t_vec[0]
-
-        index_v_peak = (np.sign(self.inj_amp) * v_vec).argmax()
-        self.t_peak = t_vec[index_v_peak]
-        self.v_peak = v_vec[index_v_peak]
+        index_v_peak = (np.sign(self.inj_amp) * self.v_vec_inj).argmax()
+        self.t_peak = self.t_vec_inj[index_v_peak]
+        self.v_peak = self.v_vec_inj[index_v_peak]
         self.v_sag = self.v_peak - self.cell_v_final
         self.v_max_diff = self.v_diff + self.v_sag
         self.sag_norm = self.v_sag / self.v_max_diff
@@ -144,7 +137,8 @@ class Passive(CurrentClamp):
         v0 = self.v_rest
         def fit_func(t, a1, a2, tau1, tau2):
             return self.double_exponential(t, v0 - a1 - a2, a1, a2, tau1, tau2)
-        popt, self.pcov = curve_fit(fit_func, t_vec, v_vec, p0=p0, maxfev=10000)
+        bounds = ((-np.inf, -np.inf, 1e-3, 1e-3), np.inf)
+        popt, self.pcov = curve_fit(fit_func, self.t_vec_inj, self.v_vec_inj, p0=p0, bounds=bounds, maxfev=10000)
         self.popt = np.insert(popt, 0, v0 - sum(popt[:2]))
         self.tau = max(self.popt[-2:])
 
@@ -162,8 +156,8 @@ class Passive(CurrentClamp):
         return print_calc
 
     def double_exponential_fit(self):
-        t_vec = self.t_vec.as_numpy()[self.index_v_rest:self.index_v_final + 1]
-        v_fit = self.double_exponential(t_vec - t_vec[0], *self.popt)
+        t_vec = self.v_rest_time + self.t_vec_inj
+        v_fit = self.double_exponential(self.t_vec_inj, *self.popt)
         return t_vec, v_fit
 
     def execute(self):
@@ -179,10 +173,14 @@ class Passive(CurrentClamp):
         self.cell_v_final = self.v_vec[self.index_v_final]
         self.v_final_time = self.t_vec[self.index_v_final]
 
+        t_idx = slice(self.index_v_rest, self.index_v_final + 1)
+        self.v_vec_inj = self.v_vec.as_numpy()[t_idx].copy()
+        self.t_vec_inj = self.t_vec.as_numpy()[t_idx].copy() - self.v_rest_time
+
         self.v_diff = self.cell_v_final - self.v_rest
         self.r_in = self.v_diff / self.inj_amp # MegaOhms
 
-        print_calc = self.tau_double_exponential() if self.method == 'exp2' else self.tau_simple()
+        print_calc = self.tau_methods.get(self.method, self.tau_simple)()
 
         print()
         print(f'V Rest: {self.v_rest:.2f} (mV)')
@@ -230,7 +228,6 @@ class FI(object):
         self.sources = []
         self.ncs = []
         self.tspk_vecs = []
-        self.t_vec = h.Vector()
         self.nspks = []
 
         self.ntrials = int((self.i_stop - self.i_start) // self.i_increment + 1)
@@ -245,8 +242,6 @@ class FI(object):
         self.setup()
 
     def setup(self):
-        self.t_vec.record(h._ref_t)
-
         for cell, amp in zip(self.cells, self.amps):
             inj_seg, _ = get_target_site(cell, self.inj_sec, self.inj_loc, 'injection')
             src = h.IClamp(inj_seg)
@@ -282,9 +277,92 @@ class FI(object):
         return self.amps, self.nspks
 
 
+class ZAP(CurrentClamp):
+    def __init__(self, template_name, inj_amp=100., inj_delay=200., inj_dur=15000.,
+                 tstop=15500., fstart=0., fend=15., chirp_type=None, **kwargs):
+        """
+        fstart, fend: float, frequency at the start and end of the chirp current
+        chirp_type: {'linear', 'exponential'}, optional.
+            Type of chirp current, i.e. how frequency increase over time.
+        """
+        assert(inj_amp != 0)
+        super().__init__(template_name=template_name, tstop=tstop,
+                         inj_amp=inj_amp, inj_delay=inj_delay, inj_dur=inj_dur, **kwargs)
+        self.inj_stop = inj_delay + inj_dur
+        self.fstart = fstart
+        self.fend = fend
+        self.chirp_type = chirp_type
+        self.chirp_func = {'linear': self.linear_chirp, 'exponential': self.exponential_chirp}
+        if chirp_type=='exponential':
+            assert(fstart > 0 and fend > 0)
+
+    def linear_chirp(self, t, f0, f1):
+        return self.inj_amp * np.sin(np.pi * (2 * f0 + (f1 - f0) / t[-1] * t) * t)
+
+    def exponential_chirp(self, t, f0, f1):
+        L = np.log(f1 / f0) / t[-1]
+        return self.inj_amp * np.sin(np.pi * 2 * f0 / L * (np.exp(L * t) - 1))
+
+    def zap_current(self):
+        self.dt = dt = h.dt
+        self.index_v_rest = int(self.inj_delay / dt)
+        self.index_v_final = int(self.inj_stop / dt)
+
+        t = np.arange(int(self.tstop / dt) + 1) * dt
+        t_inj = t[:self.index_v_final - self.index_v_rest + 1]
+        f0 = self.fstart * 1e-3 # Hz to 1/ms
+        f1 = self.fend * 1e-3
+        chirp_func = self.chirp_func.get(self.chirp_type, self.linear_chirp)
+        self.zap_vec_inj = chirp_func(t_inj, f0, f1)
+        i_inj = np.zeros_like(t)
+        i_inj[self.index_v_rest:self.index_v_final + 1] = self.zap_vec_inj
+
+        self.zap_vec = h.Vector()
+        self.zap_vec.from_python(i_inj)
+        self.zap_vec.play(self.cell_src._ref_amp, dt)
+
+    def get_impedance(self, smooth=1):
+        f_idx = (self.freq > min(self.fstart, self.fend)) & (self.freq < max(self.fstart, self.fend))
+        impedance = self.impedance
+        if smooth > 1:
+            impedance = np.convolve(impedance, np.ones(smooth) / smooth, mode='same')
+        freq, impedance = self.freq[f_idx], impedance[f_idx]
+        self.peak_freq = freq[np.argmax(impedance)]
+        print(f'Resonant Peak Frequency: {self.peak_freq:.3g} (Hz)')
+        return freq, impedance
+
+    def execute(self) -> Tuple[list, list]:
+        print("ZAP current simulation running...")
+        self.zap_current()
+        h.tstop = self.tstop
+        h.stdinit()
+        h.run()
+
+        self.zap_vec.resize(self.t_vec.size())
+        self.v_rest = self.v_vec[self.index_v_rest]
+        self.v_rest_time = self.t_vec[self.index_v_rest]
+
+        t_idx = slice(self.index_v_rest, self.index_v_final + 1)
+        self.v_vec_inj = self.v_vec.as_numpy()[t_idx].copy() - self.v_rest
+        self.t_vec_inj = self.t_vec.as_numpy()[t_idx].copy() - self.v_rest_time
+
+        self.cell_v_amp_max = np.abs(self.v_vec_inj).max()
+        self.Z = np.fft.rfft(self.v_vec_inj) / np.fft.rfft(self.zap_vec_inj) # MOhms
+        self.freq = np.fft.rfftfreq(self.zap_vec_inj.size, d=self.dt * 1e-3) # ms to sec
+        self.impedance = np.abs(self.Z)
+
+        print()
+        print('Chirp current injection with frequency changing from '
+              f'{self.fstart:g} to {self.fend:g} Hz over {self.inj_dur * 1e-3:g} seconds')
+        print('Impedance is calculated as the ratio of FFT amplitude '
+              'of membrane voltage to FFT amplitude of chirp current')
+        print()
+        return self.t_vec.to_python(), self.v_vec.to_python()
+
+
 class Profiler():
     """All in one single cell profiler"""
-    def __init__(self, template_dir: str = None, mechanism_dir: str = None):
+    def __init__(self, template_dir: str = None, mechanism_dir: str = None, dt=None):
         self.template_dir = None
         self.mechanism_dir = None
 
@@ -295,6 +373,11 @@ class Profiler():
         self.templates = None
 
         self.load_templates()
+
+        h.load_file("stdrun.hoc")
+        if dt is not None:
+            h.dt = dt
+            h.steps_per_ms = 1 / h.dt
 
     def load_templates(self, hoc_template_file=None):
         if self.templates is None: # Can really only do this once
@@ -417,6 +500,42 @@ class Profiler():
 
         return amp, nspk
 
+    def impedance_amplitude_profile(self, template_name: str, post_init_function: str = None,
+                                    record_sec: str = 'soma', inj_sec: str = 'soma', plot: bool = True,
+                                    chirp_type=None, smooth: int = 9, **kwargs) -> Tuple[list, list]:
+        """
+        chirp_type: str
+            Type of chirp current (see ZAP)
+        smooth: int
+            Window size for smoothing the impedance in frequency domain
+        **kwargs:
+            extra key word arguments for ZAP()
+        """
+        zap = ZAP(template_name, post_init_function=post_init_function,
+                  record_sec=record_sec, inj_sec=inj_sec, chirp_type=chirp_type, **kwargs)
+        time, amp = zap.execute()
+
+        if plot:
+            plt.figure()
+            plt.plot(time, amp)
+            plt.title("ZAP Response")
+            plt.xlabel('Time (ms)')
+            plt.ylabel('Membrane Potential (mV)')
+
+            plt.figure()
+            plt.plot(time, zap.zap_vec)
+            plt.title('ZAP Current')
+            plt.xlabel('Time (ms)')
+            plt.ylabel('Current Injection (nA)')
+
+            plt.figure()
+            plt.plot(*sim4.get_impedance(smooth=smooth))
+            plt.title('Impedance Amplitude Profile')
+            plt.xlabel('Frequency (Hz)')
+            plt.ylabel('Impedance (MOhms)')
+            plt.show()
+
+        return time, amp
 
 # Example usage
 # profiler = Profiler('./temp/templates', './temp/mechanisms/modfiles')
