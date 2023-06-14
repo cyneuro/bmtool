@@ -372,9 +372,9 @@ Using previous functions, plots connection probability as a function of distance
 bmtool plot --config simulation_config_foo.json summary
 ```
 
-### Connector Module
+### Connectors Module
 
-This module contains helper functions and classes that work with BMTK's NetworkBuilder module in building networks. It facilitates building reciprocal connections, distance dependent connections, afferent connections, etc. See documentation inside the script `connector.py` for usage.
+This module contains helper functions and classes that work with BMTK's NetworkBuilder module in building networks. It facilitates building reciprocal connections, distance dependent connections, afferent connections, etc. See documentation inside the script `connectors.py` for usage.
 ```
 from bmtool import connectors
 ```
