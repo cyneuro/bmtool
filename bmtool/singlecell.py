@@ -31,7 +31,7 @@ def get_target_site(cell, sec=('soma', 0), loc=0.5, site=''):
 
 
 class CurrentClamp(object):
-    def __init__(self, template_name, post_init_function=None, record_sec='soma', record_loc=0.5,
+    def __init__(self, template_name, post_init_function=None, record_sec='soma', record_loc=0.5, threshold=None,
                  inj_sec='soma', inj_loc=0.5, inj_amp=100., inj_delay=100., inj_dur=1000., tstop=1000.):
         """
         template_name: str, name of the cell template located in hoc
@@ -40,6 +40,7 @@ class CurrentClamp(object):
             If a string of section name is specified, index default to 0
             If an index is specified, section list name default to `all`
         record_loc: float, location within [0, 1] of a segment in a section to record from
+        threshold: Optional float, spike threshold (mV), if specified, record and count spikes times
         inj_sec, inj_loc: current injection site, same format as record site
         tstop: time for simulation (ms)
         inj_delay: current injection start time (ms)
@@ -51,6 +52,7 @@ class CurrentClamp(object):
         self.record_loc = record_loc
         self.inj_sec = inj_sec
         self.inj_loc = inj_loc
+        self.threshold = threshold
 
         self.tstop = max(tstop, inj_delay + inj_dur)
         self.inj_delay = inj_delay # use x ms after start of inj to calculate r_in, etc
@@ -70,12 +72,18 @@ class CurrentClamp(object):
         self.cell_src.dur = self.inj_dur
         self.cell_src.amp = self.inj_amp
 
-        rec_seg, _ = get_target_site(self.cell, self.record_sec, self.record_loc, 'recording')
+        rec_seg, rec_sec = get_target_site(self.cell, self.record_sec, self.record_loc, 'recording')
         self.v_vec = h.Vector()
         self.v_vec.record(rec_seg._ref_v)
 
         self.t_vec = h.Vector()
         self.t_vec.record(h._ref_t)
+
+        if self.threshold is not None:
+            self.nc = h.NetCon(rec_seg._ref_v, None, sec=rec_sec)
+            self.nc.threshold = self.threshold
+            self.tspk_vec = h.Vector()
+            self.nc.record(self.tspk_vec)
 
         print(f'Injection location: {inj_seg}')
         print(f'Recording: {rec_seg}._ref_v')
@@ -86,6 +94,11 @@ class CurrentClamp(object):
         h.stdinit()
         h.run()
 
+        if self.threshold is not None:
+            self.nspks = len(self.tspk_vec)
+            print()
+            print(f'Number of spikes: {self.nspks:d}')
+            print()
         return self.t_vec.to_python(), self.v_vec.to_python()
 
 
