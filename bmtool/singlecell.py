@@ -35,7 +35,7 @@ class CurrentClamp(object):
                  inj_sec='soma', inj_loc=0.5, inj_amp=100., inj_delay=100., inj_dur=1000., tstop=1000.):
         """
         template_name: str, name of the cell template located in hoc
-            It can also be passed directly as a cell object.
+            or callable, a function that creates and returns a cell object
         post_init_function: str, function of the cell to be called after the cell has been initialized
         record_sec: tuple, (section list name, index) to access a section in a hoc template
             If a string of section name is specified, index default to 0
@@ -48,7 +48,7 @@ class CurrentClamp(object):
         inj_dur: current injection duration (ms)
         inj_amp: current injection amplitude (pA)
         """
-        self.template_name = template_name if isinstance(template_name, str) else None
+        self.create_cell = getattr(h, template_name) if isinstance(template_name, str) else template_name
         self.record_sec = record_sec
         self.record_loc = record_loc
         self.inj_sec = inj_sec
@@ -60,7 +60,7 @@ class CurrentClamp(object):
         self.inj_dur = inj_dur
         self.inj_amp = inj_amp * 1e-3 # pA to nA
 
-        self.cell = template_name if self.template_name is None else getattr(h, self.template_name)()
+        self.cell = self.create_cell()
         if post_init_function:
             eval(f"self.cell.{post_init_function}")
 
@@ -217,15 +217,15 @@ class FI(object):
                  i_start=0., i_stop=1050., i_increment=100., tstart=50., tdur=1000., threshold=0.,
                  record_sec='soma', record_loc=0.5, inj_sec='soma', inj_loc=0.5):
         """
-        template_name: str, name of the cell template located in hoc.
-            It can also be a function that creates and returns a cell object.
+        template_name: str, name of the cell template located in hoc
+            or callable, a function that creates and returns a cell object
         i_start: initial current injection amplitude (pA)
         i_stop: maximum current injection amplitude (pA)
         i_increment: amplitude increment each trial (pA)
         tstart: current injection start time (ms)
         tdur: current injection duration (ms)
         """
-        self.template_name = template_name if isinstance(template_name, str) else None
+        self.create_cell = getattr(h, template_name) if isinstance(template_name, str) else template_name
         self.post_init_function = post_init_function
         self.i_start = i_start * 1e-3 # pA to nA
         self.i_stop = i_stop * 1e-3
@@ -250,7 +250,7 @@ class FI(object):
         self.amps = (self.i_start + np.arange(self.ntrials) * self.i_increment).tolist()
         for _ in range(self.ntrials):
             # Cell definition
-            cell = template_name() if self.template_name is None else getattr(h, self.template_name)()
+            cell = self.create_cell()
             if post_init_function:
                 eval(f"cell.{post_init_function}")
             self.cells.append(cell)
@@ -428,8 +428,9 @@ class Profiler():
 
         Parameters
         ==========
-        template_name: str
+        template_name: str or callable
             name of the cell template located in hoc
+            or a function that creates and returns a cell object
         post_init_function: str
             function of the cell to be called after the cell has been initialized (like insert_mechs(123))
         record_sec: str
@@ -488,8 +489,9 @@ class Profiler():
 
         Parameters
         ==========
-        template_name: str
+        template_name: str or callable
             name of the cell template located in hoc
+            or a function that creates and returns a cell object
         post_init_function: str
             function of the cell to be called after the cell has been initialized (like insert_mechs(123))
         record_sec: str
