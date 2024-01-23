@@ -1,11 +1,40 @@
 import glob
 import os
+import json
 from typing import Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import neuron
 from neuron import h
+
+
+def load_biophys1():
+    if not hasattr(h, 'Biophys1'):
+        from bmtk import utils
+        module_dir = os.path.dirname(os.path.abspath(utils.__file__))
+        hoc_file = os.path.join(module_dir, 'scripts', 'bionet', 'templates', 'Biophys1.hoc')
+        h.load_file("import3d.hoc")
+        h.load_file(hoc_file)
+
+
+def load_allen_database_cells(morphology, dynamic_params, model_processing='aibs_perisomatic'):
+    """Create Allen cell model
+    morphology: morphology file path
+    dynamic_params: dynamic_params file path
+    model_processing: model processing type by AllenCellType database
+    Return: a function that creates and returns a cell object 
+    """
+    from bmtk.simulator.bionet.default_setters import cell_models
+    load_biophys1()
+    model_processing = getattr(cell_models, model_processing)
+    with open(dynamic_params) as f:
+        dynamics_params = json.load(f)
+    def create_cell():
+        hobj = h.Biophys1(morphology)
+        hobj = model_processing(hobj, cell=None, dynamics_params=dynamics_params)
+        return hobj
+    return create_cell
 
 
 def get_target_site(cell, sec=('soma', 0), loc=0.5, site=''):
@@ -560,3 +589,30 @@ class Profiler():
 # profiler.passive_properties('Cell_Cf')
 # profiler.fi_curve('Cell_Cf')
 # profiler.current_injection('Cell_Cf', post_init_function="insert_mechs(123)", inj_amp=300, inj_delay=100)
+
+
+def run_and_plot(sim, title=None, xlabel='Time (ms)', ylabel='Membrane Potential (mV)',
+                 plot=True, plot_injection_only=False):
+    """Helper function for running simulation and plot
+    sim: instance of the simulation class in this module
+    title, xlabel, ylabel: plot labels
+    plot: whether or not to plot
+    plot_injection_only: plot only the injection duration
+    Return: outputs by sim.execute()
+    """
+    X, Y = sim.execute()
+    X = np.array(X)
+    Y = np.array(Y)
+    if plot:
+        plt.figure()
+        if plot_injection_only:
+            t_idx = (X >= sim.inj_delay) & (X <= sim.inj_delay + sim.inj_dur)
+            plt.plot(X[t_idx], Y[t_idx])
+        else:
+            plt.plot(X, Y)
+        if title is None:
+            title = type(sim).__name__
+        plt.title(title)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+    return X, Y
