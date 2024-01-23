@@ -31,33 +31,36 @@ def get_target_site(cell, sec=('soma', 0), loc=0.5, site=''):
 
 
 class CurrentClamp(object):
-    def __init__(self, template_name, post_init_function=None, record_sec='soma', record_loc=0.5,
+    def __init__(self, template_name, post_init_function=None, record_sec='soma', record_loc=0.5, threshold=None,
                  inj_sec='soma', inj_loc=0.5, inj_amp=100., inj_delay=100., inj_dur=1000., tstop=1000.):
         """
         template_name: str, name of the cell template located in hoc
+            It can also be passed directly as a cell object.
         post_init_function: str, function of the cell to be called after the cell has been initialized
         record_sec: tuple, (section list name, index) to access a section in a hoc template
             If a string of section name is specified, index default to 0
             If an index is specified, section list name default to `all`
         record_loc: float, location within [0, 1] of a segment in a section to record from
+        threshold: Optional float, spike threshold (mV), if specified, record and count spikes times
         inj_sec, inj_loc: current injection site, same format as record site
         tstop: time for simulation (ms)
         inj_delay: current injection start time (ms)
         inj_dur: current injection duration (ms)
         inj_amp: current injection amplitude (pA)
         """
-        self.template_name = template_name
+        self.template_name = template_name if isinstance(template_name, str) else None
         self.record_sec = record_sec
         self.record_loc = record_loc
         self.inj_sec = inj_sec
         self.inj_loc = inj_loc
+        self.threshold = threshold
 
         self.tstop = max(tstop, inj_delay + inj_dur)
         self.inj_delay = inj_delay # use x ms after start of inj to calculate r_in, etc
         self.inj_dur = inj_dur
         self.inj_amp = inj_amp * 1e-3 # pA to nA
 
-        self.cell = getattr(h, self.template_name)()
+        self.cell = template_name if self.template_name is None else getattr(h, self.template_name)()
         if post_init_function:
             eval(f"self.cell.{post_init_function}")
 
@@ -70,12 +73,18 @@ class CurrentClamp(object):
         self.cell_src.dur = self.inj_dur
         self.cell_src.amp = self.inj_amp
 
-        rec_seg, _ = get_target_site(self.cell, self.record_sec, self.record_loc, 'recording')
+        rec_seg, rec_sec = get_target_site(self.cell, self.record_sec, self.record_loc, 'recording')
         self.v_vec = h.Vector()
         self.v_vec.record(rec_seg._ref_v)
 
         self.t_vec = h.Vector()
         self.t_vec.record(h._ref_t)
+
+        if self.threshold is not None:
+            self.nc = h.NetCon(rec_seg._ref_v, None, sec=rec_sec)
+            self.nc.threshold = self.threshold
+            self.tspk_vec = h.Vector()
+            self.nc.record(self.tspk_vec)
 
         print(f'Injection location: {inj_seg}')
         print(f'Recording: {rec_seg}._ref_v')
@@ -86,6 +95,11 @@ class CurrentClamp(object):
         h.stdinit()
         h.run()
 
+        if self.threshold is not None:
+            self.nspks = len(self.tspk_vec)
+            print()
+            print(f'Number of spikes: {self.nspks:d}')
+            print()
         return self.t_vec.to_python(), self.v_vec.to_python()
 
 
@@ -203,13 +217,15 @@ class FI(object):
                  i_start=0., i_stop=1050., i_increment=100., tstart=50., tdur=1000., threshold=0.,
                  record_sec='soma', record_loc=0.5, inj_sec='soma', inj_loc=0.5):
         """
+        template_name: str, name of the cell template located in hoc.
+            It can also be a function that creates and returns a cell object.
         i_start: initial current injection amplitude (pA)
         i_stop: maximum current injection amplitude (pA)
         i_increment: amplitude increment each trial (pA)
         tstart: current injection start time (ms)
         tdur: current injection duration (ms)
         """
-        self.template_name = template_name
+        self.template_name = template_name if isinstance(template_name, str) else None
         self.post_init_function = post_init_function
         self.i_start = i_start * 1e-3 # pA to nA
         self.i_stop = i_stop * 1e-3
@@ -234,7 +250,7 @@ class FI(object):
         self.amps = (self.i_start + np.arange(self.ntrials) * self.i_increment).tolist()
         for _ in range(self.ntrials):
             # Cell definition
-            cell = getattr(h, self.template_name)()
+            cell = template_name() if self.template_name is None else getattr(h, self.template_name)()
             if post_init_function:
                 eval(f"cell.{post_init_function}")
             self.cells.append(cell)
