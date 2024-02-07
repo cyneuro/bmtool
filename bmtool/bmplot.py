@@ -32,6 +32,13 @@ python -m bmtool.plot
 """
 
 def connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, size_scalar=1,no_prepend_pop=False,save_file=None,synaptic_info='0'):
+    """
+    Generates connection plot displaying total connection
+    config: A BMTK simulation config 
+    
+    
+    """
+
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -366,7 +373,7 @@ def plot_3d_positions(**kwargs):
     group_keys = group_keys.split(",")
     group_keys += (len(populations)-len(group_keys)) * ["node_type_id"] #Extend the array to default values if not enough given
     fig = plt.figure(figsize=(10,10))
-    ax = Axes3D(fig)
+    ax = fig.add_subplot(projection='3d')
     handles = []
     for nodes_key,group_key in zip(list(nodes),group_keys):
         if 'all' not in populations and nodes_key not in populations:
