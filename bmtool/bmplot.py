@@ -31,12 +31,17 @@ Plot BMTK models easily.
 python -m bmtool.plot 
 """
 
-def connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, size_scalar=1,no_prepend_pop=False,save_file=None,synaptic_info='0'):
+def connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None,no_prepend_pop=False,save_file=None,synaptic_info='0'):
     """
     Generates connection plot displaying total connection
     config: A BMTK simulation config 
-    
-    
+    sources: network name(s) to plot
+    targets: network name(s) to plot
+    sids: source node identifier 
+    tids: target node identifier
+    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
+    save_file: If plot should be saved
+    synaptic_info: '0' for total connections, '1' for mean and stdev connections, '2' for all synapse .mod files used, '3' for all synapse .json files used
     """
 
     if not sources or not targets:
@@ -66,6 +71,11 @@ def connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None,
     return
     
 def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None):
+    """
+    currently does not work
+
+    """
+    
     text,num, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
 
     if title == None or title=="":
@@ -76,7 +86,9 @@ def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sourc
 
 def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, 
                             no_prepend_pop=False,save_file=None, dist_X=True,dist_Y=True,dist_Z=True,bins=8,line_plot=False,verbose=False):
-    np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
+    """
+    currently not working
+    """
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -140,10 +152,33 @@ def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,s
 
     return
 
-def convergence_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean'):
-    return divergence_connection_matrix(config,nodes ,edges ,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method)
+def convergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean'):
+    """
+    Generates connection plot displaying convergence data
+    config: A BMTK simulation config 
+    sources: network name(s) to plot
+    targets: network name(s) to plot
+    sids: source node identifier 
+    tids: target node identifier
+    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
+    save_file: If plot should be saved
+    method: 'mean','min','max','stdev' for connvergence plot
+    """
+    
+    return divergence_connection_matrix(config,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method)
 
-def divergence_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean'):
+def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean'):
+    """
+    Generates connection plot displaying divergence data
+    config: A BMTK simulation config 
+    sources: network name(s) to plot
+    targets: network name(s) to plot
+    sids: source node identifier 
+    tids: target node identifier
+    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
+    save_file: If plot should be saved
+    method: 'mean','min','max','stdev' for connvergence plot
+    """
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
