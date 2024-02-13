@@ -620,10 +620,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                                 syn_info[source_index,target_index] = ""
                             else:
                                 syn_info[source_index,target_index] = syn_list
-                        
-                        elif synaptic_info=='4':
-                            total_per,uni,bi = conn_precent_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
-                            syn_info[source_index,target_index] = str(round(total_per,2)) + '\n'+ str(round(uni,2))+ '\n'+ str(round(bi,2))
+
                         e_matrix[source_index,target_index]=total
                                                 
     return syn_info, e_matrix, source_pop_names, target_pop_names
@@ -642,12 +639,48 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
         return total
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship,synaptic_info=synaptic_info)
 
-def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True):
+def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None):
 
-    def real_func(**kwargs): # to trick relation_matrix to enter func code block not a good way but works!
-        pass
+    def precent_func(**kwargs): 
+        edges = kwargs["edges"]
+        source_id_type = kwargs["sid"]
+        target_id_type = kwargs["tid"]
+        source_id = kwargs["source_id"]
+        target_id = kwargs["target_id"]
+        t_list = kwargs["target_nodes"]
+        s_list = kwargs["source_nodes"]
 
-    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,synaptic_info='4',relation_func=real_func)
+        cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+        total_cons = cons.count().source_node_id
+        # to determine reciprocal connectivity
+        # create a copy and flip source/dest
+        cons_flip = edges[(edges[source_id_type] == target_id) & (edges[target_id_type]==source_id)]
+        cons_flip = cons_flip.rename(columns={'source_node_id':'target_node_id','target_node_id':'source_node_id'})
+        # append to original 
+        cons_recip = cons.append(cons_flip)
+
+        # determine dropped duplicates (keep=False)
+        cons_recip_dedup = cons_recip.drop_duplicates(subset=['source_node_id','target_node_id'])
+
+        # note counts
+        num_bi = (cons_recip.count().source_node_id - cons_recip_dedup.count().source_node_id)
+        num_uni = total_cons - num_bi    
+
+        num_sources = s_list.apply(pd.Series.value_counts)[source_id_type].dropna().sort_index().loc[source_id]
+        num_targets = t_list.apply(pd.Series.value_counts)[target_id_type].dropna().sort_index().loc[target_id]
+
+        total = round(total_cons / (num_sources*num_targets) * 100,2)
+        uni = round(num_uni / (num_sources*num_targets) * 100,2)
+        bi = round(num_bi / (num_sources*num_targets) * 100,2)
+        if method == 'total':
+            return total
+        if method == 'uni':
+            return uni
+        if method == 'bi':
+            return bi
+
+
+    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=precent_func)
 
 
 def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False,method='mean'):

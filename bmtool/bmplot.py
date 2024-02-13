@@ -71,7 +71,7 @@ def connection_matrix(config=None,title=None,sources=None, targets=None, sids=No
     plot_connection_info(text,num,source_labels,target_labels,title, syn_info=synaptic_info, save_file=save_file)
     return
     
-def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None):
+def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,method = None):
     """
     currently does not display percent just shows total conn
 
@@ -91,7 +91,7 @@ def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sourc
         tids = tids.split(",")
     else:
         tids = []
-    text,num, source_labels, target_labels = util.percent_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
+    text,num, source_labels, target_labels = util.percent_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,method=method)
     if title == None or title=="":
         title = "Percent Connectivity"
 
