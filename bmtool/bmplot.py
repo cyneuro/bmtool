@@ -91,8 +91,7 @@ def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sourc
         tids = tids.split(",")
     else:
         tids = []
-    text,num, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
-
+    text,num, source_labels, target_labels = util.percent_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
     if title == None or title=="":
         title = "Percent Connectivity"
 
