@@ -1,0 +1,7 @@
+{
+    "level_of_detail": "interD2interD_STFD",
+    "initW_lognormal_mean": "15",
+    "initW_lognormal_std": "8",
+    "Beta_gaba": "0.42",
+    "bACH": "0.01"
+}

@@ -1,0 +1,17 @@
+{
+    "level_of_detail": "tone2pv",
+    "Percent_NMDA_block" : "0",
+    "Percent_AMPA_block" : "0",
+    "initW_lognormal_mean_bb": "4",
+    "initW_lognormal_std_bb": "0.5",
+    "theta_d_GB" : "1.4",
+    "theta_p_GB" : "1.55",
+    "tau_r_AMPA" : "0.1",
+    "tau_d_AMPA" : "2.4",
+    "tau_r_NMDA" : "3.7",
+    "tau_d_NMDA" : "125",    
+    "tau_f" : "100",
+    "tau_d" : "100",
+    "Use"   : "0.2",
+    "use_blueBrain_synapse_with_LTP": "True"
+}

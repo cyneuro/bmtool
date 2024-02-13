@@ -1,0 +1,12 @@
+{
+    "level_of_detail": "bg2pyr",
+    "initW": 10.5,
+    "taun1": 5,
+    "taun2": 125,
+    "gNMDAmax": 0.0005,
+    "enmda": 0,
+    "taua1": 0.5,
+    "taua2": 7,
+    "gAMPAmax": 0.001,
+    "eampa": 0
+}

@@ -1,0 +1,3 @@
+edge_type_id target_query source_query
+104 pop_name=='PN' *
+105 pop_name=='FSI' *

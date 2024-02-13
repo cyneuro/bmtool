@@ -1,0 +1,15 @@
+{
+    "level_of_detail": "pyrD2interD_STFD",
+    "initW_lognormal_mean": "7",
+    "initW_lognormal_std": "2",
+    "Percent_NMDA_block" : "0",
+    "theta_d_GB" : "1",
+    "theta_p_GB" : "1.3",
+    "tau_r_AMPA" : "0.2",
+    "tau_d_AMPA" : "2.4",
+    "tau_r_NMDA" : "3.7",
+    "tau_d_NMDA" : "125",
+    "bACH": "0.01",
+    "use_bluebrain": "True"
+
+}

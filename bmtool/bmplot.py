@@ -33,7 +33,7 @@ python -m bmtool.plot
 
 def connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None,no_prepend_pop=False,save_file=None,synaptic_info='0'):
     """
-    Generates connection plot displaying total connection
+    Generates connection plot displaying total connection or other stats
     config: A BMTK simulation config 
     sources: network name(s) to plot
     targets: network name(s) to plot
@@ -43,7 +43,8 @@ def connection_matrix(config=None,title=None,sources=None, targets=None, sids=No
     save_file: If plot should be saved
     synaptic_info: '0' for total connections, '1' for mean and stdev connections, '2' for all synapse .mod files used, '3' for all synapse .json files used
     """
-
+    if not config:
+        raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -72,14 +73,29 @@ def connection_matrix(config=None,title=None,sources=None, targets=None, sids=No
     
 def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None):
     """
-    currently does not work
+    currently does not display percent just shows total conn
 
     """
+    if not config:
+        raise Exception("config not defined")
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
     
+    sources = sources.split(",")
+    targets = targets.split(",")
+    if sids:
+        sids = sids.split(",")
+    else:
+        sids = []
+    if tids:
+        tids = tids.split(",")
+    else:
+        tids = []
     text,num, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop)
 
     if title == None or title=="":
         title = "Percent Connectivity"
+
 
     plot_connection_info(text,num,source_labels,target_labels,title, save_file=save_file)
     return
@@ -89,6 +105,10 @@ def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,s
     """
     currently not working
     """
+    if not config:
+        raise Exception("config not defined")
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -164,7 +184,10 @@ def convergence_connection_matrix(config=None,title=None,sources=None, targets=N
     save_file: If plot should be saved
     method: 'mean','min','max','stdev' for connvergence plot
     """
-    
+    if not config:
+        raise Exception("config not defined")
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
     return divergence_connection_matrix(config,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method)
 
 def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean'):
@@ -179,6 +202,8 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
     save_file: If plot should be saved
     method: 'mean','min','max','stdev' for connvergence plot
     """
+    if not config:
+        raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")
@@ -216,25 +241,15 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
     plot_connection_info(data,data,source_labels,target_labels,title, save_file=save_file)
     return
 
-def edge_histogram_matrix(**kwargs):
-    config = kwargs["config"]
-    sources = kwargs["sources"]
-    targets = kwargs["targets"]
-    sids = kwargs["sids"]
-    tids = kwargs["tids"]
-    no_prepend_pop = kwargs["no_prepend_pop"]
-    edge_property = kwargs["edge_property"]
-    time = int(kwargs["time"])
-    time_compare = kwargs["time_compare"]
-    report = kwargs["report"]
-
-    title = kwargs["title"]
-
-    save_file = kwargs["save_file"] 
+def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids=None,no_prepend_pop=None,edge_property = None,time = None,time_compare = None,report=None,title=None,save_file=None):
+    """
+    write about function here
+    """
     
+    if not config:
+        raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
-    sources = sources.split(",")
     targets = targets.split(",")
     if sids:
         sids = sids.split(",")
@@ -273,8 +288,11 @@ def edge_histogram_matrix(**kwargs):
     fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
     plt.draw()
 
-
 def plot_connection_info(text, num, source_labels,target_labels, title, syn_info='0', save_file=None):
+    """
+    write about function here
+    """
+    
     #num = pd.DataFrame(num).fillna('nc').to_numpy() # replace nan with nc * does not work with imshow
     
     num_source=len(source_labels)
@@ -324,6 +342,9 @@ def plot_connection_info(text, num, source_labels,target_labels, title, syn_info
     return
 
 def raster_old(config=None,title=None,populations=['hippocampus']):
+    """
+    old function probs dep
+    """
     conf = util.load_config(config)
     spikes_path = os.path.join(conf["output"]["output_dir"],conf["output"]["spikes_file"])
     nodes = util.load_nodes_from_config(config)
@@ -331,6 +352,9 @@ def raster_old(config=None,title=None,populations=['hippocampus']):
     return
 
 def raster(config=None,title=None,population=None,group_key='pop_name'):
+    """
+    old function probs dep or more to new spike module?
+    """
     conf = util.load_config(config)
     
     cells_file = conf["networks"]["nodes"][0]["nodes_file"]
@@ -342,6 +366,9 @@ def raster(config=None,title=None,population=None,group_key='pop_name'):
     return
 
 def plot_spikes(nodes, spikes_file,save_file=None):   
+    """
+    old function probs dep
+    """
     import h5py
 
     spikes_h5 = h5py.File(spikes_file, 'r')
@@ -391,12 +418,23 @@ def plot_spikes(nodes, spikes_file,save_file=None):
     
     return
     
-def plot_3d_positions(**kwargs):
-    populations_list = kwargs["populations"]
-    config = kwargs["config"]
-    group_keys = kwargs["group_by"]
-    title = kwargs["title"]
-    save_file = kwargs["save_file"]
+def plot_3d_positions(config=None,populations_list=None,group_by=None,title=None,save_file=None):
+    """
+    plots a 3D graph of all cells with x,y,z location
+    config: A BMTK simulation config 
+    populations_list: Which network(s) to plot 
+    group_by: How to name cell groups
+    title: plot title
+    save_file: If plot should be saved
+    """
+    
+    if not config:
+        raise Exception("config not defined")
+    if populations_list == None:
+        populations_list = "all"
+    group_keys = group_by
+    if title == None:
+        title = "3D positions"
 
     nodes = util.load_nodes_from_config(config)
     
@@ -446,18 +484,24 @@ def plot_3d_positions(**kwargs):
 
     return
 
+def cell_rotation_3d(config=None,populations_list=None,group_by=None,title=None,save_file=None,quiver_length=None,arrow_length_ratio=None,group=None, max_cells=1000000):
+    """
+    plots a 3D graph of all cells with x,y,z along with cells rotation in space
+    config: A BMTK simulation config 
+    populations_list: Which network(s) to plot 
+    group_by: How to name cell groups
+    title: plot title
+    save_file: If plot should be saved
+    NEEDS MORE
+    """
+    if not config:
+        raise Exception("config not defined")
 
-def cell_rotation_3d(**kwargs):
-    populations_list = kwargs["populations"]
-    config = kwargs["config"]
-    group_keys = kwargs["group_by"]
-    title = kwargs.get("title")
-    save_file = kwargs["save_file"]
-    quiver_length = kwargs["quiver_length"]
-    arrow_length_ratio = kwargs["arrow_length_ratio"]
-    group = kwargs["group"]
-    max_cells = kwargs.get("max_cells",999999999)
-    init_vector = kwargs.get("init_vector","1,0,0")
+    if populations_list == None:
+        populations_list = "all"
+    group_keys = group_by
+    if title == None:
+        title = "Cell rotations"
 
     nodes = util.load_nodes_from_config(config)
 
@@ -469,7 +513,7 @@ def cell_rotation_3d(**kwargs):
     group_keys = group_keys.split(",")
     group_keys += (len(populations)-len(group_keys)) * ["node_type_id"] #Extend the array to default values if not enough given
     fig = plt.figure(figsize=(10,10))
-    ax = Axes3D(fig)
+    ax = fig.add_subplot(projection='3d')
     handles = []
     for nodes_key,group_key in zip(list(nodes),group_keys):
         if 'all' not in populations and nodes_key not in populations:
@@ -551,7 +595,8 @@ def cell_rotation_3d(**kwargs):
     return
 
 def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,edge_property='model_template'):
-    
+    if not config:
+        raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     sources = sources.split(",")

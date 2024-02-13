@@ -1,0 +1,23 @@
+{
+    "level_of_detail": "int2pyr",
+    "AlphaTmax_gaba": "1.52",
+    "Beta_gaba": "0.14",
+    "Cdur_gaba": "0.7254",
+    "gbar_gaba": "0.006",
+    "Erev_gaba": "-75",
+    "initW": "1",
+    "Wmax": "3",
+    "Wmin": "0.25",
+    "delay": "0.8",
+    "con_pattern": "1",
+    "lambda1": "1",
+    "lambda2": "0.01",
+    "threshold1": "0.5",
+    "threshold2": "0.6",
+    "tauD1": "40",
+    "d1": "0.95",
+    "tauD2": "70",
+    "d2": "0.9",
+    "tauF": "20",
+    "f": "0"
+}

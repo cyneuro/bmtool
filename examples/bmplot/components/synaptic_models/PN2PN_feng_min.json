@@ -1,0 +1,9 @@
+{
+    "level_of_detail": "pyrD2pyrD_STFD",
+    "initW_lognormal_mean": "0.15",
+    "initW_lognormal_std": "0.03",
+    "Percent_NMDA_block" : "0",
+    "bACH": "0.01",
+    "use_bluebrain": "True"
+
+}

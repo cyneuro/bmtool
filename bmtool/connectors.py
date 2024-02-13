@@ -288,6 +288,19 @@ def pr_2_rho(p0, p1, pr):
     return (pr - p0 * p1) / (p0 * (1 - p0) * p1 * (1 - p1)) ** .5
 
 
+def rho_2_pr(p0, p1, rho):
+    """Calculate reciprocal probability pr given correlation coefficient rho"""
+    for p in (p0, p1):
+        assert(p > 0 and p < 1)
+    pr = p0 * p1 + rho * (p0 * (1 - p0) * p1 * (1 - p1)) ** .5
+    if not (pr >= 0 and pr <= p0 and pr <= p1 and pr >= p0 + p1 - 1):
+        pr0, pr = pr, np.max((0., p0 + p1 - 1, np.min((p0, p1, pr))))
+        rho0, rho = rho, (pr - p0 * p1) / (p0 * (1 - p0) * p1 * (1 - p1)) ** .5
+        print('rho changed from %.3f to %.3f; pr changed from %.3f to %.3f'
+              % (rho0, rho, pr0, pr))
+    return pr
+
+
 class ReciprocalConnector(AbstractConnector):
     """
     Object for buiilding connections in bmtk network model with reciprocal
@@ -479,7 +492,7 @@ class ReciprocalConnector(AbstractConnector):
         """Must run this before building connections"""
         if self.stage:
             # check whether the correct populations
-            if (source is None or target is None or 
+            if (source is None or target is None or
                     not self.is_same_pop(source, self.target) or
                     not self.is_same_pop(target, self.source)):
                 raise ValueError("Source or target population not consistent.")
@@ -701,13 +714,13 @@ class ReciprocalConnector(AbstractConnector):
         self.callable_set = callable_set
 
         # Make callable variables except a few, accept index input instead
-        for name in callable_set - set(('p0', 'p1', 'pr')):
+        for name in callable_set - {'p0', 'p1', 'pr'}:
             var = self.vars[name]
             setattr(self, name, self.node_2_idx_input(var, '1' in name))
 
     def cache_variables(self):
         # Select cacheable attrilbutes
-        cache_set = set(('p0', 'p0_arg', 'p1', 'p1_arg'))
+        cache_set = {'p0', 'p0_arg', 'p1', 'p1_arg'}
         if self.symmetric_p1:
             cache_set.remove('p1')
         if self.symmetric_p1_arg:
@@ -823,8 +836,9 @@ class ReciprocalConnector(AbstractConnector):
             if backward:
                 n_backward = self.n_syn1(j, i)
                 if self.recurrent:
-                    self.conn_mat[0, j, i] = n_backward
-                    self.add_conn_prop(j, i, p1_arg, 0)
+                    if i != j:
+                        self.conn_mat[0, j, i] = n_backward
+                        self.add_conn_prop(j, i, p1_arg, 0)
                 else:
                     self.conn_mat[1, i, j] = n_backward
                     self.add_conn_prop(i, j, p1_arg, 1)
@@ -901,9 +915,11 @@ class ReciprocalConnector(AbstractConnector):
         n_poss = np.array(self.possible_count)
         n_pair = conn_mat.size / 2
         if self.recurrent:
-            n_recp = (np.count_nonzero(conn_mat[0] & conn_mat[0].T)
-                      - np.count_nonzero(np.diag(conn_mat[0]))) // 2
-            n_conn = n_conn - n_recp
+            n_recp = np.count_nonzero(conn_mat[0] & conn_mat[0].T)
+            if self.autapses:
+                n_recp -= np.count_nonzero(np.diag(conn_mat[0]))
+            n_recp //= 2
+            n_conn -= n_recp
             n_poss = n_poss[None]
             n_pair += (1 if self.autapses else -1) * self.n_source / 2
         else:
@@ -1091,6 +1107,7 @@ class CorrelatedGapJunction(UnidirectionConnector):
     Important attributes:
         Similar to `UnidirectionConnector`.
     """
+
     def __init__(self, p_non=1., p_uni=1., p_rec=1., p_arg=None,
                  connector=None, verbose=True):
         super().__init__(p=p_non, p_arg=p_arg, verbose=verbose)
@@ -1105,9 +1122,10 @@ class CorrelatedGapJunction(UnidirectionConnector):
 
     def setup_nodes(self, source=None, target=None):
         super().setup_nodes(source=source, target=target)
-        if len(self.source) != len(self.source):
+        if len(self.source) != len(self.target):
             raise ValueError("Source and target must be the same for "
                              "gap junction.")
+        self.n_source = len(self.source)
 
     def conn_exist(self, sid, tid):
         trg_dict = self.ref_conn_prop.get(sid)
@@ -1122,11 +1140,11 @@ class CorrelatedGapJunction(UnidirectionConnector):
         return conn0 + conn1, prop0 if conn0 else prop1
 
     def initialize(self):
-        super().initialize()
         self.has_p_arg = self.vars['p_arg'] is not None
         if not self.has_p_arg:
             var = self.connector.vars
-            self.p_arg = var['p_arg'] if 'p_arg' in var else var['p0_arg']
+            self.vars['p_arg'] = var.get('p_arg', var.get('p0_arg', None))
+        super().initialize()
         self.ps = [self.p_non, self.p_uni, self.p_rec]
 
     def make_connection(self, source, target, *args, **kwargs):
@@ -1140,7 +1158,7 @@ class CorrelatedGapJunction(UnidirectionConnector):
 
         # Consider each pair only once
         nsyns = 0
-        i, j = divmod(self.iter_count, self.n_pair)
+        i, j = divmod(self.iter_count, self.n_source)
         if i < j:
             sid, tid = source.node_id, target.node_id
             conn_type, p_arg = self.connection_type(sid, tid)
@@ -1208,7 +1226,7 @@ class OneToOneSequentialConnector(AbstractConnector):
         source: NodePool object for the single population.
         targets: List of NodePool objects for the multiple sub-populations.
     """
-    
+
     def __init__(self, n_syn=1, partition_source=False, verbose=True):
         self.n_syn = int(n_syn)
         self.partition_source = partition_source
@@ -1315,10 +1333,13 @@ class OneToOneSequentialConnector(AbstractConnector):
 
 SYN_MIN_DELAY = 0.8  # ms
 SYN_VELOCITY = 1000.  # um/ms
+FLUC_STDEV = 0.2  # ms
+DELAY_LOWBOUND = 0.2  # ms must be greater than h.dt
+DELAY_UPBOUND = 2.0  # ms
 
 def syn_dist_delay_feng(source, target,
                         min_delay=SYN_MIN_DELAY, velocity=SYN_VELOCITY,
-                        fluc_stdev=0.05, connector=None):
+                        fluc_stdev=FLUC_STDEV, connector=None):
     """Synpase delay linearly dependent on distance.
     min_delay: minimum delay (ms)
     velocity: synapse conduction velocity (micron/ms)
@@ -1329,7 +1350,8 @@ def syn_dist_delay_feng(source, target,
     else:
         dist = connector.get_conn_prop(source.node_id, target.node_id)
     del_fluc = fluc_stdev * rng.normal()
-    delay = max(dist / SYN_VELOCITY + SYN_MIN_DELAY + del_fluc, 0.)
+    delay = dist / SYN_VELOCITY + SYN_MIN_DELAY + del_fluc
+    delay = min(max(delay, DELAY_LOWBOUND), DELAY_UPBOUND)
     return delay
 
 
@@ -1348,35 +1370,7 @@ def syn_dist_delay_feng_section_PN(source, target, p=0.9,
     s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x)
     return delay, s_id, s_x
 
-# The function below is not necessary if sec_id is specified in edge parameters
-# TODO: select based on cell types of a pair
-TARGET_SEC_ID = {
-        'CP': 1, 'CS': 1,
-        'CTH': 1, 'CC': 1,
-        'FSI': 0, 'LTS': 0
-    }
 
-def get_target_sec_id(source, target):
-    # 0 - Target soma, 1 - Target basal dendrite
-    sec_id = TARGET_SEC_ID.get(source['pop_name'], None)
-    if sec_id is None:
-        if source['model_type'] == 'virtual':
-            sec_id = 1
-            print('virtual cell') # Testing
-        else: # We really don't want a default case so we can catch errors
-            # return 0
-            import pdb; pdb.set_trace()
-    return sec_id
-
-def syn_dist_delay_feng_section(source, target, connector=None,
-                                sec_id=None, sec_x=0.9):
-    if sec_id is None:
-        sec_id = get_target_sec_id(source, target)
-    return syn_dist_delay_feng(source, target, connector), sec_id, sec_x
-
-
-def syn_uniform_delay_section(source, target, low=0.5, high=1,
-                              sec_id=None, sec_x=0.9, **kwargs):
-    if sec_id is None:
-        sec_id = get_target_sec_id(source, target)
-    return rng.uniform(low, high), sec_id, sec_x
+def syn_uniform_delay_section(source, target, low=DELAY_LOWBOUND,
+                              high=DELAY_UPBOUND, **kwargs):
+    return rng.uniform(low, high)
