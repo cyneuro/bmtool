@@ -14,12 +14,10 @@ import matplotlib.colors as colors
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
 from IPython import get_ipython
-import math
+import statistics
 import pandas as pd
-import h5py
 import os
 import sys
-import time
 
 from .util.util import CellVarsFile #, missing_units
 from bmtk.analyzer.utils import listify
@@ -31,7 +29,22 @@ Plot BMTK models easily.
 python -m bmtool.plot 
 """
 
-def connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None,no_prepend_pop=False,save_file=None,synaptic_info='0'):
+def is_notebook() -> bool:
+    """
+    Used to tell if inside jupyter notebook or not. This is used to tell if we should use plt.show or not
+    """
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True   # Jupyter notebook or qtconsole
+        elif shell == 'TerminalInteractiveShell':
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except NameError:
+        return False      # Probably standard Python interpreter
+
+def total_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None,no_prepend_pop=False,save_file=None,synaptic_info='0'):
     """
     Generates connection plot displaying total connection or other stats
     config: A BMTK simulation config 
@@ -71,10 +84,17 @@ def connection_matrix(config=None,title=None,sources=None, targets=None, sids=No
     plot_connection_info(text,num,source_labels,target_labels,title, syn_info=synaptic_info, save_file=save_file)
     return
     
-def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,method = None):
+def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,method = 'total'):
     """
-    currently does not display percent just shows total conn
-
+    Generates a plot showing the percent connectivity of a network
+    config: A BMTK simulation config 
+    sources: network name(s) to plot
+    targets: network name(s) to plot
+    sids: source node identifier 
+    tids: target node identifier
+    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
+    method: what percent to displace on the graph 'total','uni',or 'bi' for total connections, unidirectional connections or bidirectional connections
+    save_file: If plot should be saved
     """
     if not config:
         raise Exception("config not defined")
@@ -102,7 +122,9 @@ def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sourc
 def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, 
                             no_prepend_pop=False,save_file=None, dist_X=True,dist_Y=True,dist_Z=True,bins=8,line_plot=False,verbose=False):
     """
-    currently not working
+    Generates probability graphs
+    need to look into this more to see what it does
+    needs model_template to be defined to work
     """
     if not config:
         raise Exception("config not defined")
@@ -167,7 +189,9 @@ def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,s
     st = fig.suptitle(tt, fontsize=14)
     fig.text(0.5, 0.04, 'Target', ha='center')
     fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
-    fig.show()
+    notebook = is_notebook
+    if notebook == False:
+        fig.show()
 
     return
 
@@ -239,6 +263,57 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
 
     plot_connection_info(data,data,source_labels,target_labels,title, save_file=save_file)
     return
+
+def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,synaptic_info='0',
+                      source_cell = None,target_cell = None):
+    """
+    Generates histogram of number of connections individual cells in a population receieve from another population
+    config: A BMTK simulation config 
+    sources: network name(s) to plot
+    targets: network name(s) to plot
+    sids: source node identifier 
+    tids: target node identifier
+    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
+    source_cell: where connections are coming from
+    target_cell: where connections on coming onto
+    save_file: If plot should be saved
+    """
+    def connection_pair_histogram(**kwargs):
+        edges = kwargs["edges"] 
+        source_id_type = kwargs["sid"]
+        target_id_type = kwargs["tid"]
+        source_id = kwargs["source_id"]
+        target_id = kwargs["target_id"]
+        if source_id == source_cell and target_id == target_cell:
+            temp = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+            node_pairs = temp.groupby('target_node_id')['source_node_id'].count()
+            conn_mean = statistics.mean(node_pairs.values)
+            conn_std = statistics.stdev(node_pairs.values)
+            conn_median = statistics.median(node_pairs.values)
+            label = "mean {:.2f} std ({:.2f}) median {:.2f}".format(conn_mean,conn_std,conn_median)
+            plt.hist(node_pairs.values,density=True,bins='auto',stacked=True,label=label)
+            plt.legend()
+            plt.xlabel("# of conns from {} to {}".format(source_cell,target_cell))
+            plt.ylabel("Density")
+            plt.show()
+        else: # dont care about other cell pairs so pass
+            pass
+
+    if not config:
+        raise Exception("config not defined")
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
+    sources = sources.split(",")
+    targets = targets.split(",")
+    if sids:
+        sids = sids.split(",")
+    else:
+        sids = []
+    if tids:
+        tids = tids.split(",")
+    else:
+        tids = []
+    util.relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=connection_pair_histogram,synaptic_info=synaptic_info)
 
 def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids=None,no_prepend_pop=None,edge_property = None,time = None,time_compare = None,report=None,title=None,save_file=None):
     """
@@ -333,9 +408,9 @@ def plot_connection_info(text, num, source_labels,target_labels, title, syn_info
     ax1.set_xlabel('Target', size=11, weight = 'semibold')
     ax1.set_title(title,size=20, weight = 'semibold')
     #plt.tight_layout()
-    
-    fig1.show()
-
+    notebook = is_notebook()
+    if notebook == False:
+        fig1.show()
     if save_file:
         plt.savefig(save_file)
     return
@@ -480,26 +555,23 @@ def plot_3d_positions(config=None,populations_list=None,group_by=None,title=None
 
     if save_file:
         plt.savefig(save_file)
+    notebook = is_notebook
+    if notebook == False:
+        plt.show()
 
     return
 
-def cell_rotation_3d(config=None,populations_list=None,group_by=None,title=None,save_file=None,quiver_length=None,arrow_length_ratio=None,group=None, max_cells=1000000):
-    """
-    plots a 3D graph of all cells with x,y,z along with cells rotation in space
-    config: A BMTK simulation config 
-    populations_list: Which network(s) to plot 
-    group_by: How to name cell groups
-    title: plot title
-    save_file: If plot should be saved
-    NEEDS MORE
-    """
+def cell_rotation_3d(config=None, populations_list=None, group_by=None, title=None, save_file=None, quiver_length=None, arrow_length_ratio=None, group=None, max_cells=1000000):
+    from scipy.spatial.transform import Rotation as R
     if not config:
         raise Exception("config not defined")
 
-    if populations_list == None:
-        populations_list = "all"
-    group_keys = group_by
-    if title == None:
+    if populations_list is None:
+        populations_list = ["all"]
+
+    group_keys = group_by.split(",") if group_by else []
+
+    if title is None:
         title = "Cell rotations"
 
     nodes = util.load_nodes_from_config(config)
@@ -507,91 +579,95 @@ def cell_rotation_3d(config=None,populations_list=None,group_by=None,title=None,
     if 'all' in populations_list:
         populations = list(nodes)
     else:
-        populations = populations_list.split(",")
+        populations = populations_list
 
-    group_keys = group_keys.split(",")
-    group_keys += (len(populations)-len(group_keys)) * ["node_type_id"] #Extend the array to default values if not enough given
-    fig = plt.figure(figsize=(10,10))
-    ax = fig.add_subplot(projection='3d')
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
     handles = []
-    for nodes_key,group_key in zip(list(nodes),group_keys):
+
+    for nodes_key, group_key in zip(list(nodes), group_keys):
         if 'all' not in populations and nodes_key not in populations:
             continue
-            
+
         nodes_df = nodes[nodes_key]
 
         if group_key is not None:
-            if group_key not in nodes_df:
-                raise Exception('Could not find column {}'.format(group_key))
+            if group_key not in nodes_df.columns:
+                raise Exception(f'Could not find column {group_key}')
             groupings = nodes_df.groupby(group_key)
 
             n_colors = nodes_df[group_key].nunique()
-            color_norm = colors.Normalize(vmin=0, vmax=(n_colors-1))
+            color_norm = colors.Normalize(vmin=0, vmax=(n_colors - 1))
             scalar_map = cmx.ScalarMappable(norm=color_norm, cmap='hsv')
-            color_map = [scalar_map.to_rgba(i) for i in range(0, n_colors)]
+            color_map = [scalar_map.to_rgba(i) for i in range(n_colors)]
         else:
             groupings = [(None, nodes_df)]
             color_map = ['blue']
 
         cells_plotted = 0
         for color, (group_name, group_df) in zip(color_map, groupings):
-            # if we selected a group and it's not in the list continue
             if group and group_name not in group.split(","):
                 continue
 
-            if "pos_x" not in group_df: #could also check model type == virtual
-                continue #can't plot them if there isn't an xy coordinate (may be virtual)
+            if "pos_x" not in group_df or "rotation_angle_xaxis" not in group_df:
+                continue
 
-            # if we exceed the max cells, stop plotting or limit
             if cells_plotted >= max_cells:
                 continue
+
             if len(group_df) + cells_plotted > max_cells:
                 total_remaining = max_cells - cells_plotted
                 group_df = group_df[:total_remaining]
+
             cells_plotted += len(group_df)
 
             X = group_df["pos_x"]
             Y = group_df["pos_y"]
             Z = group_df["pos_z"]
-            U = group_df.get("rotation_angle_xaxis") 
-            V = group_df.get("rotation_angle_yaxis")
-            W = group_df.get("rotation_angle_zaxis")
+            U = group_df["rotation_angle_xaxis"].values
+            V = group_df["rotation_angle_yaxis"].values
+            W = group_df["rotation_angle_zaxis"].values
+
             if U is None:
                 U = np.zeros(len(X))
             if V is None:
                 V = np.zeros(len(Y))
             if W is None:
                 W = np.zeros(len(Z))
-            
-            #Convert to arrow direction
-            from scipy.spatial.transform import Rotation as R
-            uvw = pd.DataFrame([U,V,W]).T
-            init_vector = init_vector.split(',')
-            init_vector = np.repeat([init_vector],len(X),axis=0)
-            
-            # To get the final cell orientation after rotation, 
-            # you need to use function Rotaion.apply(init_vec), 
-            # where init_vec is a vector of the initial orientation of a cell
-            #rots = R.from_euler('xyz', uvw).apply(init_vector.astype(float))
-            #rots = R.from_euler('xyz', pd.DataFrame([rots[:,0],rots[:,1],rots[:,2]]).T).as_rotvec().T
 
-            rots = R.from_euler('zyx', uvw).apply(init_vector.astype(float)).T
-            h = ax.quiver(X, Y, Z, rots[0],rots[1],rots[2],color=color,label=group_name, arrow_length_ratio = arrow_length_ratio, length=quiver_length)
+            # Create rotation matrices from Euler angles
+            rotations = R.from_euler('xyz', np.column_stack((U, V, W)), degrees=False)
 
-            #h = ax.quiver(X, Y, Z, rots[0],rots[1],rots[2],color=color,label=group_name, arrow_length_ratio = arrow_length_ratio, length=quiver_length)
-            ax.scatter(X,Y,Z,color=color,label=group_name)
+            # Define initial vectors 
+            init_vectors = np.column_stack((np.ones(len(X)), np.zeros(len(Y)), np.zeros(len(Z))))
+
+            # Apply rotations to initial vectors
+            rots = np.dot(rotations.as_matrix(), init_vectors.T).T
+
+            # Extract x, y, and z components of the rotated vectors
+            rot_x = rots[:, 0]
+            rot_y = rots[:, 1]
+            rot_z = rots[:, 2]
+
+            h = ax.quiver(X, Y, Z, rot_x, rot_y, rot_z, color=color, label=group_name, arrow_length_ratio=arrow_length_ratio, length=quiver_length)
+            ax.scatter(X, Y, Z, color=color, label=group_name)
+            ax.set_xlim([min(X), max(X)])
+            ax.set_ylim([min(Y), max(Y)])
+            ax.set_zlim([min(Z), max(Z)])
             handles.append(h)
+
     if not handles:
         return
+
     plt.title(title)
     plt.legend(handles=handles)
-    
     plt.draw()
 
     if save_file:
         plt.savefig(save_file)
-
-    return
+    notebook = is_notebook
+    if notebook == False:
+        plt.show()
 
 def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,edge_property='model_template'):
     if not config:

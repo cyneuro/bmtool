@@ -558,39 +558,6 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                     stdev = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]['target_node_id'].value_counts().std()
                     return stdev
 
-                def conn_precent_func(**kwargs):
-                    edges = kwargs["edges"]
-                    source_id_type = kwargs["sid"]
-                    target_id_type = kwargs["tid"]
-                    source_id = kwargs["source_id"]
-                    target_id = kwargs["target_id"]
-                    t_list = kwargs["target_nodes"]
-                    s_list = kwargs["source_nodes"]
-
-                    cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
-                    total_cons = cons.count().source_node_id
-                    # to determine reciprocal connectivity
-                    # create a copy and flip source/dest
-                    cons_flip = edges[(edges[source_id_type] == target_id) & (edges[target_id_type]==source_id)]
-                    cons_flip = cons_flip.rename(columns={'source_node_id':'target_node_id','target_node_id':'source_node_id'})
-                    # append to original 
-                    cons_recip = cons.append(cons_flip)
-
-                    # determine dropped duplicates (keep=False)
-                    cons_recip_dedup = cons_recip.drop_duplicates(subset=['source_node_id','target_node_id'])
-
-                    # note counts
-                    num_bi = (cons_recip.count().source_node_id - cons_recip_dedup.count().source_node_id)
-                    num_uni = total_cons - num_bi    
-
-                    num_sources = s_list.apply(pd.Series.value_counts)[source_id_type].dropna().sort_index().loc[source_id]
-                    num_targets = t_list.apply(pd.Series.value_counts)[target_id_type].dropna().sort_index().loc[target_id]
-
-                    total = round(total_cons / (num_sources*num_targets) * 100,2)
-                    uni = round(num_uni / (num_sources*num_targets) * 100,2)
-                    bi = round(num_bi / (num_sources*num_targets) * 100,2)
-                    return total,uni,bi
-
                 for s_type_ind,s_type in enumerate(source_uids[sm]):
             
                     for t_type_ind,t_type in enumerate(target_uids[tm]): 
@@ -657,7 +624,7 @@ def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],
         cons_flip = edges[(edges[source_id_type] == target_id) & (edges[target_id_type]==source_id)]
         cons_flip = cons_flip.rename(columns={'source_node_id':'target_node_id','target_node_id':'source_node_id'})
         # append to original 
-        cons_recip = cons.append(cons_flip)
+        cons_recip = pd.concat([cons, cons_flip])
 
         # determine dropped duplicates (keep=False)
         cons_recip_dedup = cons_recip.drop_duplicates(subset=['source_node_id','target_node_id'])
@@ -724,7 +691,8 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
                 std = cons.apply(pd.Series.value_counts).source_node_id.dropna().std()
                 return round(std,2)
             else: #mean
-                vc = s_list.apply(pd.Series.value_counts)[source_id_type].dropna().sort_index().loc[source_id]
+                #vc = s_list.apply(pd.Series.value_counts)[source_id_type].dropna().sort_index().loc[source_id]
+                vc = s_list.apply(pd.Series.value_counts)
                 vc = vc[source_id_type].dropna().sort_index()
                 count = vc.loc[source_id]#count = s_list[s_list[source_id_type]==source_id]
 

@@ -6,13 +6,13 @@ with open("README.md", "r") as fh:
 
 setup(
     name="bmtool",
-    version="0.4.2",
+    version="0.5.0",
     author="Tyler Banks",
     author_email="tbanks@mail.missouri.edu",
     description="BMTool",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/tjbanks/bmtool",
+    url="https://github.com/cyneuro/bmtool",
     download_url='',
     license='MIT',
     install_requires=[

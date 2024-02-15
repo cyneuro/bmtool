@@ -1,5 +1,13 @@
+#helpers for readme dont want to upload them
+network*
+config*
+Readme_test.ipynb
+templates/
+mechanisms/
+
 # MacOS stuff
 .DS_Store
+.DS_store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
