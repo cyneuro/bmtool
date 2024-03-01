@@ -592,7 +592,7 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                                                 
     return syn_info, e_matrix, source_pop_names, target_pop_names
 
-def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,synaptic_info='0'):
+def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,synaptic_info='0',include_gap=True):
     
     def total_connection_relationship(**kwargs):
         edges = kwargs["edges"]
@@ -601,12 +601,15 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
         source_id = kwargs["source_id"]
         target_id = kwargs["target_id"]
 
-        total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)].count()
+        total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+        if include_gap == False:
+            total = total[total['is_gap_junction'] != True]
+        total = total.count()
         total = total.source_node_id # may not be the best way to pick
         return total
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship,synaptic_info=synaptic_info)
 
-def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None):
+def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None,include_gap=True):
 
     def precent_func(**kwargs): 
         edges = kwargs["edges"]
@@ -618,6 +621,8 @@ def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],
         s_list = kwargs["source_nodes"]
 
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+        if include_gap == False:
+            cons = cons[cons['is_gap_junction'] != True]
         total_cons = cons.count().source_node_id
         # to determine reciprocal connectivity
         # create a copy and flip source/dest
@@ -649,8 +654,7 @@ def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=precent_func)
 
-
-def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False,method='mean'):
+def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False,method='mean',include_gap=True):
 
     import pandas as pd
 
@@ -665,6 +669,8 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
         count = 1
 
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+        if include_gap == False:
+            cons = cons[cons['is_gap_junction'] != True]
 
         if convergence:
             if method == 'min':
@@ -697,7 +703,10 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
                 count = vc.loc[source_id]#count = s_list[s_list[source_id_type]==source_id]
 
         # Only executed when mean
-        total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)].count()
+        total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+        if include_gap == False:
+            total = total[total['is_gap_junction'] != True]
+        total = total.count()
         total = total.source_node_id # may not be the best way to pick
         ret = round(total/count,1)
         if ret == 0:
@@ -707,7 +716,7 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
 def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
-    targets=[],sids=[],tids=[],prepend_pop=True,dist_X=True,dist_Y=True,dist_Z=True,num_bins=10):
+    targets=[],sids=[],tids=[],prepend_pop=True,dist_X=True,dist_Y=True,dist_Z=True,num_bins=10,include_gap=True):
     
     import pandas as pd
     from scipy.spatial import distance
@@ -782,7 +791,9 @@ def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
             return ret
 
         relevant_edges = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
-        connected_distances = eudist(relevant_edges,dist_X,dist_Y,dist_Z).tolist()
+        if include_gap == False:
+            relevant_edges = relevant_edges[relevant_edges['is_gap_junction'] != True]
+        connected_distances = eudist(relevant_edges,dist_X,dist_Y,dist_Z).values.tolist()
         if len(connected_distances)>0:
             if connected_distances[0]==0:
                 return -1

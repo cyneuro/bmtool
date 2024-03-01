@@ -14,6 +14,7 @@ import matplotlib.colors as colors
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
 from IPython import get_ipython
+from IPython.display import display, HTML
 import statistics
 import pandas as pd
 import os
@@ -44,7 +45,7 @@ def is_notebook() -> bool:
     except NameError:
         return False      # Probably standard Python interpreter
 
-def total_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None,no_prepend_pop=False,save_file=None,synaptic_info='0'):
+def total_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None,no_prepend_pop=False,save_file=None,synaptic_info='0',include_gap=True):
     """
     Generates connection plot displaying total connection or other stats
     config: A BMTK simulation config 
@@ -55,6 +56,7 @@ def total_connection_matrix(config=None,title=None,sources=None, targets=None, s
     no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
     save_file: If plot should be saved
     synaptic_info: '0' for total connections, '1' for mean and stdev connections, '2' for all synapse .mod files used, '3' for all synapse .json files used
+    include_gap: Determines if connectivity shown should include gap junctions + chemical synapses. False will only include chemical
     """
     if not config:
         raise Exception("config not defined")
@@ -70,7 +72,7 @@ def total_connection_matrix(config=None,title=None,sources=None, targets=None, s
         tids = tids.split(",")
     else:
         tids = []
-    text,num, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,synaptic_info=synaptic_info)
+    text,num, source_labels, target_labels = util.connection_totals(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,synaptic_info=synaptic_info,include_gap=include_gap)
 
     if title == None or title=="":
         title = "Total Connections"
@@ -84,7 +86,7 @@ def total_connection_matrix(config=None,title=None,sources=None, targets=None, s
     plot_connection_info(text,num,source_labels,target_labels,title, syn_info=synaptic_info, save_file=save_file)
     return
     
-def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,method = 'total'):
+def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,method = 'total',include_gap=True):
     """
     Generates a plot showing the percent connectivity of a network
     config: A BMTK simulation config 
@@ -95,6 +97,7 @@ def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sourc
     no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
     method: what percent to displace on the graph 'total','uni',or 'bi' for total connections, unidirectional connections or bidirectional connections
     save_file: If plot should be saved
+    include_gap: Determines if connectivity shown should include gap junctions + chemical synapses. False will only include chemical
     """
     if not config:
         raise Exception("config not defined")
@@ -111,7 +114,7 @@ def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sourc
         tids = tids.split(",")
     else:
         tids = []
-    text,num, source_labels, target_labels = util.percent_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,method=method)
+    text,num, source_labels, target_labels = util.percent_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,method=method,include_gap=include_gap)
     if title == None or title=="":
         title = "Percent Connectivity"
 
@@ -120,7 +123,7 @@ def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sourc
     return
 
 def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, 
-                            no_prepend_pop=False,save_file=None, dist_X=True,dist_Y=True,dist_Z=True,bins=8,line_plot=False,verbose=False):
+                            no_prepend_pop=False,save_file=None, dist_X=True,dist_Y=True,dist_Z=True,bins=8,line_plot=False,verbose=False,include_gap=True):
     """
     Generates probability graphs
     need to look into this more to see what it does
@@ -145,7 +148,7 @@ def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,s
 
     throwaway, data, source_labels, target_labels = util.connection_probabilities(config=config,nodes=None,
         edges=None,sources=sources,targets=targets,sids=sids,tids=tids,
-        prepend_pop=not no_prepend_pop,dist_X=dist_X,dist_Y=dist_Y,dist_Z=dist_Z,num_bins=bins)
+        prepend_pop=not no_prepend_pop,dist_X=dist_X,dist_Y=dist_Y,dist_Z=dist_Z,num_bins=bins,include_gap=include_gap)
     if not data.any():
         return
     if data[0][0]==-1:
@@ -195,7 +198,7 @@ def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,s
 
     return
 
-def convergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean'):
+def convergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean',include_gap=True):
     """
     Generates connection plot displaying convergence data
     config: A BMTK simulation config 
@@ -211,9 +214,9 @@ def convergence_connection_matrix(config=None,title=None,sources=None, targets=N
         raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
-    return divergence_connection_matrix(config,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method)
+    return divergence_connection_matrix(config,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method,include_gap=include_gap)
 
-def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean'):
+def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean',include_gap=True):
     """
     Generates connection plot displaying divergence data
     config: A BMTK simulation config 
@@ -240,7 +243,7 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
     else:
         tids = []
 
-    syn_info, data, source_labels, target_labels = util.connection_divergence(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,convergence=convergence,method=method)
+    syn_info, data, source_labels, target_labels = util.connection_divergence(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,convergence=convergence,method=method,include_gap=include_gap)
 
     
     #data, labels = util.connection_divergence_average(config=config,nodes=nodes,edges=edges,populations=populations)
@@ -265,7 +268,7 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
     return
 
 def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,synaptic_info='0',
-                      source_cell = None,target_cell = None):
+                      source_cell = None,target_cell = None,include_gap=True):
     """
     Generates histogram of number of connections individual cells in a population receieve from another population
     config: A BMTK simulation config 
@@ -286,6 +289,8 @@ def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[]
         target_id = kwargs["target_id"]
         if source_id == source_cell and target_id == target_cell:
             temp = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+            if include_gap == False:
+                temp = temp[temp['is_gap_junction'] != True]
             node_pairs = temp.groupby('target_node_id')['source_node_id'].count()
             conn_mean = statistics.mean(node_pairs.values)
             conn_std = statistics.stdev(node_pairs.values)
@@ -684,7 +689,7 @@ def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None
         tids = tids.split(",")
     else:
         tids = []
-    data, source_labels, target_labels = util.connection_graph_edge_types(nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,edge_property=edge_property)
+    throw_away, data, source_labels, target_labels = util.connection_graph_edge_types(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,edge_property=edge_property)
 
     if title == None or title=="":
         title = "Network Graph"
@@ -800,7 +805,7 @@ def sim_setup(config_file='simulation_config.json',network=None):
     # Plot spike train info
     plot_inspikes(config_file)
     # Using bmtool, print total number of connections between cell groups
-    connection_matrix(config=config_file,sources='all',targets='all',sids='pop_name',tids='pop_name',title='All Connections found', size_scalar=2, no_prepend_pop=True, synaptic_info='0')
+    total_connection_matrix(config=config_file,sources='all',targets='all',sids='pop_name',tids='pop_name',title='All Connections found', size_scalar=2, no_prepend_pop=True, synaptic_info='0')
     # Plot 3d positions of the network
     plot_3d_positions(populations='all',config=config_file,group_by='pop_name',title='3D Positions',save_file=None)
 
@@ -823,7 +828,7 @@ def plot_I_clamps(fp):
         plt.legend()
         num_clamps=num_clamps+1
 
-def plot_basic_cell_info(config_file,notebook=0):
+def plot_basic_cell_info(config_file):
     print("Network and node info:")
     nodes=util.load_nodes_from_config(config_file)
     if not nodes:
@@ -857,7 +862,11 @@ def plot_basic_cell_info(config_file,notebook=0):
                 count=1
             df1 = pd.DataFrame(CELLS, columns = ["node_type","pop_name","model_type","count"])
             print(j+':')
-            print(df1)
+            notebook = is_notebook()
+            if notebook == True:
+                display(HTML(df1.to_html()))
+            else:
+                print(df1)
         elif node['model_type'][0]=='biophysical':
             CELLS=[]
             count=1
@@ -871,7 +880,7 @@ def plot_basic_cell_info(config_file,notebook=0):
                     pop_name=node['pop_name'][i]
                     model_type=node['model_type'][i]
                     model_template=node['model_template'][i]
-                    morphology=node['morphology'][i] if node.get('morphology') else ''
+                    morphology=node['morphology'][i] if node['morphology'][i] else ''
                     CELLS.append([node_type,pop_name,model_type,model_template,morphology,count])
                     count=1
             else:
@@ -879,16 +888,19 @@ def plot_basic_cell_info(config_file,notebook=0):
                 pop_name=node['pop_name'][i]
                 model_type=node['model_type'][i]
                 model_template=node['model_template'][i]
-                morphology=node['morphology'][i] if node.get('morphology') else ''
+                morphology=node['morphology'][i] if node['morphology'][i] else ''
                 CELLS.append([node_type,pop_name,model_type,model_template,morphology,count])
                 count=1
             df2 = pd.DataFrame(CELLS, columns = ["node_type","pop_name","model_type","model_template","morphology","count"])
             print(j+':')
             bio.append(j)
-            print(df2)
+            notebook = is_notebook()
+            if notebook == True:
+                display(HTML(df2.to_html()))
+            else:
+                print(df2)
     if len(bio)>0:      
         return bio[0]        
-
 
 def plot_inspikes(fp):
     

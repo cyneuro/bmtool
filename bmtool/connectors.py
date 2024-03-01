@@ -303,7 +303,7 @@ def rho_2_pr(p0, p1, rho):
 
 class ReciprocalConnector(AbstractConnector):
     """
-    Object for buiilding connections in bmtk network model with reciprocal
+    Object for building connections in bmtk network model with reciprocal
     probability within a single population (or between two populations).
 
     Algorithm:
@@ -949,7 +949,7 @@ class ReciprocalConnector(AbstractConnector):
 
 class UnidirectionConnector(AbstractConnector):
     """
-    Object for buiilding unidirectional connections in bmtk network model with
+    Object for building unidirectional connections in bmtk network model with
     given probability within a single population (or between two populations).
 
     Parameters:
@@ -1083,7 +1083,7 @@ class UnidirectionConnector(AbstractConnector):
 
 class CorrelatedGapJunction(UnidirectionConnector):
     """
-    Object for buiilding gap junction connections in bmtk network model with
+    Object for building gap junction connections in bmtk network model with
     given probabilities within a single population which could be correlated
     with the recurrent chemical synapses in this population.
 
@@ -1190,7 +1190,7 @@ class CorrelatedGapJunction(UnidirectionConnector):
 
 
 class OneToOneSequentialConnector(AbstractConnector):
-    """Object for buiilding one to one correspondence connections in bmtk
+    """Object for building one to one correspondence connections in bmtk
     network model with between two populations. One of the population can
     consist of multiple sub-populations. These sub-populations need to be added
     sequentially using setup_nodes() and edge_params() methods followed by BMTK
