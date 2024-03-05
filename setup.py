@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="bmtool",
-    version="0.5.0",
+    version="0.5.2",
     author="Tyler Banks",
     author_email="tbanks@mail.missouri.edu",
     description="BMTool",

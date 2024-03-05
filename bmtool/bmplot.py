@@ -82,7 +82,6 @@ def total_connection_matrix(config=None,title=None,sources=None, targets=None, s
         title = "All Synapse .mod Files Used"
     if synaptic_info=='3':
         title = "All Synapse .json Files Used"
-
     plot_connection_info(text,num,source_labels,target_labels,title, syn_info=synaptic_info, save_file=save_file)
     return
     
@@ -198,7 +197,7 @@ def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,s
 
     return
 
-def convergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean',include_gap=True):
+def convergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean+std',include_gap=True):
     """
     Generates connection plot displaying convergence data
     config: A BMTK simulation config 
@@ -208,7 +207,7 @@ def convergence_connection_matrix(config=None,title=None,sources=None, targets=N
     tids: target node identifier
     no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
     save_file: If plot should be saved
-    method: 'mean','min','max','stdev' for connvergence plot
+    method: 'mean','min','max','stdev' or 'mean+std' connvergence plot 
     """
     if not config:
         raise Exception("config not defined")
@@ -216,7 +215,7 @@ def convergence_connection_matrix(config=None,title=None,sources=None, targets=N
         raise Exception("Sources or targets not defined")
     return divergence_connection_matrix(config,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method,include_gap=include_gap)
 
-def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean',include_gap=True):
+def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean+std',include_gap=True):
     """
     Generates connection plot displaying divergence data
     config: A BMTK simulation config 
@@ -226,7 +225,7 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
     tids: target node identifier
     no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
     save_file: If plot should be saved
-    method: 'mean','min','max','stdev' for connvergence plot
+    method: 'mean','min','max','stdev', and 'mean+std' for divergence plot
     """
     if not config:
         raise Exception("config not defined")
@@ -256,15 +255,16 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
             title = "Maximum "
         elif method == 'std':
             title = "Standard Deviation "
-        else:
+        elif method == 'mean':
             title = "Mean "
+        else: 
+            title = 'Mean + Std '
 
         if convergence:
             title = title + "Synaptic Convergence"
         else:
             title = title + "Synaptic Divergence"
-
-    plot_connection_info(data,data,source_labels,target_labels,title, save_file=save_file)
+    plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
     return
 
 def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,synaptic_info='0',

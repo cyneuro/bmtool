@@ -199,8 +199,8 @@ X, Y = run_and_plot(sim)
 plt.show()
 ```
 
-    Injection location: Cell_Cf[23].soma[0](0.5)
-    Recording: Cell_Cf[23].soma[0](0.5)._ref_v
+    Injection location: Cell_Cf[22].soma[0](0.5)
+    Recording: Cell_Cf[22].soma[0](0.5)._ref_v
     ZAP current simulation running...
     
     Chirp current injection with frequency changing from 0 to 15 Hz over 15 seconds
@@ -319,21 +319,21 @@ background = NetworkBuilder('background')
 background.add_nodes(N=300,pop_name='tON',potential='exc',model_type='virtual')
 ```
 
-#### Unidirectional connector - unidirectional connections in bmtk network model with given probability within a single population (or between two populations)
+#### Unidirectional connector - Object for building unidirectional connections in bmtk network model with given probability within a single population (or between two populations).
 ```python
 from bmtool.connectors  import UnidirectionConnector
 connector = UnidirectionConnector(p=0.15, n_syn=1)
 connector.setup_nodes(source=net.nodes(pop_name = 'PopA'), target=net.nodes(pop_name = 'PopB'))
 net.add_edges(**connector.edge_params())
 ```
-#### Recipical connector - buiilding connections in bmtk network model with reciprocal probability within a single population (or between two populations
+#### Recipical connector - Object for building connections in bmtk network model with reciprocal probability within a single population (or between two populations)
 ```python
 from bmtool.connectors  import ReciprocalConnector
 connector = ReciprocalConnector(p0=0.15, pr=0.06767705087, n_syn0=1, n_syn1=1,estimate_rho=False)
 connector.setup_nodes(source=net.nodes(pop_name = 'PopA'), target=net.nodes(pop_name = 'PopA'))
 net.add_edges(**connector.edge_params())
 ```
-#### CorrelatedGapJunction
+#### CorrelatedGapJunction - Object for building gap junction connections in bmtk network model with given probabilities within a single population which could be correlated with the recurrent chemical synapses in this population.
 ```python
 from bmtool.connectors import ReciprocalConnector, CorrelatedGapJunction
 connector = ReciprocalConnector(p0=0.15, pr=0.06, n_syn0=1, n_syn1=1, estimate_rho=False)
@@ -345,7 +345,7 @@ conn = net.add_edges(is_gap_junction=True, syn_weight=0.0000495, target_sections
 **gap_junc.edge_params())
 ```
 
-#### OneToOneSequentialConnector
+#### OneToOneSequentialConnector - Object for building one to one correspondence connections in bmtk network model with between two populations. One of the population can consist of multiple sub-populations.
 ```python
 from bmtool.connectors  import OneToOneSequentialConnector
 connector = OneToOneSequentialConnector()
@@ -364,6 +364,7 @@ net.add_edges(**connector.edge_params())
 - [probability connection](#probability-of-connection-plot)
 - [3D location](#3d-position-plot)
 - [3D rotation](#cell-rotations)
+- [Plot Connection Diagram](#plot-connection-diagram)
 
 ### Total connection plot
 #### Generates a table of total number of connections each neuron population recieves
@@ -371,7 +372,7 @@ net.add_edges(**connector.edge_params())
 
 ```python
 from bmtool import bmplot
-bmplot.total_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True)
+bmplot.total_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,include_gap=False)
 ```
 
 
@@ -381,11 +382,11 @@ bmplot.total_connection_matrix(config='config.json',sources='LA',targets='LA',ti
 
 
 ### Percent connection plot
-#### Generates a table of the percent connectivity of neuron populations.Method can change if you want the table to be total percent connectivity or only unidirectional connectivity or only bi directional connectvity 
+#### Generates a table of the percent connectivity of neuron populations.Method can change if you want the table to be total percent connectivity, only unidirectional connectivity or only bi directional connectvity 
 
 
 ```python
-bmplot.percent_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,method='total')
+bmplot.percent_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,method='total',include_gap=False)
 ```
 
 
@@ -395,11 +396,11 @@ bmplot.percent_connection_matrix(config='config.json',sources='LA',targets='LA',
 
 
 ### Convergence plot
-#### Generates a table of the mean convergence of neuron populations. Method can be changed to show max,and min convergence a cell recieves and also changed to show standard deviation of convergence
+#### Generates a table of the mean convergence of neuron populations. Method can be changed to show max, min, mean, or std for convergence a cell recieves
 
 
 ```python
-bmplot.convergence_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True)
+bmplot.convergence_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,include_gap=False,method='mean+std')
 ```
 
 
@@ -409,16 +410,16 @@ bmplot.convergence_connection_matrix(config='config.json',sources='LA',targets='
 
 
 ### Divergence plot
-#### Generates a table of the mean divergence of neuron populations. Method can be changed to show max,and min divergence a cell recieves and also changed to show standard deviation of divergence
+#### Generates a table of the mean divergence of neuron populations. Method can be changed to show max, min, mean or std divergence a cell recieves.
 
 
 ```python
-bmplot.divergence_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name')
+bmplot.divergence_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,include_gap=False,method='mean+std')
 ```
 
 
     
-![png]readme_figures/(output_25_0.png)
+![png](readme_figures/output_25_0.png)
     
 
 
@@ -427,7 +428,7 @@ bmplot.divergence_connection_matrix(config='config.json',sources='LA',targets='L
 
 
 ```python
-bmplot.connection_histogram(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',source_cell='PNa',target_cell='PV')
+bmplot.connection_histogram(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',source_cell='PV',target_cell='PV',include_gap=False)
 ```
 
 
@@ -445,17 +446,14 @@ bmplot.probability_connection_matrix(config='config.json',sources='LA',targets='
 ```
 
 
+    
+![png](readme_figures/output_29_0.png)
+    
 
 
 
     
 ![png](readme_figures/output_29_1.png)
-    
-
-
-
-    
-![png](readme_figures/output_29_2.png)
     
 
 
@@ -485,4 +483,267 @@ bmplot.cell_rotation_3d(config='config2.json',populations_list='all',group_by='p
     
 ![png](readme_figures/output_33_0.png)
     
+
+
+### Plot Connection Diagram
+
+
+```python
+bmplot.plot_network_graph(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True)
+```
+
+
+    
+![png](readme_figures/output_35_0.png)
+    
+
+
+
+
+
+```python
+from bmtool import bmplot
+bmplot.plot_basic_cell_info(config_file='config.json')
+```
+
+    Network and node info:
+    LA:
+
+
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>node_type</th>
+      <th>pop_name</th>
+      <th>model_type</th>
+      <th>model_template</th>
+      <th>morphology</th>
+      <th>count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>100</td>
+      <td>PNa</td>
+      <td>biophysical</td>
+      <td>hoc:Cell_Af</td>
+      <td>blank.swc</td>
+      <td>800</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>101</td>
+      <td>PNc</td>
+      <td>biophysical</td>
+      <td>hoc:Cell_Cf</td>
+      <td>blank.swc</td>
+      <td>800</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>102</td>
+      <td>PV</td>
+      <td>biophysical</td>
+      <td>hoc:InterneuronCellf</td>
+      <td>blank.swc</td>
+      <td>240</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>103</td>
+      <td>SOM</td>
+      <td>biophysical</td>
+      <td>hoc:LTS_Cell</td>
+      <td>blank.swc</td>
+      <td>160</td>
+    </tr>
+  </tbody>
+</table>
+
+
+    thalamus_pyr:
+
+
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>node_type</th>
+      <th>pop_name</th>
+      <th>model_type</th>
+      <th>count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>100</td>
+      <td>pyr_inp</td>
+      <td>virtual</td>
+      <td>1600</td>
+    </tr>
+  </tbody>
+</table>
+
+
+    thalamus_pv:
+
+
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>node_type</th>
+      <th>pop_name</th>
+      <th>model_type</th>
+      <th>count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>100</td>
+      <td>pv_inp</td>
+      <td>virtual</td>
+      <td>240</td>
+    </tr>
+  </tbody>
+</table>
+
+
+    thalamus_som:
+
+
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>node_type</th>
+      <th>pop_name</th>
+      <th>model_type</th>
+      <th>count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>100</td>
+      <td>som_inp</td>
+      <td>virtual</td>
+      <td>160</td>
+    </tr>
+  </tbody>
+</table>
+
+
+    tone:
+
+
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>node_type</th>
+      <th>pop_name</th>
+      <th>model_type</th>
+      <th>count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>100</td>
+      <td>tone</td>
+      <td>virtual</td>
+      <td>1840</td>
+    </tr>
+  </tbody>
+</table>
+
+
+    shock:
+
+
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>node_type</th>
+      <th>pop_name</th>
+      <th>model_type</th>
+      <th>count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>100</td>
+      <td>shock</td>
+      <td>virtual</td>
+      <td>400</td>
+    </tr>
+  </tbody>
+</table>
+
+
+    shell:
+
+
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>node_type</th>
+      <th>pop_name</th>
+      <th>model_type</th>
+      <th>count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>100</td>
+      <td>PNa</td>
+      <td>virtual</td>
+      <td>3975</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>101</td>
+      <td>PNc</td>
+      <td>virtual</td>
+      <td>3975</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>102</td>
+      <td>PV</td>
+      <td>virtual</td>
+      <td>1680</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>103</td>
+      <td>SOM</td>
+      <td>virtual</td>
+      <td>1120</td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+
+
+    'LA'
+
 

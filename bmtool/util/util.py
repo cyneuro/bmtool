@@ -566,7 +566,10 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                 
                         total = relation_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
                         if synaptic_info=='0':
-                            syn_info[source_index,target_index] = total
+                            if isinstance(total, tuple):
+                                syn_info[source_index, target_index] = str(round(total[0], 1)) + '\n' + str(round(total[1], 1))
+                            else:
+                                syn_info[source_index,target_index] = total
                         elif synaptic_info=='1':
                             mean = conn_mean_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
                             stdev = conn_stdev_func(source_nodes=source_nodes, target_nodes=target_nodes, edges=c_edges, source=source,sid="source_"+sids[s], target=target,tid="target_"+tids[t],source_id=s_type,target_id=t_type)
@@ -587,8 +590,11 @@ def relation_matrix(config=None, nodes=None,edges=None,sources=[],targets=[],sid
                                 syn_info[source_index,target_index] = ""
                             else:
                                 syn_info[source_index,target_index] = syn_list
+                        if isinstance(total, tuple):
+                            e_matrix[source_index,target_index]=total[0]
+                        else:
+                            e_matrix[source_index,target_index]=total
 
-                        e_matrix[source_index,target_index]=total
                                                 
     return syn_info, e_matrix, source_pop_names, target_pop_names
 
@@ -654,7 +660,7 @@ def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=precent_func)
 
-def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False,method='mean',include_gap=True):
+def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False,method='mean+std',include_gap=True):
 
     import pandas as pd
 
@@ -675,43 +681,37 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
         if convergence:
             if method == 'min':
                 count = cons.apply(pd.Series.value_counts).target_node_id.dropna().min()
-                return count
+                return round(count,2)
             elif method == 'max':
                 count = cons.apply(pd.Series.value_counts).target_node_id.dropna().max()
-                return count
+                return round(count,2)
             elif method == 'std':
                 std = cons.apply(pd.Series.value_counts).target_node_id.dropna().std()
                 return round(std,2)
-            else: #mean
-                vc = t_list.apply(pd.Series.value_counts)
-                vc = vc[target_id_type].dropna().sort_index()
-                count = vc.loc[target_id]#t_list[t_list[target_id_type]==target_id]
+            elif method == 'mean': 
+                mean = cons['target_node_id'].value_counts().mean()
+                return round(mean,2)
+            elif method == 'mean+std': #default is mean + std
+                mean = cons['target_node_id'].value_counts().mean()
+                std = cons.apply(pd.Series.value_counts).target_node_id.dropna().std()
+                return (round(mean,2)), (round(std,2))
         else: #divergence
             if method == 'min':
                 count = cons.apply(pd.Series.value_counts).source_node_id.dropna().min()
-                return count
+                return round(count,2)
             elif method == 'max':
                 count = cons.apply(pd.Series.value_counts).source_node_id.dropna().max()
-                return count
+                return round(count,2)
             elif method == 'std':
                 std = cons.apply(pd.Series.value_counts).source_node_id.dropna().std()
                 return round(std,2)
-            else: #mean
-                #vc = s_list.apply(pd.Series.value_counts)[source_id_type].dropna().sort_index().loc[source_id]
-                vc = s_list.apply(pd.Series.value_counts)
-                vc = vc[source_id_type].dropna().sort_index()
-                count = vc.loc[source_id]#count = s_list[s_list[source_id_type]==source_id]
-
-        # Only executed when mean
-        total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
-        if include_gap == False:
-            total = total[total['is_gap_junction'] != True]
-        total = total.count()
-        total = total.source_node_id # may not be the best way to pick
-        ret = round(total/count,1)
-        if ret == 0:
-            ret = None
-        return ret
+            elif method == 'mean': 
+                mean = cons['source_node_id'].value_counts().mean()
+                return round(mean,2)
+            elif method == 'mean+std': #default is mean + std
+                mean = cons['source_node_id'].value_counts().mean()
+                std = cons.apply(pd.Series.value_counts).source_node_id.dropna().std()
+                return (round(mean,2)), (round(std,2))
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
