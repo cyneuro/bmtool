@@ -217,8 +217,8 @@ class Passive(CurrentClamp):
         self.v_final_time = self.t_vec[self.index_v_final]
 
         t_idx = slice(self.index_v_rest, self.index_v_final + 1)
-        self.v_vec_inj = self.v_vec.as_numpy()[t_idx].copy()
-        self.t_vec_inj = self.t_vec.as_numpy()[t_idx].copy() - self.v_rest_time
+        self.v_vec_inj = np.array(self.v_vec)[t_idx]
+        self.t_vec_inj = np.array(self.t_vec)[t_idx] - self.v_rest_time
 
         self.v_diff = self.cell_v_final - self.v_rest
         self.r_in = self.v_diff / self.inj_amp # MegaOhms
@@ -388,8 +388,8 @@ class ZAP(CurrentClamp):
         self.v_rest_time = self.t_vec[self.index_v_rest]
 
         t_idx = slice(self.index_v_rest, self.index_v_final + 1)
-        self.v_vec_inj = self.v_vec.as_numpy()[t_idx].copy() - self.v_rest
-        self.t_vec_inj = self.t_vec.as_numpy()[t_idx].copy() - self.v_rest_time
+        self.v_vec_inj = np.array(self.v_vec)[t_idx] - self.v_rest
+        self.t_vec_inj = np.array(self.t_vec)[t_idx] - self.v_rest_time
 
         self.cell_v_amp_max = np.abs(self.v_vec_inj).max()
         self.Z = np.fft.rfft(self.v_vec_inj) / np.fft.rfft(self.zap_vec_inj) # MOhms
