@@ -4,6 +4,7 @@ from scipy.special import erf
 from scipy.optimize import minimize_scalar
 from functools import partial
 import time
+import types
 
 rng = np.random.default_rng()
 
@@ -76,10 +77,10 @@ class DistantDependentProbability(ProbabilityFunction):
         assert(min_dist >= 0 and min_dist < max_dist)
         self.min_dist, self.max_dist = min_dist, max_dist
 
-    def __call__(self, dist):
+    def __call__(self, dist, *arg, **kwargs):
         """Return probability for single distance input"""
         if dist >= self.min_dist and dist <= self.max_dist:
-            return self.probability(dist).item()
+            return self.probability(dist)
         else:
             return 0.
 
@@ -88,7 +89,10 @@ class DistantDependentProbability(ProbabilityFunction):
         dist = np.asarray(dist)
         dec = np.zeros(dist.shape, dtype=bool)
         mask = (dist >= self.min_dist) & (dist <= self.max_dist)
-        dec[mask] = decisions(self.probability(dist[mask]))
+        dist = dist[mask]
+        prob = np.empty(dist.shape)
+        prob[:] = self.probability(dist)
+        dec[mask] = decisions(prob)
         return dec
 
 
@@ -99,7 +103,7 @@ class UniformInRange(DistantDependentProbability):
         super().__init__(min_dist=min_dist, max_dist=max_dist)
         self.p = np.array(p)
         assert(self.p.size == 1)
-        assert(self.p >= 0. and self.p <= 1.)
+        assert(p >= 0. and p <= 1.)
 
     def probability(self, dist):
         return self.p
@@ -127,7 +131,7 @@ class GaussianDropoff(DistantDependentProbability):
             input pmax, and calculate pmax. See calc_pmax_from_ptotal() method.
         ptotal_dist_range: Distance range for calculating pmax when ptotal is
         specified. If not specified, set to range (min_dist, max_dist).
-        dist_type: spherical or cylindrical for distance metric.
+        dist_type: 'spherical' or 'cylindrical' for distance metric.
             Used when ptotal is specified.
 
     Returns:
@@ -213,6 +217,51 @@ class GaussianDropoff(DistantDependentProbability):
             self.probability = lambda dist: np.fmin(probability(dist), 1.)
         else:
             self.probability = probability
+
+
+class NormalizedReciprocalRate(ProbabilityFunction):
+    """Reciprocal connection probability given normalized reciprocal rate.
+    Normalized reciprocal rate is defined as the ratio between the reciprocal
+    connection probability and the connection probability for a randomly
+    connected network where the two unidirectional connections between any pair
+    of neurons are independent. NRR = pr / (p0 * p1)
+    
+    Parameters:
+        NRR: a constant or distance dependent function for normalized reciprocal
+            rate. When being a function, it should be accept vectorized input.
+    Returns:
+        A callable object that returns the probability value.
+    """
+
+    def __init__(self, NRR=1.):
+        self.NRR = NRR if callable(NRR) else lambda *x: NRR
+
+    def probability(self, dist, p0, p1):
+        """Allow numpy array input and return probability in numpy array"""
+        return p0 * p1 * self.NRR(dist)
+
+    def __call__(self, dist, p0, p1, *arg, **kwargs):
+        """Return probability for single distance input"""
+        return self.probability(dist, p0, p1)
+
+    def decisions(self, dist, p0, p1, cond=None):
+        """Return bool array of decisions
+        dist: distance (scalar or array). Will be ignored if NRR is constant.
+        p0, p1: forward and backward probability (scalar or array)
+        cond: A tuple (direction, array of outcomes) representing the condition.
+            Conditional probability will be returned if specified. The condition
+            event is determined by connection direction (0 for forward, or 1 for
+            backward) and outcomes (bool array of whether connection exists).
+        """
+        dist, p0, p1 = map(np.asarray, (dist, p0, p1))
+        pr = np.empty(dist.shape)
+        pr[:] = self.probability(dist, p0, p1)
+        pr = np.clip(pr, a_min=np.fmax(p0 + p1 - 1., 0.), a_max=np.fmin(p0, p1))
+        if cond is not None:
+            mask = np.asarray(cond[1])
+            pr[mask] /= p1 if cond[0] else p0
+            pr[~mask] = 0.
+        return decisions(pr)
 
 
 # Connector Classes
@@ -303,7 +352,7 @@ def rho_2_pr(p0, p1, rho):
 
 class ReciprocalConnector(AbstractConnector):
     """
-    Object for building connections in bmtk network model with reciprocal
+    Object for buiilding connections in bmtk network model with reciprocal
     probability within a single population (or between two populations).
 
     Algorithm:
@@ -388,10 +437,17 @@ class ReciprocalConnector(AbstractConnector):
         symmetric_p1_arg: Whether p0_arg and p1_arg are identical. If this is
             set to True, argument p1_arg will be ignored. This is forced to be
             True when the population is recurrent.
-        pr, pr_arg: Probability of reciprocal connection and its input argument
-            when it is a function, similar to p0, p0_arg, p1, p1_arg. It can be
-            a function when it has an explicit relation with some node
-            properties such as distance.
+        pr, pr_arg: Probability of reciprocal connection and its first input
+            argument when it is a function, similar to p0, p0_arg, p1, p1_arg.
+            It can be a function when it has an explicit relation with some node
+            properties such as distance. A function pr requires two additional
+            positional arguments p0 and p1 even if they are not used, i.e.,
+            pr(pr_arg, p0, p1), just in case pr is dependent on p0 and p1, e.g.,
+            when normalized reciprocal rate NRR = pr/(p0*p1) is given.
+            When pr_arg is a string, the same value as p1_arg will be used for
+            pr_arg if the string contains '1', e.g., '1', 'p1'. Otherwise, e.g.,
+            '', '0', 'p0', p0_arg will be used for pr_arg. Specifying this can
+            avoid recomputing pr_arg when it's given by p0_arg or p1_arg.
         estimate_rho: Whether estimate rho that result in an overall pr. This
             is forced to be False if pr is a function or if rho is specified.
             To estimate rho, all the pairs with possible connections, meaning
@@ -551,6 +607,7 @@ class ReciprocalConnector(AbstractConnector):
             self.enable = enable
             self._output = {}
             self.cache_dict = {}
+            self.set_next_it()
             self.write_mode()
 
         def cache_output(self, func, func_name, cache=True):
@@ -606,9 +663,14 @@ class ReciprocalConnector(AbstractConnector):
                     self.enable = False
             self.mode = 'read'
 
-        def next_it(self):
+        def set_next_it(self):
             if self.enable:
-                self.iter_count += 1
+                def next_it():
+                    self.iter_count += 1
+            else:
+                def next_it():
+                    pass
+            self.next_it = next_it
 
     def node_2_idx_input(self, var_func, reverse=False):
         """Convert a function that accept nodes as input
@@ -703,6 +765,13 @@ class ReciprocalConnector(AbstractConnector):
 
     # *** A sequence of major methods executed during build ***
     def setup_variables(self):
+        # If pr_arg is string, use the same value as p0_arg or p1_arg
+        if isinstance(self.vars['pr_arg'], str):
+            pr_arg_func = 'p1_arg' if '1' in self.vars['pr_arg'] else 'p0_arg'
+            self.vars['pr_arg'] = self.vars[pr_arg_func]
+        else:
+            pr_arg_func = None
+
         callable_set = set()
         # Make constant variables constant functions
         for name, var in self.vars.items():
@@ -717,6 +786,21 @@ class ReciprocalConnector(AbstractConnector):
         for name in callable_set - {'p0', 'p1', 'pr'}:
             var = self.vars[name]
             setattr(self, name, self.node_2_idx_input(var, '1' in name))
+
+        # Set up function for pr_arg if use value from p0_arg or p1_arg
+        if pr_arg_func is None:
+            self._pr_arg = self.pr_arg  # use specified pr_arg
+        else:
+            self._pr_arg_val = 0.  # storing current value from p_arg
+            p_arg = getattr(self, pr_arg_func)
+            def p_arg_4_pr(*args, **kwargs):
+                val = p_arg(*args, **kwargs)
+                self._pr_arg_val = val
+                return val
+            setattr(self, pr_arg_func, p_arg_4_pr)
+            def pr_arg(self, *arg):
+                return self._pr_arg_val
+            self._pr_arg = types.MethodType(pr_arg, self)
 
     def cache_variables(self):
         # Select cacheable attrilbutes
@@ -825,7 +909,7 @@ class ReciprocalConnector(AbstractConnector):
             if forward:
                 forward = decision(p0)
             if backward:
-                pr = self.pr(self.pr_arg(i, j))
+                pr = self.pr(self._pr_arg(i, j), p0, p1)
                 backward = decision(self.cond_backward(forward, p0, p1, pr))
 
             # Make connection
@@ -849,7 +933,7 @@ class ReciprocalConnector(AbstractConnector):
         if self.verbose:
             self.timer.report('Total time for creating connection matrix')
             if self.wrong_pr:
-                print("\nWarning: Value of 'pr' outside the bounds occurs.\n")
+                print("Warning: Value of 'pr' outside the bounds occurred.\n")
             self.connection_number_info()
 
     def make_connection(self):
@@ -949,7 +1033,7 @@ class ReciprocalConnector(AbstractConnector):
 
 class UnidirectionConnector(AbstractConnector):
     """
-    Object for building unidirectional connections in bmtk network model with
+    Object for buiilding unidirectional connections in bmtk network model with
     given probability within a single population (or between two populations).
 
     Parameters:
@@ -1081,9 +1165,80 @@ class UnidirectionConnector(AbstractConnector):
               % (100. * self.n_conn / self.n_pair))
 
 
-class CorrelatedGapJunction(UnidirectionConnector):
+class GapJunction(UnidirectionConnector):
     """
-    Object for building gap junction connections in bmtk network model with
+    Object for buiilding gap junction connections in bmtk network model with
+    given probabilities within a single population which is uncorrelated with
+    the recurrent chemical synapses in this population.
+
+    Parameters:
+        p, p_arg: Probability of forward connection and its input argument when
+            it is a function, similar to p0, p0_arg in ReciprocalConnector. It
+            can be a constant or a deterministic function whose value must be
+            within range [0, 1]. When p is constant, the connection is
+            homogenous.
+        verbose: Whether show verbose information in console.
+
+    Returns:
+        An object that works with BMTK to build edges in a network.
+
+    Important attributes:
+        Similar to `UnidirectionConnector`.
+    """
+
+    def __init__(self, p=1., p_arg=None, verbose=True):
+        super().__init__(p=p, p_arg=p_arg, verbose=verbose)
+
+    def setup_nodes(self, source=None, target=None):
+        super().setup_nodes(source=source, target=target)
+        if len(self.source) != len(self.target):
+            raise ValueError("Source and target must be the same for "
+                             "gap junction.")
+        self.n_source = len(self.source)
+
+    def make_connection(self, source, target, *args, **kwargs):
+        """Assign gap junction per iteration using one_to_one iterator"""
+        # Initialize in the first iteration
+        if self.iter_count == 0:
+            self.initialize()
+            if self.verbose:
+                src_str, _ = self.get_nodes_info()
+                print("\nStart building gap junction \n  in " + src_str)
+
+        # Consider each pair only once
+        nsyns = 0
+        i, j = divmod(self.iter_count, self.n_source)
+        if i < j:
+            p_arg = self.p_arg(source, target)
+            p = self.p(p_arg)
+            possible = p > 0
+            self.n_poss += possible
+            if possible and decision(p):
+                nsyns = 1
+                sid, tid = source.node_id, target.node_id
+                self.add_conn_prop(sid, tid, p_arg)
+                self.add_conn_prop(tid, sid, p_arg)
+                self.n_conn += 1
+
+        self.iter_count += 1
+
+        # Detect end of iteration
+        if self.iter_count == self.n_pair:
+            if self.verbose:
+                self.connection_number_info()
+                self.timer.report('Done! \nTime for building connections')
+        return nsyns
+
+    def connection_number_info(self):
+        n_pair = self.n_pair
+        self.n_pair = (n_pair - len(self.source)) // 2
+        super().connection_number_info()
+        self.n_pair = n_pair
+
+
+class CorrelatedGapJunction(GapJunction):
+    """
+    Object for buiilding gap junction connections in bmtk network model with
     given probabilities within a single population which could be correlated
     with the recurrent chemical synapses in this population.
 
@@ -1120,13 +1275,6 @@ class CorrelatedGapJunction(UnidirectionConnector):
             conn_prop = conn_prop[0]
         self.ref_conn_prop = conn_prop
 
-    def setup_nodes(self, source=None, target=None):
-        super().setup_nodes(source=source, target=target)
-        if len(self.source) != len(self.target):
-            raise ValueError("Source and target must be the same for "
-                             "gap junction.")
-        self.n_source = len(self.source)
-
     def conn_exist(self, sid, tid):
         trg_dict = self.ref_conn_prop.get(sid)
         if trg_dict is not None and tid in trg_dict:
@@ -1153,7 +1301,7 @@ class CorrelatedGapJunction(UnidirectionConnector):
         if self.iter_count == 0:
             self.initialize()
             if self.verbose:
-                src_str, trg_str = self.get_nodes_info()
+                src_str, _ = self.get_nodes_info()
                 print("\nStart building gap junction \n  in " + src_str)
 
         # Consider each pair only once
@@ -1182,15 +1330,9 @@ class CorrelatedGapJunction(UnidirectionConnector):
                 self.timer.report('Done! \nTime for building connections')
         return nsyns
 
-    def connection_number_info(self):
-        n_pair = self.n_pair
-        self.n_pair = (n_pair - len(self.source)) // 2
-        super().connection_number_info()
-        self.n_pair = n_pair
-
 
 class OneToOneSequentialConnector(AbstractConnector):
-    """Object for building one to one correspondence connections in bmtk
+    """Object for buiilding one to one correspondence connections in bmtk
     network model with between two populations. One of the population can
     consist of multiple sub-populations. These sub-populations need to be added
     sequentially using setup_nodes() and edge_params() methods followed by BMTK
@@ -1337,21 +1479,24 @@ FLUC_STDEV = 0.2  # ms
 DELAY_LOWBOUND = 0.2  # ms must be greater than h.dt
 DELAY_UPBOUND = 2.0  # ms
 
-def syn_dist_delay_feng(source, target,
-                        min_delay=SYN_MIN_DELAY, velocity=SYN_VELOCITY,
-                        fluc_stdev=FLUC_STDEV, connector=None):
+def syn_dist_delay_feng(source, target, min_delay=SYN_MIN_DELAY,
+                        velocity=SYN_VELOCITY, fluc_stdev=FLUC_STDEV,
+                        delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
+                        connector=None):
     """Synpase delay linearly dependent on distance.
     min_delay: minimum delay (ms)
     velocity: synapse conduction velocity (micron/ms)
     fluc_stdev: standard deviation of random Gaussian fluctuation (ms)
+    delay_bound: (lower, upper) bounds of delay (ms)
+    connector: connector object from which to read distance
     """
     if connector is None:
         dist = euclid_dist(target['positions'], source['positions'])
     else:
         dist = connector.get_conn_prop(source.node_id, target.node_id)
     del_fluc = fluc_stdev * rng.normal()
-    delay = dist / SYN_VELOCITY + SYN_MIN_DELAY + del_fluc
-    delay = min(max(delay, DELAY_LOWBOUND), DELAY_UPBOUND)
+    delay = dist / velocity + min_delay + del_fluc
+    delay = min(max(delay, delay_bound[0]), delay_bound[1])
     return delay
 
 

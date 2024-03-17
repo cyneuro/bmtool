@@ -615,6 +615,7 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
         return total
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship,synaptic_info=synaptic_info)
 
+
 def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None,include_gap=True):
 
     def precent_func(**kwargs): 
@@ -659,6 +660,7 @@ def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],
 
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=precent_func)
+
 
 def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,convergence=False,method='mean+std',include_gap=True):
 
@@ -714,6 +716,7 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
                 return (round(mean,2)), (round(std,2))
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
+
 
 def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
     targets=[],sids=[],tids=[],prepend_pop=True,dist_X=True,dist_Y=True,dist_Z=True,num_bins=10,include_gap=True):
@@ -835,6 +838,7 @@ def connection_graph_edge_types(config=None,nodes=None,edges=None,sources=[],tar
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=synapse_type_relationship,return_type=object)
 
+
 def edge_property_matrix(edge_property, config=None, nodes=None, edges=None, sources=[],targets=[],sids=[],tids=[],prepend_pop=True,report=None,time=-1,time_compare=None):
     
     var_report = None
@@ -906,9 +910,10 @@ def percent_connectivity(config=None,nodes=None,edges=None,sources=[],targets=[]
 
     return ret, source_labels, target_labels
     
-    
+
 def connection_average_synapses():
     return
+
 
 def connection_divergence_average_old(config=None, nodes=None, edges=None,populations=[],convergence=False):
     """
