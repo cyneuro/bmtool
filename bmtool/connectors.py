@@ -12,6 +12,13 @@ rng = np.random.default_rng()
 ############################## CONNECT CELLS #################################
 
 # Utility Functions
+def num_prop(ratio, N):
+    """Calculate numbers of total N in proportion to ratio"""
+    ratio = np.asarray(ratio)
+    p = np.cumsum(np.insert(ratio.ravel(), 0, 0))  # cumulative proportion
+    return np.diff(np.round(N / p[-1] * p).astype(int)).reshape(ratio.shape)
+
+
 def decision(prob, size=None):
     """
     Make single random decision based on input probability.
@@ -281,22 +288,6 @@ class AbstractConnector(ABC):
         return NotImplemented
 
     @staticmethod
-    def is_same_pop(source, target, quick=True):
-        """Whether two NodePool objects direct to the same population"""
-        if quick:
-            # Quick check (compare filter conditions)
-            same = (source.network_name == target.network_name and
-                    source._NodePool__properties ==
-                    target._NodePool__properties)
-        else:
-            # Strict check (compare all nodes)
-            same = (source.network_name == target.network_name and
-                    len(source) == len(target) and
-                    all([s.node_id == t.node_id
-                         for s, t in zip(source, target)]))
-        return same
-
-    @staticmethod
     def constant_function(val):
         """Convert a constant to a constant function"""
         def constant(*arg):
@@ -304,7 +295,23 @@ class AbstractConnector(ABC):
         return constant
 
 
-# Helper class
+# Helper functions
+def is_same_pop(source, target, quick=False):
+    """Check whether two NodePool objects direct to the same population"""
+    if quick:
+        # Quick check (compare filter conditions)
+        same = (source.network_name == target.network_name and
+                source._NodePool__properties ==
+                target._NodePool__properties)
+    else:
+        # Strict check (compare all nodes)
+        same = (source.network_name == target.network_name and
+                len(source) == len(target) and
+                all([s.node_id == t.node_id
+                     for s, t in zip(source, target)]))
+    return same
+
+
 class Timer(object):
     def __init__(self, unit='sec'):
         if unit == 'ms':
@@ -481,6 +488,10 @@ class ReciprocalConnector(AbstractConnector):
             into the connection matrix to reduce memory consumption.
         autapses: Whether to allow connecting a cell to itself. Default: False.
             This is ignored when the population is not recurrent.
+        quick_pop_check: Whether to use quick method to check if source and
+            target populations are the same. Default: False.
+            Quick method checks only whether filter conditions match.
+            Strict method checks whether all node id's match considering order.
         cache_data: Whether to cache the values of p0, p0_arg, p1, p1_arg
             during estimation of rho. This improves performance when
             estimate_rho is True while not creating a significant overhead in
@@ -521,7 +532,7 @@ class ReciprocalConnector(AbstractConnector):
                  pr=0., pr_arg=None, estimate_rho=True, rho=None,
                  dist_range_forward=None, dist_range_backward=None,
                  n_syn0=1, n_syn1=1, autapses=False,
-                 cache_data=True, verbose=True):
+                 quick_pop_check=False, cache_data=True, verbose=True):
         args = locals()
         var_set = ('p0', 'p0_arg', 'p1', 'p1_arg',
                    'pr', 'pr_arg', 'n_syn0', 'n_syn1')
@@ -536,6 +547,7 @@ class ReciprocalConnector(AbstractConnector):
         self.rho = rho
 
         self.autapses = autapses
+        self.quick = quick_pop_check
         self.cache = self.ConnectorCache(cache_data and self.estimate_rho)
         self.verbose = verbose
 
@@ -549,8 +561,8 @@ class ReciprocalConnector(AbstractConnector):
         if self.stage:
             # check whether the correct populations
             if (source is None or target is None or
-                    not self.is_same_pop(source, self.target) or
-                    not self.is_same_pop(target, self.source)):
+                    not is_same_pop(source, self.target, quick=self.quick) or
+                    not is_same_pop(target, self.source, quick=self.quick)):
                 raise ValueError("Source or target population not consistent.")
             # Skip adding nodes for the backward stage.
             return
@@ -564,7 +576,7 @@ class ReciprocalConnector(AbstractConnector):
             raise ValueError("Target nodes do not exists")
 
         # Setup nodes
-        self.recurrent = self.is_same_pop(self.source, self.target, quick=True)
+        self.recurrent = is_same_pop(self.source, self.target, quick=self.quick)
         self.source_ids = [s.node_id for s in self.source]
         self.n_source = len(self.source_ids)
         self.source_list = list(self.source)

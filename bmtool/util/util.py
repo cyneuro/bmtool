@@ -258,18 +258,20 @@ def load_nodes_from_paths(node_paths):
             for group_id in range(n_group):
                 group = nodes_grp[str(group_id)]
                 idx = node_group_id == group_id
+                group_node = node_id[idx]
+                group_index = node_group_index[idx]
                 for prop in group:
                     if prop == 'positions':
-                        positions = group[prop][node_group_index[idx]]
+                        positions = group[prop][group_index]
                         for i in range(positions.shape[1]):
                             if pos_labels[i] not in nodes_df:
                                 nodes_df[pos_labels[i]] = np.nan
-                            nodes_df.loc[node_id, pos_labels[i]] = positions[:, i]
+                            nodes_df.loc[group_node, pos_labels[i]] = positions[:, i]
                     else:
                         # create new column with NaN if property does not exist
                         if prop not in nodes_df: 
                             nodes_df[prop] = np.nan
-                        nodes_df.loc[idx, prop] = tuple(group[prop][node_group_index[idx]])
+                        nodes_df.loc[group_node, prop] = group[prop][group_index]
                         prop_dtype[prop] = group[prop].dtype
             # convert to original data type if possible
             for prop, dtype in prop_dtype.items():
