@@ -647,8 +647,12 @@ def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],
         num_bi = (cons_recip.count().source_node_id - cons_recip_dedup.count().source_node_id)
         num_uni = total_cons - num_bi    
 
-        num_sources = s_list.apply(pd.Series.value_counts)[source_id_type].dropna().sort_index().loc[source_id]
-        num_targets = t_list.apply(pd.Series.value_counts)[target_id_type].dropna().sort_index().loc[target_id]
+        #num_sources = s_list.apply(pd.Series.value_counts)[source_id_type].dropna().sort_index().loc[source_id]
+        #num_targets = t_list.apply(pd.Series.value_counts)[target_id_type].dropna().sort_index().loc[target_id]
+
+        num_sources = s_list[source_id_type].value_counts().sort_index().loc[source_id]
+        num_targets = t_list[target_id_type].value_counts().sort_index().loc[target_id]
+
 
         total = round(total_cons / (num_sources*num_targets) * 100,2)
         uni = round(num_uni / (num_sources*num_targets) * 100,2)
@@ -684,37 +688,38 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
 
         if convergence:
             if method == 'min':
-                count = cons.apply(pd.Series.value_counts).target_node_id.dropna().min()
+                count = cons['target_node_id'].value_counts().min()
                 return round(count,2)
             elif method == 'max':
-                count = cons.apply(pd.Series.value_counts).target_node_id.dropna().max()
+                count = cons['target_node_id'].value_counts().max()
                 return round(count,2)
             elif method == 'std':
-                std = cons.apply(pd.Series.value_counts).target_node_id.dropna().std()
+                std = cons['target_node_id'].value_counts().std()
                 return round(std,2)
             elif method == 'mean': 
                 mean = cons['target_node_id'].value_counts().mean()
                 return round(mean,2)
             elif method == 'mean+std': #default is mean + std
                 mean = cons['target_node_id'].value_counts().mean()
-                std = cons.apply(pd.Series.value_counts).target_node_id.dropna().std()
+                std = cons['target_node_id'].value_counts().std()
+                #std = cons.apply(pd.Series.value_counts).target_node_id.dropna().std() no longer a valid way
                 return (round(mean,2)), (round(std,2))
         else: #divergence
             if method == 'min':
-                count = cons.apply(pd.Series.value_counts).source_node_id.dropna().min()
+                count = cons['source_node_id'].value_counts().min()
                 return round(count,2)
             elif method == 'max':
-                count = cons.apply(pd.Series.value_counts).source_node_id.dropna().max()
+                count = cons['source_node_id'].value_counts().max()
                 return round(count,2)
             elif method == 'std':
-                std = cons.apply(pd.Series.value_counts).source_node_id.dropna().std()
+                std = cons['source_node_id'].value_counts().std()
                 return round(std,2)
             elif method == 'mean': 
                 mean = cons['source_node_id'].value_counts().mean()
                 return round(mean,2)
             elif method == 'mean+std': #default is mean + std
                 mean = cons['source_node_id'].value_counts().mean()
-                std = cons.apply(pd.Series.value_counts).source_node_id.dropna().std()
+                std = cons['source_node_id'].value_counts().std()
                 return (round(mean,2)), (round(std,2))
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
@@ -758,11 +763,11 @@ def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
         def eudist(df,use_x=True,use_y=True,use_z=True):
             def _dist(x):
                 if len(x) == 6:
-                    return distance.euclidean((x[0],x[1],x[2]),(x[3],x[4],x[5]))
+                    return distance.euclidean((x.iloc[0], x.iloc[1], x.iloc[2]), (x.iloc[3], x.iloc[4], x.iloc[5]))
                 elif len(x) == 4:
-                    return distance.euclidean((x[0],x[1]),(x[2],x[3]))
+                    return distance.euclidean((x.iloc[0],x.iloc[1]),(x.iloc[2],x.iloc[3]))
                 elif len(x) == 2:
-                    return distance.euclidean((x[0]),(x[1]))
+                    return distance.euclidean((x.iloc[0]),(x.iloc[1]))
                 else:
                     return -1
 
