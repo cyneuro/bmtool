@@ -4,6 +4,7 @@ config*
 Readme_test.ipynb
 templates/
 mechanisms/
+*.csv
 
 # MacOS stuff
 .DS_Store

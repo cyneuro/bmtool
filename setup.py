@@ -6,9 +6,9 @@ with open("README.md", "r") as fh:
 
 setup(
     name="bmtool",
-    version="0.5.2",
-    author="Tyler Banks",
-    author_email="tbanks@mail.missouri.edu",
+    version="0.5.3",
+    author="Neural Engineering Laboratory at the University of Missouri",
+    author_email="gregglickert@mail.missouri.edu",
     description="BMTool",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -25,7 +25,8 @@ setup(
         'numpy',
         'pandas',
         'questionary',
-        'pynmodlt'
+        'pynmodlt',
+        'plotly'
     ],
     classifiers=[
         'Intended Audience :: Developers',

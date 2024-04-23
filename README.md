@@ -9,6 +9,7 @@ A collection of modules to make developing [Neuron](https://www.neuron.yale.edu/
 - [Single Cell](#Single-Cell-Module)
 - [Connectors](#Connectors-Module)
 - [Bmplot](#bmplot-Module)
+- [Graphs](#graphs-module)
 
 ## Getting Started
 
@@ -360,6 +361,7 @@ net.add_edges(**connector.edge_params())
 - [Percent connections](#Percent-connection-plot)
 - [Convergence connnections](#convergence-plot)
 - [Divergence connections](#divergence-plot)
+- [Gap Junction connections](#gap-junction-plot)
 - [connection histogram](#connection-histogram)
 - [probability connection](#probability-of-connection-plot)
 - [3D location](#3d-position-plot)
@@ -421,6 +423,17 @@ bmplot.divergence_connection_matrix(config='config.json',sources='LA',targets='L
     
 ![png](readme_figures/output_25_0.png)
     
+### Gap Junction plot
+#### While gap junctions can be include in the above plots, you can use this function to only view gap junctions.Type can be either 'convergence' or 'percent' connections to generate different plots
+
+
+```python
+bmplot.gap_junction_matrix(config='config.json',sources='LA',targets='LA',sids='pop_name',tids='pop_name',no_prepend_pop=True,type='percent')
+```
+
+
+    
+![png](output_gap.png)
 
 
 ### Connection histogram 
@@ -745,5 +758,127 @@ bmplot.plot_basic_cell_info(config_file='config.json')
 
 
     'LA'
+## Graphs Module
+- [Generate graph](#generate-graph)
+- [Plot Graph](#plot-graph)
+- [Connectioon table](#generate-graph-connection-table)
+
+### Generate Graph
+
+
+```python
+from bmtool import graphs
+import networkx as nx
+
+Graph = graphs.generate_graph(config='config.json',source='LA',target='LA')
+print("Number of nodes:", Graph.number_of_nodes())
+print("Number of edges:", Graph.number_of_edges())
+print("Node labels:", set(nx.get_node_attributes(Graph, 'label').values()))
+```
+
+    Number of nodes: 2000
+    Number of edges: 84235
+    Node labels: {'SOM', 'PNc', 'PNa', 'PV'}
+
+
+### Plot Graph
+#### Generates an interactive plot showing nodes, edges and # of connections
+
+
+```python
+graphs.plot_graph(Graph)
+```
+
+
+
+### Generate graph connection table
+#### Generates a CSV of all cells and the number of connections each individual cell receives
+
+
+```python
+import pandas as pd
+graphs.export_node_connections_to_csv(Graph, 'node_connections.csv')
+df = pd.read_csv('node_connections.csv')
+df.head()
+```
+
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Unnamed: 0</th>
+      <th>Node Label</th>
+      <th>PNc Connections</th>
+      <th>PV Connections</th>
+      <th>SOM Connections</th>
+      <th>PNa Connections</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>0</td>
+      <td>PNa</td>
+      <td>15</td>
+      <td>11</td>
+      <td>9</td>
+      <td>6</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1</td>
+      <td>PNa</td>
+      <td>24</td>
+      <td>25</td>
+      <td>6</td>
+      <td>21</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>2</td>
+      <td>PNa</td>
+      <td>27</td>
+      <td>28</td>
+      <td>12</td>
+      <td>25</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>3</td>
+      <td>PNa</td>
+      <td>19</td>
+      <td>27</td>
+      <td>15</td>
+      <td>35</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>4</td>
+      <td>PNa</td>
+      <td>25</td>
+      <td>11</td>
+      <td>8</td>
+      <td>16</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 
