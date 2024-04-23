@@ -308,14 +308,14 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
         for row in new_data:
             row_index = -1
             try:
-                if((np.isnan(row).all())):
+                if((np.isnan(row).all())): #checks if all of a row is nan
                     row_index = np.where(np.isnan(new_data)==np.isnan(row))[0][0]  
             except:
                 row_index = -1
             finally:          
-                if(all(x==0 for x in row)):
+                if(all(x==0 for x in row)): #checks if all of a row is zeroes
                     row_index = np.where(new_data==row)[0][0] 
-                if row_index!=-1:   
+                if row_index!=-1:   #deletes corresponding row accordingly in all relevant variables.
                     new_syn_info = np.delete(new_syn_info,row_index,0) 
                     new_data = np.delete(new_data,row_index,0)
                     new_source_labels = np.delete(new_source_labels,row_index)
@@ -323,12 +323,12 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
 
     def filter_rows_and_columns(syn_info,data,source_labels,target_labels):
         syn_info, data, source_labels, target_labels = filter_rows(syn_info, data, source_labels, target_labels)
-        transposed_syn_info = np.transpose(syn_info)
+        transposed_syn_info = np.transpose(syn_info) #transpose everything and put it in to make sure columns get filtered
         transposed_data = np.transpose(data)
         transposed_source_labels = target_labels
         transposed_target_labels = source_labels
         syn_info, data, source_labels, target_labels = filter_rows(transposed_syn_info, transposed_data, transposed_source_labels, transposed_target_labels)
-        filtered_syn_info = np.transpose(syn_info)
+        filtered_syn_info = np.transpose(syn_info) #transpose everything back to original order after filtering.
         filtered_data = np.transpose(data)
         filtered_source_labels = target_labels
         filtered_target_labels = source_labels
