@@ -725,7 +725,7 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
-def gap_junction_convergence(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None):
+def gap_junction_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,type='convergence'):
     import pandas as pd
 
     
@@ -744,11 +744,6 @@ def gap_junction_convergence(config=None,nodes=None,edges=None,sources=[],target
         std = cons['target_node_id'].value_counts().std()
         return (round(mean,2)), (round(std,2))
     
-    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
-        
-
-def gap_junction_percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None):
-    import pandas as pd
     def precent_func(**kwargs): #barely different than original function; only gets gap_junctions.
         edges = kwargs["edges"]
         source_id_type = kwargs["sid"]
@@ -762,39 +757,26 @@ def gap_junction_percent_connections(config=None,nodes=None,edges=None,sources=[
         #add functionality that shows only the one's with gap_junctions
         cons = cons[cons['is_gap_junction'] == True]
         total_cons = cons.count().source_node_id
-        # to determine reciprocal connectivity
-        # create a copy and flip source/dest
-        cons_flip = edges[(edges[source_id_type] == target_id) & (edges[target_id_type]==source_id)]
-        cons_flip = cons_flip.rename(columns={'source_node_id':'target_node_id','target_node_id':'source_node_id'})
-        # append to original 
-        cons_recip = pd.concat([cons, cons_flip])
-
-        # determine dropped duplicates (keep=False)
-        cons_recip_dedup = cons_recip.drop_duplicates(subset=['source_node_id','target_node_id'])
-
-        # note counts
-        num_bi = (cons_recip.count().source_node_id - cons_recip_dedup.count().source_node_id)
-        num_uni = total_cons - num_bi    
-
-        #num_sources = s_list.apply(pd.Series.value_counts)[source_id_type].dropna().sort_index().loc[source_id]
-        #num_targets = t_list.apply(pd.Series.value_counts)[target_id_type].dropna().sort_index().loc[target_id]
 
         num_sources = s_list[source_id_type].value_counts().sort_index().loc[source_id]
         num_targets = t_list[target_id_type].value_counts().sort_index().loc[target_id]
 
 
         total = round(total_cons / (num_sources*num_targets) * 100,2)
-        uni = round(num_uni / (num_sources*num_targets) * 100,2)
-        bi = round(num_bi / (num_sources*num_targets) * 100,2)
-        if method == 'total' or None:
-            return total
-        if method == 'uni':
-            return uni
-        if method == 'bi':
-            return bi
+        return total
+    
+    if type == 'convergence':
+        return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
+    elif type == 'percent':
+        return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=precent_func)
+        
+
+def gap_junction_percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None):
+    import pandas as pd
+    
         
         
-    return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=precent_func)
+    
     
         
     

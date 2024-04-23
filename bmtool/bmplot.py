@@ -266,7 +266,7 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
     plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
     return
 
-def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=None,tids=None, no_prepend_pop=False,save_file=None,type='convergence',method='total'):
+def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=None,tids=None, no_prepend_pop=False,save_file=None,type='convergence'):
     """
     Generates connection plot displaying gap junction data.
     config: A BMTK simulation config 
@@ -276,8 +276,7 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
     tids: target node identifier
     no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
     save_file: If plot should be saved
-    type:'convergence' or 'percent' connection
-    method: 'total', 'uni', or 'bi' for percent connections.
+    type:'convergence' or 'percent' connections
     """
     if not config:
         raise Exception("config not defined")
@@ -295,11 +294,9 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
         tids = tids.split(",")
     else:
         tids = []
-    if type == 'convergence':
-        syn_info, data, source_labels, target_labels = util.gap_junction_convergence(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,method=method)
-    if type == 'percent':
-        syn_info, data, source_labels, target_labels = util.gap_junction_percent_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,method=method)
-        
+    syn_info, data, source_labels, target_labels = util.gap_junction_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,type=type)
+    
+    
     def filter_rows(syn_info, data, source_labels, target_labels):
         new_syn_info = syn_info
         new_data = data
@@ -340,7 +337,7 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
         title = 'Gap Junction'
         if type == 'convergence':
             title+=' Syn Convergence'
-        else:
+        elif type == 'percent':
             title+=' Percent Connectivity'
     plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
     return
