@@ -618,7 +618,8 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship,synaptic_info=synaptic_info)
 
 
-def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None,include_gap=True):
+def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,type='convergence',method=None,include_gap=True):
+
 
     def precent_func(**kwargs): 
         edges = kwargs["edges"]
@@ -724,7 +725,61 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
+def gap_junction_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,type='convergence'):
+    import pandas as pd
 
+    
+    def total_connection_relationship(**kwargs): #reduced version of original function; only gets mean+std
+        edges = kwargs["edges"]
+        source_id_type = kwargs["sid"]
+        target_id_type = kwargs["tid"]
+        source_id = kwargs["source_id"]
+        target_id = kwargs["target_id"]
+
+        cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)] 
+        #print(cons)
+        
+        cons = cons[cons['is_gap_junction'] == True] #only gap_junctions
+        mean = cons['target_node_id'].value_counts().mean()
+        std = cons['target_node_id'].value_counts().std()
+        return (round(mean,2)), (round(std,2))
+    
+    def precent_func(**kwargs): #barely different than original function; only gets gap_junctions.
+        edges = kwargs["edges"]
+        source_id_type = kwargs["sid"]
+        target_id_type = kwargs["tid"]
+        source_id = kwargs["source_id"]
+        target_id = kwargs["target_id"]
+        t_list = kwargs["target_nodes"]
+        s_list = kwargs["source_nodes"]
+
+        cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
+        #add functionality that shows only the one's with gap_junctions
+        cons = cons[cons['is_gap_junction'] == True]
+        total_cons = cons.count().source_node_id
+
+        num_sources = s_list[source_id_type].value_counts().sort_index().loc[source_id]
+        num_targets = t_list[target_id_type].value_counts().sort_index().loc[target_id]
+
+
+        total = round(total_cons / (num_sources*num_targets) * 100,2)
+        return total
+    
+    if type == 'convergence':
+        return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
+    elif type == 'percent':
+        return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=precent_func)
+        
+
+def gap_junction_percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None):
+    import pandas as pd
+    
+        
+        
+    
+    
+        
+    
 def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
     targets=[],sids=[],tids=[],prepend_pop=True,dist_X=True,dist_Y=True,dist_Z=True,num_bins=10,include_gap=True):
     

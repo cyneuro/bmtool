@@ -3,7 +3,6 @@ Want to be able to take multiple plot names in and plot them all at the same tim
 https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-plots-so-that-the-computation-can-continue
 """
 from .util import util
-
 import argparse,os,sys
 
 import numpy as np
@@ -267,6 +266,82 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
     plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
     return
 
+def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=None,tids=None, no_prepend_pop=False,save_file=None,type='convergence'):
+    """
+    Generates connection plot displaying gap junction data.
+    config: A BMTK simulation config 
+    sources: network name(s) to plot
+    targets: network name(s) to plot
+    sids: source node identifier 
+    tids: target node identifier
+    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
+    save_file: If plot should be saved
+    type:'convergence' or 'percent' connections
+    """
+    if not config:
+        raise Exception("config not defined")
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
+    if type !='convergence' and type!='percent':
+        raise Exception("type must be 'convergence' or 'percent'")
+    sources = sources.split(",")
+    targets = targets.split(",")
+    if sids:
+        sids = sids.split(",")
+    else:
+        sids = []
+    if tids:
+        tids = tids.split(",")
+    else:
+        tids = []
+    syn_info, data, source_labels, target_labels = util.gap_junction_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,type=type)
+    
+    
+    def filter_rows(syn_info, data, source_labels, target_labels):
+        new_syn_info = syn_info
+        new_data = data
+        new_source_labels = source_labels
+        new_target_labels = target_labels
+        for row in new_data:
+            row_index = -1
+            try:
+                if((np.isnan(row).all())): #checks if all of a row is nan
+                    row_index = np.where(np.isnan(new_data)==np.isnan(row))[0][0]  
+            except:
+                row_index = -1
+            finally:          
+                if(all(x==0 for x in row)): #checks if all of a row is zeroes
+                    row_index = np.where(new_data==row)[0][0] 
+                if row_index!=-1:   #deletes corresponding row accordingly in all relevant variables.
+                    new_syn_info = np.delete(new_syn_info,row_index,0) 
+                    new_data = np.delete(new_data,row_index,0)
+                    new_source_labels = np.delete(new_source_labels,row_index)
+        return new_syn_info, new_data,new_source_labels,new_target_labels
+
+    def filter_rows_and_columns(syn_info,data,source_labels,target_labels):
+        syn_info, data, source_labels, target_labels = filter_rows(syn_info, data, source_labels, target_labels)
+        transposed_syn_info = np.transpose(syn_info) #transpose everything and put it in to make sure columns get filtered
+        transposed_data = np.transpose(data)
+        transposed_source_labels = target_labels
+        transposed_target_labels = source_labels
+        syn_info, data, source_labels, target_labels = filter_rows(transposed_syn_info, transposed_data, transposed_source_labels, transposed_target_labels)
+        filtered_syn_info = np.transpose(syn_info) #transpose everything back to original order after filtering.
+        filtered_data = np.transpose(data)
+        filtered_source_labels = target_labels
+        filtered_target_labels = source_labels
+        return filtered_syn_info,filtered_data,filtered_source_labels,filtered_target_labels
+    
+    syn_info, data, source_labels, target_labels = filter_rows_and_columns(syn_info, data, source_labels, target_labels)
+
+    if title == None or title=="":
+        title = 'Gap Junction'
+        if type == 'convergence':
+            title+=' Syn Convergence'
+        elif type == 'percent':
+            title+=' Percent Connectivity'
+    plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
+    return
+    
 def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,synaptic_info='0',
                       source_cell = None,target_cell = None,include_gap=True):
     """
