@@ -611,7 +611,11 @@ def connection_totals(config=None,nodes=None,edges=None,sources=[],targets=[],si
 
         total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
         if include_gap == False:
-            total = total[total['is_gap_junction'] != True]
+            try: 
+                cons = cons[cons['is_gap_junction'] != True]
+            except:
+                raise Exception("no gap junctions found to drop from connections")
+            
         total = total.count()
         total = total.source_node_id # may not be the best way to pick
         return total
@@ -632,7 +636,11 @@ def percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],
 
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
         if include_gap == False:
-            cons = cons[cons['is_gap_junction'] != True]
+            try: 
+                cons = cons[cons['is_gap_junction'] != True]
+            except:
+                raise Exception("no gap junctions found to drop from connections")
+            
         total_cons = cons.count().source_node_id
         # to determine reciprocal connectivity
         # create a copy and flip source/dest
@@ -685,7 +693,10 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
 
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
         if include_gap == False:
-            cons = cons[cons['is_gap_junction'] != True]
+            try: 
+                cons = cons[cons['is_gap_junction'] != True]
+            except:
+                raise Exception("no gap junctions found to drop from connections")
 
         if convergence:
             if method == 'min':
@@ -739,7 +750,10 @@ def gap_junction_connections(config=None,nodes=None,edges=None,sources=[],target
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)] 
         #print(cons)
         
-        cons = cons[cons['is_gap_junction'] == True] #only gap_junctions
+        try: 
+            cons = cons[cons['is_gap_junction'] != True]
+        except:
+            raise Exception("no gap junctions found to drop from connections")
         mean = cons['target_node_id'].value_counts().mean()
         std = cons['target_node_id'].value_counts().std()
         return (round(mean,2)), (round(std,2))
@@ -755,7 +769,11 @@ def gap_junction_connections(config=None,nodes=None,edges=None,sources=[],target
 
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
         #add functionality that shows only the one's with gap_junctions
-        cons = cons[cons['is_gap_junction'] == True]
+        try: 
+            cons = cons[cons['is_gap_junction'] != True]
+        except:
+            raise Exception("no gap junctions found to drop from connections")
+        
         total_cons = cons.count().source_node_id
 
         num_sources = s_list[source_id_type].value_counts().sort_index().loc[source_id]
@@ -857,7 +875,10 @@ def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
 
         relevant_edges = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
         if include_gap == False:
-            relevant_edges = relevant_edges[relevant_edges['is_gap_junction'] != True]
+            try: 
+                relevant_edges = relevant_edges[relevant_edges['is_gap_junction'] != True]
+            except:
+                raise Exception("no gap junctions found to drop from connections")
         connected_distances = eudist(relevant_edges,dist_X,dist_Y,dist_Z).values.tolist()
         if len(connected_distances)>0:
             if connected_distances[0]==0:
