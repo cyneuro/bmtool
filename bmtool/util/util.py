@@ -793,10 +793,6 @@ def gap_junction_percent_connections(config=None,nodes=None,edges=None,sources=[
     import pandas as pd
     
         
-        
-    
-    
-        
     
 def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
     targets=[],sids=[],tids=[],prepend_pop=True,dist_X=True,dist_Y=True,dist_Z=True,num_bins=10,include_gap=True):

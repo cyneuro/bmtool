@@ -367,10 +367,15 @@ def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[]
             if include_gap == False:
                 temp = temp[temp['is_gap_junction'] != True]
             node_pairs = temp.groupby('target_node_id')['source_node_id'].count()
-            conn_mean = statistics.mean(node_pairs.values)
-            conn_std = statistics.stdev(node_pairs.values)
-            conn_median = statistics.median(node_pairs.values)
-            label = "mean {:.2f} std ({:.2f}) median {:.2f}".format(conn_mean,conn_std,conn_median)
+            try:
+                conn_mean = statistics.mean(node_pairs.values)
+                conn_std = statistics.stdev(node_pairs.values)
+                conn_median = statistics.median(node_pairs.values)
+                label = "mean {:.2f} std ({:.2f}) median {:.2f}".format(conn_mean,conn_std,conn_median)
+            except: # lazy fix for std not calculated with 1 node
+                conn_mean = statistics.mean(node_pairs.values)
+                conn_median = statistics.median(node_pairs.values)
+                label = "mean {:.2f} median {:.2f}".format(conn_mean,conn_median)
             plt.hist(node_pairs.values,density=True,bins='auto',stacked=True,label=label)
             plt.legend()
             plt.xlabel("# of conns from {} to {}".format(source_cell,target_cell))
