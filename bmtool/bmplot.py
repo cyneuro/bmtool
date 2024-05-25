@@ -500,6 +500,89 @@ def plot_connection_info(text, num, source_labels,target_labels, title, syn_info
         plt.savefig(save_file)
     return
 
+def connector_percent_matrix(csv_path = None):
+    """
+    useful because can display percent connectivity factoring in distance easily 
+    Generates a connection matrix from the output of bmtool.connector
+    csv: An output csv from the bmtool.connector classes see function save_connection_report() in that module
+    returns: connection matrix plot
+    """
+    # Read the CSV data
+    df = pd.read_csv(csv_path)
+
+    # Choose the column to display
+    selected_column = "Fraction of connected pairs in possible ones (%)"  # Change this to the desired column name
+
+    # Create an empty dictionary to store connection percentages
+    connection_data = {}
+
+    # Iterate over each row in the DataFrame
+    for index, row in df.iterrows():
+        source = row['Source']
+        target = row['Target']
+        selected_percentage = row[selected_column]
+        
+        # If the selected percentage is an array-like string, extract the first and second values
+        if isinstance(selected_percentage, str):
+            selected_percentage = selected_percentage.strip('[]').split()
+            selected_percentage = [float(p) for p in selected_percentage]  # Convert to float
+        
+        # Store the selected percentage(s) for the source-target pair
+        connection_data[(source, target)] = selected_percentage
+
+    # Prepare unique populations and create an empty matrix
+    populations = sorted(list(set(df['Source'].unique()) | set(df['Target'].unique())))
+    num_populations = len(populations)
+    connection_matrix = np.zeros((num_populations, num_populations), dtype=float)
+
+    # Populate the matrix with the selected connection percentages
+    for source, target in connection_data.keys():
+        source_idx = populations.index(source)
+        target_idx = populations.index(target)
+        connection_probabilities = connection_data[(source, target)]
+        
+        # Use the first value for one-way connection from source to target
+        connection_matrix[source_idx][target_idx] = connection_probabilities[0]
+
+        # Check if the source and target are the same population
+        if source == target:
+            # Use the first value (uni-directional) and ignore the second value (bi-directional)
+            continue
+
+        # Check if there is a bidirectional connection and use the second value
+        if len(connection_probabilities) > 1:
+            connection_matrix[target_idx][source_idx] = connection_probabilities[1]
+
+    # Replace NaN values with 0
+    connection_matrix[np.isnan(connection_matrix)] = 0
+
+    # Plot the matrix
+    fig, ax = plt.subplots(figsize=(10, 8))
+    im = ax.imshow(connection_matrix, cmap='viridis', interpolation='nearest')
+
+    # Add annotations
+    for i in range(num_populations):
+        for j in range(num_populations):
+            text = ax.text(j, i, f"{connection_matrix[i, j]:.2f}%",
+                        ha="center", va="center", color="w", size=10, weight='bold')
+
+    # Add colorbar
+    plt.colorbar(im, label=f'Percentage of connected pairs ({selected_column})')
+
+    # Set title and axis labels
+    ax.set_title('Neuronal Connection Matrix')
+    ax.set_xlabel('Target Population')
+    ax.set_ylabel('Source Population')
+
+    # Set ticks and labels
+    ax.set_xticks(np.arange(num_populations))
+    ax.set_yticks(np.arange(num_populations))
+    ax.set_xticklabels(populations, rotation=45, ha="right", size=12, weight='semibold')
+    ax.set_yticklabels(populations, size=12, weight='semibold')
+
+    plt.tight_layout()
+    plt.show()
+
 def raster_old(config=None,title=None,populations=['hippocampus']):
     """
     old function probs dep
