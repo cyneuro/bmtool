@@ -1,9 +1,95 @@
-from submit import submit_job
-from monitor import check_job_status
 import time
-
 import os
 import subprocess
+import json
+
+
+def check_job_status(job_id):
+    """
+    Checks the status of a SLURM job using scontrol.
+
+    Args:
+        job_id (str): The SLURM job ID.
+
+    Returns:
+        str: The state of the job.
+    """
+    try:
+        result = subprocess.run(['scontrol', 'show', 'job', job_id], capture_output=True, text=True)
+        if result.returncode != 0:
+            # this check is not needed if check_interval is less than 5 min (~300 seconds)
+            #if 'slurm_load_jobs error: Invalid job id specified' in result.stderr:
+            #    return 'COMPLETED'  # Treat invalid job ID as completed because scontrol expires and removed job info when done.
+            raise Exception(f"Error checking job status: {result.stderr}")
+
+        job_state = None
+        for line in result.stdout.split('\n'):
+            if 'JobState=' in line:
+                job_state = line.strip().split('JobState=')[1].split()[0]
+                break
+
+        if job_state is None:
+            raise Exception(f"Failed to retrieve job status for job ID: {job_id}")
+
+        return job_state
+    except Exception as e:
+        print(f"Exception while checking job status: {e}", flush=True)
+        return 'UNKNOWN'
+
+
+def submit_job(script_path):
+    """
+    Submits a SLURM job script.
+
+    Args:
+        script_path (str): The path to the SLURM job script.
+
+    Returns:
+        str: The job ID of the submitted job.
+
+    Raises:
+        Exception: If there is an error in submitting the job.
+    """
+    result = subprocess.run(['sbatch', script_path], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise Exception(f"Error submitting job: {result.stderr}")
+    job_id = result.stdout.strip().split()[-1]
+    return job_id
+
+
+class seedSweep:
+    def __init__(self, json_file_path, param_name):
+        """
+        Initializes the seedSweep instance.
+
+        Args:
+            json_file_path (str): Path to the JSON file to be updated.
+            param_name (str): The name of the parameter to be modified.
+        """
+        self.json_file_path = json_file_path
+        self.param_name = param_name
+
+    def edit_json(self, new_value):
+        """
+        Updates the JSON file with a new parameter value.
+
+        Args:
+            new_value: The new value for the parameter.
+        """
+        with open(self.json_file_path, 'r') as f:
+            data = json.load(f)
+        
+        data[self.param_name] = new_value
+        
+        with open(self.json_file_path, 'w') as f:
+            json.dump(data, f, indent=4)
+        
+        print(f"JSON file '{self.json_file_path}' modified successfully with {self.param_name}={new_value}.", flush=True)
+        
+    
+    def change_json_file_path(self,new_json_file_path):
+        self.json_file_path = new_json_file_path
+
 
 class SimulationBlock:
     def __init__(self, block_name, time, partition, nodes, ntasks, mem, simulation_cases, output_base_dir,account,additional_commands=None,
