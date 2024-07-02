@@ -1581,6 +1581,18 @@ FLUC_STDEV = 0.2  # ms
 DELAY_LOWBOUND = 0.2  # ms must be greater than h.dt
 DELAY_UPBOUND = 2.0  # ms
 
+def syn_const_delay(source=None, target = None, dist=100, 
+                    min_delay=SYN_MIN_DELAY, velocity=SYN_VELOCITY,
+                    fluc_stdev=FLUC_STDEV, delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
+                    connector=None): 
+    """Synapse delay constant with some random fluctuation.
+    """
+    del_fluc = fluc_stdev * rng.normal()
+    delay = dist / SYN_VELOCITY + SYN_MIN_DELAY + del_fluc
+    delay = min(max(delay, DELAY_LOWBOUND), DELAY_UPBOUND)
+    return delay
+
+
 def syn_dist_delay_feng(source, target, min_delay=SYN_MIN_DELAY,
                         velocity=SYN_VELOCITY, fluc_stdev=FLUC_STDEV,
                         delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
@@ -1608,6 +1620,14 @@ def syn_section_PN(source, target, p=0.9,
     to obtain the former in sec_id and sec_x"""
     syn_loc = int(not decision(p))
     return sec_id[syn_loc], sec_x[syn_loc]
+
+
+def syn_const_delay_feng_section_PN(source, target, p=0.9,
+                                   sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs):
+    """Assign both synapse delay and location with constant distance assumed"""
+    delay = syn_const_delay(source, target,**kwargs)
+    s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x)
+    return delay, s_id, s_x
 
 
 def syn_dist_delay_feng_section_PN(source, target, p=0.9,
