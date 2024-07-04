@@ -91,6 +91,50 @@ class seedSweep:
         self.json_file_path = new_json_file_path
 
 
+# class could just be added to seedSweep but for now will make new class since it was easier
+class multiSeedSweep(seedSweep):
+    """
+    MultSeedSweeps are centered around some base JSON cell file. When that base JSON is updated, the other JSONs
+    change according to their ratio with the base JSON.
+    """
+    def __init__(self, base_json_file_path, param_name, syn_dict_list=[], base_ratio=1):
+        """
+        Initializes the multipleSeedSweep instance.
+
+        Args:
+            base_json_file_path (str): File path for the base JSON file.
+            param_name (str): The name of the parameter to be modified.
+            syn_dict_list (list): A list containing dictionaries with the 'json_file_path' and 'ratio' (in comparison to the base_json) for each JSON file.
+            base_ratio (float): The ratio between the other JSONs; usually the current value for the parameter.
+        """
+        super().__init__(base_json_file_path, param_name)
+        self.syn_dict_list = syn_dict_list
+        self.base_ratio = base_ratio
+
+    def edit_all_jsons(self, new_value):
+        """
+        Updates the base JSON file with a new parameter value and then updates the other JSON files based on the ratio.
+
+        Args:
+            new_value: The new value for the parameter in the base JSON.
+        """
+        self.edit_json(new_value)
+        base_ratio = self.base_ratio
+        for syn_dict in self.syn_dict_list:
+            json_file_path = syn_dict['json_file_path']
+            new_ratio = syn_dict['ratio'] / base_ratio
+            
+            with open(json_file_path, 'r') as f:
+                data = json.load(f)
+            altered_value = new_ratio * new_value
+            data[self.param_name] = altered_value
+        
+            with open(json_file_path, 'w') as f:
+                json.dump(data, f, indent=4)
+        
+            print(f"JSON file '{json_file_path}' modified successfully with {self.param_name}={altered_value}.", flush=True)
+
+
 class SimulationBlock:
     def __init__(self, block_name, time, partition, nodes, ntasks, mem, simulation_cases, output_base_dir,account,additional_commands=None,
                  status_list = ['COMPLETED', 'FAILED', 'CANCELLED']):
@@ -201,9 +245,8 @@ class SequentialBlockRunner:
 
     Attributes:
         blocks (list): List of SimulationBlock instances to be run.
-        json_editor (seedSweep): Instance of seedSweep to edit JSON file.
+        json_editor (seedSweep or multiSweep): Instance of seedSweep to edit JSON file.
         param_values (list): List of values for the parameter to be modified.
-        check_interval (int): Time interval (in seconds) to check job status needs to be less than 300 seconds for scontrol to work.
     """
 
     def __init__(self, blocks, json_editor=None, param_values=None, check_interval=200):
@@ -225,8 +268,15 @@ class SequentialBlockRunner:
                 if len(self.blocks) != len(self.param_values):
                     raise Exception("Number of blocks needs to each number of params given")
                 new_value = self.param_values[i]
-                print(f"Updating JSON file with parameter value for block: {block.block_name}", flush=True)
-                self.json_editor.edit_json(new_value)
+                # NGL didnt test the multi but should work
+                if isinstance(self.json_editor, multiSeedSweep):
+                    self.json_editor.edit_all_jsons(new_value)
+                elif isinstance(self.json_editor,seedSweep):
+                    print(f"Updating JSON file with parameter value for block: {block.block_name}", flush=True)
+                    self.json_editor.edit_json(new_value)
+                else:
+                    raise Exception("json editor provided but not a seedSweep class not sure what your doing?!?")
+                
 
             # Submit the block
             print(f"Submitting block: {block.block_name}", flush=True)
