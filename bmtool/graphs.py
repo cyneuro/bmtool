@@ -24,7 +24,7 @@ def generate_graph(config,source,target):
     edges = edges[edge_to_grap]
 
     # Create an empty graph
-    G = nx.Graph()
+    G = nx.DiGraph()
 
     # Add nodes to the graph with their positions and labels
     for index, node_data in nodes.iterrows():
@@ -132,26 +132,28 @@ def plot_graph(Graph=None,show_edges = False,title = None):
 
 def export_node_connections_to_csv(Graph, filename):
     """
-    Generates a csv file with node type and all connections that node receives 
-    Graph: a Graph object
-    filename: A string for the name of output must end in .csv
+    Generates a CSV file with node type and all outgoing connections that node has.
+    
+    Parameters:
+    Graph: a DiGraph object (directed graph)
+    filename: A string for the name of output, must end in .csv
     """
     # Create an empty dictionary to store the connections for each node
     node_connections = {}
 
     # Iterate over each node in the graph
     for node in Graph.nodes():
-        # Initialize a dictionary to store the connections for the current node
+        # Initialize a dictionary to store the outgoing connections for the current node
         connections = {}
         node_label = Graph.nodes[node]['label']
 
-        # Iterate over each neighbor of the current node
-        for neighbor in Graph.neighbors(node):
-            # Get the label of the neighbor node
-            neighbor_label = Graph.nodes[neighbor]['label']
+        # Iterate over each presuccessor (ingoing neighbor) of the current node
+        for successor in Graph.predecessors(node):
+            # Get the label of the successor node
+            successor_label = Graph.nodes[successor]['label']
 
-            # Increment the connection count for the current node and neighbor label
-            connections[f'{neighbor_label} Connections'] = connections.get(f'{neighbor_label} Connections', 0) + 1
+            # Increment the connection count for the current node and successor label
+            connections[f'{successor_label} incoming Connections'] = connections.get(f'{successor_label} incoming Connections', 0) + 1
 
         # Add the connections information for the current node to the dictionary
         connections['Node Label'] = node_label
@@ -168,3 +170,4 @@ def export_node_connections_to_csv(Graph, filename):
     # Write the DataFrame to a CSV file
     df.to_csv(filename)
 
+GeneratorExit
