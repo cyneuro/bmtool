@@ -169,5 +169,3 @@ def export_node_connections_to_csv(Graph, filename):
 
     # Write the DataFrame to a CSV file
     df.to_csv(filename)
-
-GeneratorExit
