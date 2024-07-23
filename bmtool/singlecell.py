@@ -136,22 +136,23 @@ class Passive(CurrentClamp):
     def __init__(self, template_name, inj_amp=-100., inj_delay=200., inj_dur=1000.,
                  tstop=1200., method=None, **kwargs):
         """
-        method: {'simple', 'exp2'}, optional.
+        method: {'simple', 'exp2', 'exp'}, optional.
             Method to estimate membrane time constant. Default is 'simple'
             that find the time to reach 0.632 of change. 'exp2' fits a double
-            exponential curve to the membrane potential response.
+            exponential curve to the membrane potential response. 'exp' fits
+            a single exponential curve.
         """
         assert(inj_amp != 0)
         super().__init__(template_name=template_name, tstop=tstop,
                          inj_amp=inj_amp, inj_delay=inj_delay, inj_dur=inj_dur, **kwargs)
         self.inj_stop = inj_delay + inj_dur
         self.method = method
-        self.tau_methods = {'simple': self.tau_simple, 'exp2': self.tau_double_exponential}
+        self.tau_methods = {'simple': self.tau_simple, 'exp2': self.tau_double_exponential, 'exp': self.tau_single_exponential}
 
     def tau_simple(self):
         v_t_const = self.cell_v_final - self.v_diff / np.e
         index_v_tau = next(x for x, val in enumerate(self.v_vec_inj) if val <= v_t_const)
-        self.tau = self.t_vec[self.index_v_rest + index_v_tau] - self.v_rest_time # ms
+        self.tau = self.t_vec[self.index_v_rest + index_v_tau] - self.v_rest_time  # ms
 
         def print_calc():
             print()
@@ -160,6 +161,41 @@ class Passive(CurrentClamp):
             print(f'{self.v_rest:.2f} + 0.632*({self.cell_v_final:.2f}-({self.v_rest:.2f})) = {v_t_const:.2f} (mV)')
             print(f'Time where V = {v_t_const:.2f} (mV) is {self.v_rest_time + self.tau:.2f} (ms)')
             print(f'{self.v_rest_time + self.tau:.2f} - {self.v_rest_time:g} = {self.tau:.2f} (ms)')
+            print()
+        return print_calc
+
+    @staticmethod
+    def single_exponential(t, a0, a, tau):
+        return a0 + a * np.exp(-t / tau)
+
+    def tau_single_exponential(self):
+        index_v_peak = (np.sign(self.inj_amp) * self.v_vec_inj).argmax()
+        self.t_peak = self.t_vec_inj[index_v_peak]
+        self.v_peak = self.v_vec_inj[index_v_peak]
+        self.v_sag = self.v_peak - self.cell_v_final
+        self.v_max_diff = self.v_diff + self.v_sag
+        self.sag_norm = self.v_sag / self.v_max_diff
+
+        self.tau_simple()
+
+        p0 = (self.v_diff, self.tau)  # initial estimate
+        v0 = self.v_rest
+        def fit_func(t, a, tau):
+            return self.single_exponential(t, a0=v0 - a, a=a, tau=tau)
+        bounds = ((-np.inf, 1e-3), np.inf)
+        popt, self.pcov = curve_fit(fit_func, self.t_vec_inj, self.v_vec_inj, p0=p0, bounds=bounds, maxfev=10000)
+        self.popt = np.insert(popt, 0, v0 - popt[0])
+        self.tau = self.popt[2]
+
+        def print_calc():
+            print()
+            print('Tau Calculation: Fit a single exponential curve to the membrane potential response')
+            print('f(t) = a0 + a*exp(-t/tau)')
+            print(f'Fit parameters: (a0, a, tau) = ({self.popt[0]:.2f}, {self.popt[1]:.2f}, {self.popt[2]:.2f})')
+            print(f'Membrane time constant is determined from the exponential term: {self.tau:.2f} (ms)')
+            print()
+            print('Sag potential: v_sag = v_peak - v_final = %.2f (mV)' % self.v_sag)
+            print('Normalized sag potential: v_sag / (v_peak - v_rest) = %.3f' % self.sag_norm)
             print()
         return print_calc
 
@@ -176,7 +212,7 @@ class Passive(CurrentClamp):
         self.sag_norm = self.v_sag / self.v_max_diff
 
         self.tau_simple()
-        p0 = (self.v_sag, -self.v_max_diff, self.t_peak, self.tau) # intial estimate
+        p0 = (self.v_sag, -self.v_max_diff, self.t_peak, self.tau)  # initial estimate
         v0 = self.v_rest
         def fit_func(t, a1, a2, tau1, tau2):
             return self.double_exponential(t, v0 - a1 - a2, a1, a2, tau1, tau2)
@@ -189,7 +225,7 @@ class Passive(CurrentClamp):
             print()
             print('Tau Calculation: Fit a double exponential curve to the membrane potential response')
             print('f(t) = a0 + a1*exp(-t/tau1) + a2*exp(-t/tau2)')
-            print('Constained by initial value: f(0) = a0 + a1 + a2 = v_rest')
+            print('Constrained by initial value: f(0) = a0 + a1 + a2 = v_rest')
             print('Fit parameters: (a0, a1, a2, tau1, tau2) = (' + ', '.join(f'{x:.2f}' for x in self.popt) + ')')
             print(f'Membrane time constant is determined from the slowest exponential term: {self.tau:.2f} (ms)')
             print()
@@ -201,6 +237,11 @@ class Passive(CurrentClamp):
     def double_exponential_fit(self):
         t_vec = self.v_rest_time + self.t_vec_inj
         v_fit = self.double_exponential(self.t_vec_inj, *self.popt)
+        return t_vec, v_fit
+    
+    def single_exponential_fit(self):
+        t_vec = self.v_rest_time + self.t_vec_inj
+        v_fit = self.single_exponential(self.t_vec_inj, *self.popt)
         return t_vec, v_fit
 
     def execute(self):
@@ -221,7 +262,7 @@ class Passive(CurrentClamp):
         self.t_vec_inj = np.array(self.t_vec)[t_idx] - self.v_rest_time
 
         self.v_diff = self.cell_v_final - self.v_rest
-        self.r_in = self.v_diff / self.inj_amp # MegaOhms
+        self.r_in = self.v_diff / self.inj_amp  # MegaOhms
 
         print_calc = self.tau_methods.get(self.method, self.tau_simple)()
 
