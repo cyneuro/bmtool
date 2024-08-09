@@ -222,7 +222,7 @@ class GaussianDropoff(DistantDependentProbability):
                     "Probability crosses 1 at distance %.3g.\n") % (pmax, d)
             if self.ptotal is not None:
                 warn += " ptotal may not be reached."
-            print(warn)
+            print(warn,flush=True)
             self.probability = lambda dist: np.fmin(probability(dist), 1.)
         else:
             self.probability = probability
@@ -335,7 +335,7 @@ class Timer(object):
         return (time.perf_counter() - self._start) * self.scale
 
     def report(self, msg='Run time'):
-        print((msg + ": %.3f " + self.unit) % self.end())
+        print((msg + ": %.3f " + self.unit) % self.end(),flush=True)
 
 
 def pr_2_rho(p0, p1, pr):
@@ -355,7 +355,7 @@ def rho_2_pr(p0, p1, rho):
         pr0, pr = pr, np.max((0., p0 + p1 - 1, np.min((p0, p1, pr))))
         rho0, rho = rho, (pr - p0 * p1) / (p0 * (1 - p0) * p1 * (1 - p1)) ** .5
         print('rho changed from %.3f to %.3f; pr changed from %.3f to %.3f'
-              % (rho0, rho, pr0, pr))
+              % (rho0, rho, pr0, pr),flush=True)
     return pr
 
 
@@ -534,7 +534,8 @@ class ReciprocalConnector(AbstractConnector):
                  pr=0., pr_arg=None, estimate_rho=True, rho=None,
                  dist_range_forward=None, dist_range_backward=None,
                  n_syn0=1, n_syn1=1, autapses=False,
-                 quick_pop_check=False, cache_data=True, verbose=True,save_report=True):
+                 quick_pop_check=False, cache_data=True, verbose=True,save_report=True,
+                 report_name='connection_report.csv'):
         args = locals()
         var_set = ('p0', 'p0_arg', 'p1', 'p1_arg',
                    'pr', 'pr_arg', 'n_syn0', 'n_syn1')
@@ -553,6 +554,7 @@ class ReciprocalConnector(AbstractConnector):
         self.cache = self.ConnectorCache(cache_data and self.estimate_rho)
         self.verbose = verbose
         self.save_report = save_report
+        self.report_name = report_name
 
         self.conn_prop = [{}, {}]
         self.stage = 0
@@ -667,12 +669,12 @@ class ReciprocalConnector(AbstractConnector):
                         fetch = out_len > 0
                         if not fetch:
                             print("\nWarning: Cache did not work properly for "
-                                  + func_name + '\n')
+                                  + func_name + '\n',flush=True)
                         self.fetch_output(func_name, fetch)
                     self.iter_count = 0
                 else:
                     # if output not correct, disable and use original function
-                    print("\nWarning: Cache did not work properly.\n")
+                    print("\nWarning: Cache did not work properly.\n",flush=True)
                     for func_name in self.cache_dict:
                         self.fetch_output(func_name, False)
                     self.enable = False
@@ -831,7 +833,7 @@ class ReciprocalConnector(AbstractConnector):
             self.cache.cache_output(var, name, name in self.callable_set)
         if self.verbose and len(self.cache.cache_dict):
             print('Output of %s will be cached.'
-                  % ', '.join(self.cache.cache_dict))
+                  % ', '.join(self.cache.cache_dict),flush=True)
 
     def setup_dist_range_checker(self):
         # Checker that determines whether to consider a pair for rho estimation
@@ -867,7 +869,7 @@ class ReciprocalConnector(AbstractConnector):
         if self.verbose:
             src_str, trg_str = self.get_nodes_info()
             print("\nStart building connection between: \n  "
-                  + src_str + "\n  " + trg_str)
+                  + src_str + "\n  " + trg_str,flush=True)
         self.initialize()
         cache = self.cache  # write mode
 
@@ -892,11 +894,11 @@ class ReciprocalConnector(AbstractConnector):
                 rho = (self.pr() * n - p0p1_sum) / norm_fac_sum
                 if abs(rho) > 1:
                     print("\nWarning: Estimated value of rho=%.3f "
-                          "outside the range [-1, 1]." % rho)
+                          "outside the range [-1, 1]." % rho,flush=True)
                     rho = np.clip(rho, -1, 1).item()
-                    print("Force rho to be %.0f.\n" % rho)
+                    print("Force rho to be %.0f.\n" % rho,flush=True)
                 elif self.verbose:
-                    print("Estimated value of rho=%.3f" % rho)
+                    print("Estimated value of rho=%.3f" % rho,flush=True)
                 self.rho = rho
             else:
                 self.rho = 0
@@ -948,7 +950,7 @@ class ReciprocalConnector(AbstractConnector):
         if self.verbose:
             self.timer.report('Total time for creating connection matrix')
             if self.wrong_pr:
-                print("Warning: Value of 'pr' outside the bounds occurred.\n")
+                print("Warning: Value of 'pr' outside the bounds occurred.\n",flush=True)
             self.connection_number_info()
         if self.save_report:
             self.save_connection_report()
@@ -976,7 +978,7 @@ class ReciprocalConnector(AbstractConnector):
             self.stage = 0
             self.initial_all_to_all()
             if self.verbose:
-                print("Assigning forward connections.")
+                print("Assigning forward connections.",flush=True)
                 self.timer.start()
         return self.make_connection()
 
@@ -985,7 +987,7 @@ class ReciprocalConnector(AbstractConnector):
         if self.iter_count == 0:
             self.stage = 1
             if self.verbose:
-                print("Assigning backward connections.")
+                print("Assigning backward connections.",flush=True)
         return self.make_connection()
 
     def free_memory(self):
@@ -1038,14 +1040,14 @@ class ReciprocalConnector(AbstractConnector):
         n_conn, n_poss, n_pair, fraction = self.connection_number()
         conn_type = "(all, reciprocal)" if self.recurrent \
                     else "(forward, backward, reciprocal)"
-        print("Numbers of " + conn_type + " connections:")
-        print("Number of connected pairs: (%s)" % arr2str(n_conn, '%d'))
-        print("Number of possible connections: (%s)" % arr2str(n_poss, '%d'))
+        print("Numbers of " + conn_type + " connections:",flush=True)
+        print("Number of connected pairs: (%s)" % arr2str(n_conn, '%d'),flush=True)
+        print("Number of possible connections: (%s)" % arr2str(n_poss, '%d'),flush=True)
         print("Fraction of connected pairs in possible ones: (%s)"
-              % arr2str(100 * fraction[0], '%.2f%%'))
-        print("Number of total pairs: %d" % n_pair)
+              % arr2str(100 * fraction[0], '%.2f%%'),flush=True)
+        print("Number of total pairs: %d" % n_pair,flush=True)
         print("Fraction of connected pairs in all pairs: (%s)\n"
-              % arr2str(100 * fraction[1], '%.2f%%'))
+              % arr2str(100 * fraction[1], '%.2f%%'),flush=True)
 
     def save_connection_report(self):
         """Save connections into a CSV file to be read from later"""
@@ -1064,14 +1066,13 @@ class ReciprocalConnector(AbstractConnector):
         # Append the data to the CSV file
         try:
             # Check if the file exists by trying to read it
-            existing_df = pd.read_csv('connection_report.csv')
+            existing_df = pd.read_csv(self.report_name)
             # If no exception is raised, append without header
-            df.to_csv('connection_report.csv', mode='a', header=False, index=False)
+            df.to_csv(self.report_name, mode='a', header=False, index=False)
         except FileNotFoundError:
             # If the file does not exist, write with header
-            df.to_csv('connection_report.csv', mode='w', header=True, index=False)
+            df.to_csv(self.report_name, mode='w', header=True, index=False)
             
-
 
 class UnidirectionConnector(AbstractConnector):
     """
@@ -1104,13 +1105,14 @@ class UnidirectionConnector(AbstractConnector):
             This is useful in similar manner as in ReciprocalConnector.
     """
 
-    def __init__(self, p=1., p_arg=None, n_syn=1, verbose=True,save_report=True):
+    def __init__(self, p=1., p_arg=None, n_syn=1, verbose=True,save_report=True,report_name='connection_report.csv'):
         args = locals()
         var_set = ('p', 'p_arg', 'n_syn')
         self.vars = {key: args[key] for key in var_set}
 
         self.verbose = verbose
         self.save_report = save_report
+        self.report_name = report_name
         self.conn_prop = {}
         self.iter_count = 0
 
@@ -1167,7 +1169,7 @@ class UnidirectionConnector(AbstractConnector):
             if self.verbose:
                 src_str, trg_str = self.get_nodes_info()
                 print("\nStart building connection \n  from "
-                      + src_str + "\n  to " + trg_str)
+                      + src_str + "\n  to " + trg_str,flush=True)
 
         # Make random connections
         p_arg = self.p_arg(source, target)
@@ -1202,39 +1204,37 @@ class UnidirectionConnector(AbstractConnector):
 
     def connection_number_info(self):
         """Print connection numbers after connections built"""
-        print("Number of connected pairs: %d" % self.n_conn)
-        print("Number of possible connections: %d" % self.n_poss)
+        print("Number of connected pairs: %d" % self.n_conn,flush=True)
+        print("Number of possible connections: %d" % self.n_poss,flush=True)
         print("Fraction of connected pairs in possible ones: %.2f%%"
               % (100. * self.n_conn / self.n_poss) if self.n_poss else 0.)
-        print("Number of total pairs: %d" % self.n_pair)
+        print("Number of total pairs: %d" % self.n_pair,flush=True)
         print("Fraction of connected pairs in all pairs: %.2f%%\n"
-              % (100. * self.n_conn / self.n_pair))
+              % (100. * self.n_conn / self.n_pair),flush=True)
     
     def save_connection_report(self):
         """Save connections into a CSV file to be read from later"""
         src_str, trg_str = self.get_nodes_info()
-        n_pair = self.n_pair
-        fraction_0 = self.n_conn / self.n_poss if self.n_poss else 0.
-        fraction_1 = self.n_conn / self.n_pair
+        n_conn, n_poss, n_pair, fraction = self.connection_number()
 
-        # Convert fraction to percentage and prepare data for the DataFrame
+        # Extract the population name from source_str and target_str
         data = {
             "Source": [src_str],
             "Target": [trg_str],
-            "Fraction of connected pairs in possible ones (%)": [fraction_0*100],
-            "Fraction of connected pairs in all pairs (%)": [fraction_1*100]
+            "Fraction of connected pairs in possible ones (%)": [fraction[0]*100],
+            "Fraction of connected pairs in all pairs (%)": [fraction[1]*100]
         }
         df = pd.DataFrame(data)
         
         # Append the data to the CSV file
         try:
             # Check if the file exists by trying to read it
-            existing_df = pd.read_csv('connection_report.csv')
+            existing_df = pd.read_csv(self.report_name)
             # If no exception is raised, append without header
-            df.to_csv('connection_report.csv', mode='a', header=False, index=False)
+            df.to_csv(self.report_name, mode='a', header=False, index=False)
         except FileNotFoundError:
             # If the file does not exist, write with header
-            df.to_csv('connection_report.csv', mode='w', header=True, index=False)
+            df.to_csv(self.report_name, mode='w', header=True, index=False)
 
 
 class GapJunction(UnidirectionConnector):
@@ -1258,8 +1258,8 @@ class GapJunction(UnidirectionConnector):
         Similar to `UnidirectionConnector`.
     """
 
-    def __init__(self, p=1., p_arg=None, verbose=True,save_report=True):
-        super().__init__(p=p, p_arg=p_arg, verbose=verbose,save_report=save_report)
+    def __init__(self, p=1., p_arg=None, verbose=True,save_report=True,report_name='connection_report.csv'):
+        super().__init__(p=p, p_arg=p_arg, verbose=verbose,save_report=save_report,report_name=report_name)
 
     def setup_nodes(self, source=None, target=None):
         super().setup_nodes(source=source, target=target)
@@ -1275,7 +1275,7 @@ class GapJunction(UnidirectionConnector):
             self.initialize()
             if self.verbose:
                 src_str, _ = self.get_nodes_info()
-                print("\nStart building gap junction \n  in " + src_str)
+                print("\nStart building gap junction \n  in " + src_str,flush=True)
 
         # Consider each pair only once
         nsyns = 0
@@ -1312,28 +1312,26 @@ class GapJunction(UnidirectionConnector):
     def save_connection_report(self):
         """Save connections into a CSV file to be read from later"""
         src_str, trg_str = self.get_nodes_info()
-        n_pair = self.n_pair
-        fraction_0 = self.n_conn / self.n_poss if self.n_poss else 0.
-        fraction_1 = self.n_conn / self.n_pair
+        n_conn, n_poss, n_pair, fraction = self.connection_number()
 
-        # Convert fraction to percentage and prepare data for the DataFrame
+        # Extract the population name from source_str and target_str
         data = {
-            "Source": [src_str+"Gap"],
-            "Target": [trg_str+"Gap"],
-            "Fraction of connected pairs in possible ones (%)": [fraction_0*100],
-            "Fraction of connected pairs in all pairs (%)": [fraction_1*100]
+            "Source": [src_str],
+            "Target": [trg_str],
+            "Fraction of connected pairs in possible ones (%)": [fraction[0]*100],
+            "Fraction of connected pairs in all pairs (%)": [fraction[1]*100]
         }
         df = pd.DataFrame(data)
         
         # Append the data to the CSV file
         try:
             # Check if the file exists by trying to read it
-            existing_df = pd.read_csv('connection_report.csv')
+            existing_df = pd.read_csv(self.report_name)
             # If no exception is raised, append without header
-            df.to_csv('connection_report.csv', mode='a', header=False, index=False)
+            df.to_csv(self.report_name, mode='a', header=False, index=False)
         except FileNotFoundError:
             # If the file does not exist, write with header
-            df.to_csv('connection_report.csv', mode='w', header=True, index=False)
+            df.to_csv(self.report_name, mode='w', header=True, index=False)
 
 
 class CorrelatedGapJunction(GapJunction):
@@ -1402,7 +1400,7 @@ class CorrelatedGapJunction(GapJunction):
             self.initialize()
             if self.verbose:
                 src_str, _ = self.get_nodes_info()
-                print("\nStart building gap junction \n  in " + src_str)
+                print("\nStart building gap junction \n  in " + src_str,flush=True)
 
         # Consider each pair only once
         nsyns = 0
@@ -1512,7 +1510,7 @@ class OneToOneSequentialConnector(AbstractConnector):
 
         if self.verbose and self.idx_range[-1] == self.n_source:
             print("All " + ("source" if self.partition_source else "target")
-                  + " population partitions are filled.")
+                  + " population partitions are filled.",flush=True)
 
     def edge_params(self, target_pop_idx=-1):
         """Create the arguments for BMTK add_edges() method"""
@@ -1537,14 +1535,14 @@ class OneToOneSequentialConnector(AbstractConnector):
                 self.target_count = 0
                 src_str, trg_str = self.get_nodes_info()
                 print("\nStart building connection " +
-                      ("to " if self.partition_source else "from ") + src_str)
+                      ("to " if self.partition_source else "from ") + src_str,flush=True)
                 self.timer = Timer()
 
             if self.iter_count == self.idx_range[self.target_count]:
                 # Beginning of each target population
                 src_str, trg_str = self.get_nodes_info(self.target_count)
                 print(("  %d. " % self.target_count) +
-                      ("from " if self.partition_source else "to ") + trg_str)
+                      ("from " if self.partition_source else "to ") + trg_str,flush=True)
                 self.target_count += 1
                 self.timer_part = Timer()
 
