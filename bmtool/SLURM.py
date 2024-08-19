@@ -136,7 +136,7 @@ class multiSeedSweep(seedSweep):
 
 
 class SimulationBlock:
-    def __init__(self, block_name, time, partition, nodes, ntasks, mem, simulation_cases, output_base_dir,account,additional_commands=None,
+    def __init__(self, block_name, time, partition, nodes, ntasks, mem, simulation_cases, output_base_dir,account=None,additional_commands=None,
                  status_list = ['COMPLETED', 'FAILED', 'CANCELLED']):
         """
         Initializes the SimulationBlock instance.
@@ -163,7 +163,7 @@ class SimulationBlock:
         self.mem = mem
         self.simulation_cases = simulation_cases
         self.output_base_dir = output_base_dir
-        self.account = account
+        self.account = account 
         self.additional_commands = additional_commands if additional_commands is not None else []
         self.status_list = status_list
         self.job_ids = []
@@ -185,6 +185,8 @@ class SimulationBlock:
 
         batch_script_path = os.path.join(block_output_dir, 'script.sh')
         additional_commands_str = "\n".join(self.additional_commands)
+        # Conditional account linegit
+        account_line = f"#SBATCH --account={self.account}\n" if self.account else ""
 
         # Write the batch script to the file
         with open(batch_script_path, 'w') as script_file:
@@ -197,7 +199,7 @@ class SimulationBlock:
 #SBATCH --nodes={self.nodes}
 #SBATCH --ntasks={self.ntasks}
 #SBATCH --mem={self.mem}
-#SBATCH --account={self.account}
+{account_line}
 
 # Additional user-defined commands
 {additional_commands_str}
