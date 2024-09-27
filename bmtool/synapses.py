@@ -12,7 +12,7 @@ import ipywidgets as widgets
 from IPython.display import display, clear_output
 from ipywidgets import HBox, VBox
 
-class SynapseModule:
+class SynapseTuner:
     def __init__(self, mechanisms_dir, templates_dir, conn_type_settings, connection, general_settings,
                  json_folder_path=None, current_name='i', other_vars_to_record=None,slider_vars=None):
         """
