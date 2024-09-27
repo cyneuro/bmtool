@@ -1,5 +1,4 @@
 import networkx as nx
-import plotly.graph_objects as go
 import pandas as pd
 import bmtool.util.util as u
 import pandas as pd
@@ -36,98 +35,98 @@ def generate_graph(config,source,target):
 
     return G
 
-
-def plot_graph(Graph=None,show_edges = False,title = None):
-    """
-    Generate an interactive plot of the network
-    Graph: A Graph object
-    show_edges: Boolean to show edges in graph plot
-    title: A string for the title of the graph
+# import plotly.graph_objects as go
+# def plot_graph(Graph=None,show_edges = False,title = None):
+#     """
+#     Generate an interactive plot of the network
+#     Graph: A Graph object
+#     show_edges: Boolean to show edges in graph plot
+#     title: A string for the title of the graph
     
-    """
+#     """
 
-    # Extract node positions
-    node_positions = nx.get_node_attributes(Graph, 'pos')
-    node_x = [data[0] for data in node_positions.values()]
-    node_y = [data[1] for data in node_positions.values()]
-    node_z = [data[2] for data in node_positions.values()]
+#     # Extract node positions
+#     node_positions = nx.get_node_attributes(Graph, 'pos')
+#     node_x = [data[0] for data in node_positions.values()]
+#     node_y = [data[1] for data in node_positions.values()]
+#     node_z = [data[2] for data in node_positions.values()]
 
-    # Create edge traces
-    edge_x = []
-    edge_y = []
-    edge_z = []
-    for edge in Graph.edges():
-        x0, y0, z0 = node_positions[edge[0]]
-        x1, y1, z1 = node_positions[edge[1]]
-        edge_x.extend([x0, x1, None])
-        edge_y.extend([y0, y1, None])
-        edge_z.extend([z0, z1, None])
+#     # Create edge traces
+#     edge_x = []
+#     edge_y = []
+#     edge_z = []
+#     for edge in Graph.edges():
+#         x0, y0, z0 = node_positions[edge[0]]
+#         x1, y1, z1 = node_positions[edge[1]]
+#         edge_x.extend([x0, x1, None])
+#         edge_y.extend([y0, y1, None])
+#         edge_z.extend([z0, z1, None])
 
-    # Create edge trace
-    edge_trace = go.Scatter3d(
-        x=edge_x,
-        y=edge_y,
-        z=edge_z,
-        line=dict(width=1, color='#888'),
-        hoverinfo='none',
-        mode='lines',
-        opacity=0.2)
+#     # Create edge trace
+#     edge_trace = go.Scatter3d(
+#         x=edge_x,
+#         y=edge_y,
+#         z=edge_z,
+#         line=dict(width=1, color='#888'),
+#         hoverinfo='none',
+#         mode='lines',
+#         opacity=0.2)
 
-    # Create node trace
-    node_trace = go.Scatter3d(
-        x=node_x,
-        y=node_y,
-        z=node_z,
-        mode='markers',
-        hoverinfo='text',
-        marker=dict(
-            showscale=True,
-            colorscale='YlGnBu',  # Adjust color scale here
-            reversescale=True,
-            color=[len(list(Graph.neighbors(node))) for node in Graph.nodes()],  # Assign color data here
-            size=5,  # Adjust the size of the nodes here
-            colorbar=dict(
-                thickness=15,
-                title='Node Connections',
-                xanchor='left',
-                titleside='right'
-            ),
-            line_width=2,
-            cmin=0,  # Adjust color scale range here
-            cmax=max([len(list(Graph.neighbors(node))) for node in Graph.nodes()])   # Adjust color scale range here
-        ))
+#     # Create node trace
+#     node_trace = go.Scatter3d(
+#         x=node_x,
+#         y=node_y,
+#         z=node_z,
+#         mode='markers',
+#         hoverinfo='text',
+#         marker=dict(
+#             showscale=True,
+#             colorscale='YlGnBu',  # Adjust color scale here
+#             reversescale=True,
+#             color=[len(list(Graph.neighbors(node))) for node in Graph.nodes()],  # Assign color data here
+#             size=5,  # Adjust the size of the nodes here
+#             colorbar=dict(
+#                 thickness=15,
+#                 title='Node Connections',
+#                 xanchor='left',
+#                 titleside='right'
+#             ),
+#             line_width=2,
+#             cmin=0,  # Adjust color scale range here
+#             cmax=max([len(list(Graph.neighbors(node))) for node in Graph.nodes()])   # Adjust color scale range here
+#         ))
 
-    # Define hover text for nodes
-    node_hover_text = [f'Node ID: {node_id}<br>Population Name: {node_data["label"]}<br># of Connections: {len(list(Graph.neighbors(node_id)))}' for node_id, node_data in Graph.nodes(data=True)]
-    node_trace.hovertext = node_hover_text
+#     # Define hover text for nodes
+#     node_hover_text = [f'Node ID: {node_id}<br>Population Name: {node_data["label"]}<br># of Connections: {len(list(Graph.neighbors(node_id)))}' for node_id, node_data in Graph.nodes(data=True)]
+#     node_trace.hovertext = node_hover_text
 
-    # Create figure
-    if show_edges:
-        graph_prop = [edge_trace,node_trace]
-    else:
-        graph_prop = [node_trace]
+#     # Create figure
+#     if show_edges:
+#         graph_prop = [edge_trace,node_trace]
+#     else:
+#         graph_prop = [node_trace]
 
-    if title == None:
-        title = '3D plot'
+#     if title == None:
+#         title = '3D plot'
     
-    fig = go.Figure(data=graph_prop,
-                    layout=go.Layout(
-                        title=title,
-                        titlefont_size=16,
-                        showlegend=False,
-                        hovermode='closest',
-                        margin=dict(b=20, l=5, r=5, t=40),
-                        scene=dict(
-                            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                            zaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-                        ),
-                        width=800,
-                        height=800
-                    ))
+#     fig = go.Figure(data=graph_prop,
+#                     layout=go.Layout(
+#                         title=title,
+#                         titlefont_size=16,
+#                         showlegend=False,
+#                         hovermode='closest',
+#                         margin=dict(b=20, l=5, r=5, t=40),
+#                         scene=dict(
+#                             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+#                             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+#                             zaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+#                         ),
+#                         width=800,
+#                         height=800
+#                     ))
 
-    # Show figure
-    fig.show()
+#     # Show figure
+#     fig.show()
 
 
 def export_node_connections_to_csv(Graph, filename):

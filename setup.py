@@ -25,8 +25,7 @@ setup(
         'numpy',
         'pandas',
         'questionary',
-        'pynmodlt',
-        'plotly'
+        'pynmodlt'
     ],
     classifiers=[
         'Intended Audience :: Developers',
