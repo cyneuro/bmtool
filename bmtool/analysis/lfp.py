@@ -47,7 +47,8 @@ def load_ecp_to_xarray(ecp_file: str, demean: bool = False) -> xr.DataArray:
 def ecp_to_lfp(ecp_data: xr.DataArray, cutoff: float = 250, fs: float = 10000,
                     downsample_freq: float = 1000) -> xr.DataArray:
     """
-    Apply a low-pass Butterworth filter to an xarray DataArray and optionally downsample.
+    Apply a low-pass Butterworth filter to an xarray DataArray and optionally downsample. 
+    This filters out the high end frequencies turning the ECP into a LFP
 
     Parameters:
     ----------
@@ -85,6 +86,43 @@ def ecp_to_lfp(ecp_data: xr.DataArray, cutoff: float = 250, fs: float = 10000,
         filtered_data.attrs['fs'] = downsample_freq
 
     return filtered_data
+
+
+def slice_time_series(data: xr.DataArray, time_ranges: tuple) -> xr.DataArray:
+    """
+    Slice the xarray DataArray based on provided time ranges.
+    Can be used to get LFP during certain stimulus times
+
+    Parameters:
+    ----------
+    data : xr.DataArray
+        The input xarray DataArray containing time-series data.
+    time_ranges : tuple or list of tuples
+        One or more tuples representing the (start, stop) time points for slicing. 
+        For example: (start, stop) or [(start1, stop1), (start2, stop2)]
+
+    Returns:
+    -------
+    xr.DataArray
+        A new xarray DataArray containing the concatenated slices.
+    """
+    # Ensure time_ranges is a list of tuples
+    if isinstance(time_ranges, tuple) and len(time_ranges) == 2:
+        time_ranges = [time_ranges]
+
+    # List to hold sliced data
+    slices = []
+
+    # Slice the data for each time range
+    for start, stop in time_ranges:
+        sliced_data = data.sel(time=slice(start, stop))
+        slices.append(sliced_data)
+
+    # Concatenate all slices along the time dimension if more than one slice
+    if len(slices) > 1:
+        return xr.concat(slices, dim='time')
+    else:
+        return slices[0]
 
 
 def fit_fooof(f: np.ndarray, pxx: np.ndarray, aperiodic_mode: str = 'fixed',
