@@ -25,7 +25,9 @@ setup(
         'numpy',
         'pandas',
         'questionary',
-        'pynmodlt'
+        'pynmodlt',
+        'xarray',
+        'fooof'
     ],
     classifiers=[
         'Intended Audience :: Developers',

@@ -13,8 +13,9 @@ from IPython.display import display, clear_output
 from ipywidgets import HBox, VBox
 
 class SynapseTuner:
-    def __init__(self, mechanisms_dir, templates_dir, conn_type_settings, connection, general_settings,
-                 json_folder_path=None, current_name='i', other_vars_to_record=None,slider_vars=None):
+    def __init__(self, mechanisms_dir: str, templates_dir: str, conn_type_settings: dict, connection: str,
+                 general_settings: dict, json_folder_path: str = None, current_name: str = 'i',
+                 other_vars_to_record: list = None, slider_vars: list = None) -> None:
         """
         Initialize the SynapseModule class with connection type settings, mechanisms, and template directories.
         
