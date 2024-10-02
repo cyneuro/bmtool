@@ -13,8 +13,9 @@ from IPython.display import display, clear_output
 from ipywidgets import HBox, VBox
 
 class SynapseTuner:
-    def __init__(self, mechanisms_dir, templates_dir, conn_type_settings, connection, general_settings,
-                 json_folder_path=None, current_name='i', other_vars_to_record=None,slider_vars=None):
+    def __init__(self, mechanisms_dir: str, templates_dir: str, conn_type_settings: dict, connection: str,
+                 general_settings: dict, json_folder_path: str = None, current_name: str = 'i',
+                 other_vars_to_record: list = None, slider_vars: list = None) -> None:
         """
         Initialize the SynapseModule class with connection type settings, mechanisms, and template directories.
         
@@ -43,12 +44,16 @@ class SynapseTuner:
         neuron.load_mechanisms(mechanisms_dir)
         h.load_file(templates_dir)
         self.conn_type_settings = conn_type_settings
+        if json_folder_path:
+            print(f"updating settings from json path {json_folder_path}")
+            self.update_spec_syn_param(json_folder_path)
         self.general_settings = general_settings
-        self.conn = conn_type_settings[connection]
+        self.conn = self.conn_type_settings[connection]
         self.synaptic_props = self.conn['spec_syn_param']
         self.vclamp = general_settings['vclamp']
         self.current_name = current_name
         self.other_vars_to_record = other_vars_to_record
+
         if slider_vars:
             self.slider_vars = {key: value for key, value in self.synaptic_props.items() if key in slider_vars} # filters dict to have only the entries that have a key in the sliders var
         else:
@@ -58,9 +63,6 @@ class SynapseTuner:
         h.dt = general_settings['dt']  # Time step (resolution) of the simulation in ms
         h.steps_per_ms = 1 / h.dt
         h.celsius = general_settings['celsius']
-        if json_folder_path:
-            self.update_spec_syn_param(json_folder_path)
-
 
     def update_spec_syn_param(self, json_folder_path):
         """
@@ -99,10 +101,11 @@ class SynapseTuner:
         """
         self.syn = getattr(h, self.conn['spec_syn_param']['level_of_detail'])(list(self.cell.all)[self.conn['spec_settings']['sec_id']](self.conn['spec_settings']['sec_x']))
         for key, value in self.conn['spec_syn_param'].items():
-            if hasattr(self.syn, key):
-                setattr(self.syn, key, value)
-            else:
-                print(f"Warning: {key} cannot be assigned as it does not exist in the synapse. Check your mod file or spec_syn_param.")
+            if isinstance(value, (int, float)):  # Only create sliders for numeric values
+                if hasattr(self.syn, key):
+                    setattr(self.syn, key, value)
+                else:
+                    print(f"Warning: {key} cannot be assigned as it does not exist in the synapse. Check your mod file or spec_syn_param.")
 
 
     def set_up_recorders(self):
@@ -150,6 +153,7 @@ class SynapseTuner:
         
         The method sets up the neuron cell, synapse, stimulus, and voltage clamp, 
         and then runs the NEURON simulation for a single event. The single synaptic event will occur at general_settings['tstart']
+        Will display graphs and synaptic properies works best with a jupyter notebook
         """
         self.set_up_cell()
         self.set_up_synapse()
@@ -179,6 +183,10 @@ class SynapseTuner:
         self.nstim.number = 1
         self.nstim2.start = h.tstop
         h.run()
+        self.plot_model([self.general_settings['tstart'] - 5, self.general_settings['tstart'] + self.general_settings['tdur']])
+        syn_props = self.get_syn_prop(rise_interval=self.general_settings['rise_interval'])     
+        for prop in syn_props.items():
+            print(prop)
 
 
     def find_first(self, x):
