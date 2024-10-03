@@ -534,7 +534,7 @@ class ReciprocalConnector(AbstractConnector):
                  pr=0., pr_arg=None, estimate_rho=True, rho=None,
                  dist_range_forward=None, dist_range_backward=None,
                  n_syn0=1, n_syn1=1, autapses=False,
-                 quick_pop_check=False, cache_data=True, verbose=True,save_report=True):
+                 quick_pop_check=False, cache_data=True, verbose=True,save_report=True,report_name='connection_report.csv'):
         args = locals()
         var_set = ('p0', 'p0_arg', 'p1', 'p1_arg',
                    'pr', 'pr_arg', 'n_syn0', 'n_syn1')
@@ -553,6 +553,7 @@ class ReciprocalConnector(AbstractConnector):
         self.cache = self.ConnectorCache(cache_data and self.estimate_rho)
         self.verbose = verbose
         self.save_report = save_report
+        self.report_name = report_name
 
         self.conn_prop = [{}, {}]
         self.stage = 0
@@ -1064,12 +1065,12 @@ class ReciprocalConnector(AbstractConnector):
         # Append the data to the CSV file
         try:
             # Check if the file exists by trying to read it
-            existing_df = pd.read_csv('connection_report.csv')
+            existing_df = pd.read_csv(self.report_name)
             # If no exception is raised, append without header
-            df.to_csv('connection_report.csv', mode='a', header=False, index=False)
+            df.to_csv(self.report_name, mode='a', header=False, index=False)
         except FileNotFoundError:
             # If the file does not exist, write with header
-            df.to_csv('connection_report.csv', mode='w', header=True, index=False)
+            df.to_csv(self.report_name, mode='w', header=True, index=False)
             
 
 class UnidirectionConnector(AbstractConnector):
@@ -1103,13 +1104,14 @@ class UnidirectionConnector(AbstractConnector):
             This is useful in similar manner as in ReciprocalConnector.
     """
 
-    def __init__(self, p=1., p_arg=None, n_syn=1, verbose=True,save_report=True):
+    def __init__(self, p=1., p_arg=None, n_syn=1, verbose=True,save_report=True,report_name='connection_report.csv'):
         args = locals()
         var_set = ('p', 'p_arg', 'n_syn')
         self.vars = {key: args[key] for key in var_set}
 
         self.verbose = verbose
         self.save_report = save_report
+        self.report_name = report_name
         self.conn_prop = {}
         self.iter_count = 0
 
@@ -1226,12 +1228,12 @@ class UnidirectionConnector(AbstractConnector):
         # Append the data to the CSV file
         try:
             # Check if the file exists by trying to read it
-            existing_df = pd.read_csv('connection_report.csv')
+            existing_df = pd.read_csv(self.report_name)
             # If no exception is raised, append without header
-            df.to_csv('connection_report.csv', mode='a', header=False, index=False)
+            df.to_csv(self.report_name, mode='a', header=False, index=False)
         except FileNotFoundError:
             # If the file does not exist, write with header
-            df.to_csv('connection_report.csv', mode='w', header=True, index=False)
+            df.to_csv(self.report_name, mode='w', header=True, index=False)
 
 
 class GapJunction(UnidirectionConnector):
@@ -1255,8 +1257,8 @@ class GapJunction(UnidirectionConnector):
         Similar to `UnidirectionConnector`.
     """
 
-    def __init__(self, p=1., p_arg=None, verbose=True,save_report=True):
-        super().__init__(p=p, p_arg=p_arg, verbose=verbose,save_report=save_report)
+    def __init__(self, p=1., p_arg=None, verbose=True,report_name='connection_report.csv'):
+        super().__init__(p=p, p_arg=p_arg, verbose=verbose,report_name=report_name)
 
     def setup_nodes(self, source=None, target=None):
         super().setup_nodes(source=source, target=target)
@@ -1309,26 +1311,28 @@ class GapJunction(UnidirectionConnector):
     def save_connection_report(self):
         """Save connections into a CSV file to be read from later"""
         src_str, trg_str = self.get_nodes_info()
-        n_conn, n_poss, n_pair, fraction = self.connection_number()
+        n_pair = self.n_pair
+        fraction_0 = self.n_conn / self.n_poss if self.n_poss else 0.
+        fraction_1 = self.n_conn / self.n_pair
 
-        # Extract the population name from source_str and target_str
+        # Convert fraction to percentage and prepare data for the DataFrame
         data = {
-            "Source": [src_str],
-            "Target": [trg_str],
-            "Fraction of connected pairs in possible ones (%)": [fraction[0]*100],
-            "Fraction of connected pairs in all pairs (%)": [fraction[1]*100]
+            "Source": [src_str+"Gap"],
+            "Target": [trg_str+"Gap"],
+            "Fraction of connected pairs in possible ones (%)": [fraction_0*100],
+            "Fraction of connected pairs in all pairs (%)": [fraction_1*100]
         }
         df = pd.DataFrame(data)
         
         # Append the data to the CSV file
         try:
             # Check if the file exists by trying to read it
-            existing_df = pd.read_csv('connection_report.csv')
+            existing_df = pd.read_csv(self.report_name)
             # If no exception is raised, append without header
-            df.to_csv('connection_report.csv', mode='a', header=False, index=False)
+            df.to_csv(self.report_name, mode='a', header=False, index=False)
         except FileNotFoundError:
             # If the file does not exist, write with header
-            df.to_csv('connection_report.csv', mode='w', header=True, index=False)
+            df.to_csv(self.report_name, mode='w', header=True, index=False)
 
 
 class CorrelatedGapJunction(GapJunction):
@@ -1359,8 +1363,8 @@ class CorrelatedGapJunction(GapJunction):
     """
 
     def __init__(self, p_non=1., p_uni=1., p_rec=1., p_arg=None,
-                 connector=None, verbose=True,save_report=True):
-        super().__init__(p=p_non, p_arg=p_arg, verbose=verbose,save_report=save_report)
+                 connector=None, verbose=True):
+        super().__init__(p=p_non, p_arg=p_arg, verbose=verbose)
         self.vars['p_non'] = self.vars.pop('p')
         self.vars['p_uni'] = p_uni
         self.vars['p_rec'] = p_rec
