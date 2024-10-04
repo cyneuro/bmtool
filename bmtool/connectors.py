@@ -10,6 +10,8 @@ import re
 
 rng = np.random.default_rng()
 
+report_name = 'conn.csv'
+
 ##############################################################################
 ############################## CONNECT CELLS #################################
 
@@ -534,7 +536,7 @@ class ReciprocalConnector(AbstractConnector):
                  pr=0., pr_arg=None, estimate_rho=True, rho=None,
                  dist_range_forward=None, dist_range_backward=None,
                  n_syn0=1, n_syn1=1, autapses=False,
-                 quick_pop_check=False, cache_data=True, verbose=True,save_report=True,report_name='connection_report.csv'):
+                 quick_pop_check=False, cache_data=True, verbose=True,save_report=True,report_name=None):
         args = locals()
         var_set = ('p0', 'p0_arg', 'p1', 'p1_arg',
                    'pr', 'pr_arg', 'n_syn0', 'n_syn1')
@@ -553,6 +555,9 @@ class ReciprocalConnector(AbstractConnector):
         self.cache = self.ConnectorCache(cache_data and self.estimate_rho)
         self.verbose = verbose
         self.save_report = save_report
+
+        if report_name is None:
+            report_name = globals().get('report_name', 'default_report.csv')
         self.report_name = report_name
 
         self.conn_prop = [{}, {}]
@@ -1104,14 +1109,17 @@ class UnidirectionConnector(AbstractConnector):
             This is useful in similar manner as in ReciprocalConnector.
     """
 
-    def __init__(self, p=1., p_arg=None, n_syn=1, verbose=True,save_report=True,report_name='connection_report.csv'):
+    def __init__(self, p=1., p_arg=None, n_syn=1, verbose=True,save_report=True,report_name=None):
         args = locals()
         var_set = ('p', 'p_arg', 'n_syn')
         self.vars = {key: args[key] for key in var_set}
 
         self.verbose = verbose
         self.save_report = save_report
+        if report_name is None:
+            report_name = globals().get('report_name', 'default_report.csv')
         self.report_name = report_name
+
         self.conn_prop = {}
         self.iter_count = 0
 
@@ -1214,14 +1222,16 @@ class UnidirectionConnector(AbstractConnector):
     def save_connection_report(self):
         """Save connections into a CSV file to be read from later"""
         src_str, trg_str = self.get_nodes_info()
-        n_conn, n_poss, n_pair, fraction = self.connection_number()
+        
+        possible_fraction = (100. * self.n_conn / self.n_poss)
+        all_fraction = (100. * self.n_conn / self.n_pair)
 
         # Extract the population name from source_str and target_str
         data = {
             "Source": [src_str],
             "Target": [trg_str],
-            "Fraction of connected pairs in possible ones (%)": [fraction[0]*100],
-            "Fraction of connected pairs in all pairs (%)": [fraction[1]*100]
+            "Fraction of connected pairs in possible ones (%)": [possible_fraction],
+            "Fraction of connected pairs in all pairs (%)": [all_fraction]
         }
         df = pd.DataFrame(data)
         
@@ -1257,8 +1267,9 @@ class GapJunction(UnidirectionConnector):
         Similar to `UnidirectionConnector`.
     """
 
-    def __init__(self, p=1., p_arg=None, verbose=True,report_name='connection_report.csv'):
-        super().__init__(p=p, p_arg=p_arg, verbose=verbose,report_name=report_name)
+    def __init__(self, p=1., p_arg=None, verbose=True,report_name=None):
+        super().__init__(p=p, p_arg=p_arg, verbose=verbose,report_name=None)
+
 
     def setup_nodes(self, source=None, target=None):
         super().setup_nodes(source=source, target=target)
