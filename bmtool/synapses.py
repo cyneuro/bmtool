@@ -55,9 +55,25 @@ class SynapseTuner:
         self.other_vars_to_record = other_vars_to_record
 
         if slider_vars:
-            self.slider_vars = {key: value for key, value in self.synaptic_props.items() if key in slider_vars} # filters dict to have only the entries that have a key in the sliders var
+            # Start by filtering based on keys in slider_vars
+            self.slider_vars = {key: value for key, value in self.synaptic_props.items() if key in slider_vars}
+            # Iterate over slider_vars and check for missing keys in self.synaptic_props
+            for key in slider_vars:
+                # If the key is missing from synaptic_props, get the value using getattr
+                if key not in self.synaptic_props:
+                    try:
+                        # Get the alternative value from getattr dynamically
+                        self.set_up_cell()
+                        self.set_up_synapse()
+                        value = getattr(self.syn,key)
+                        print(value)
+                        self.slider_vars[key] = value
+                    except AttributeError as e:
+                        print(f"Error accessing '{key}' in syn {self.syn}: {e}")
+
         else:
             self.slider_vars = self.synaptic_props
+
 
         h.tstop = general_settings['tstart'] + general_settings['tdur']
         h.dt = general_settings['dt']  # Time step (resolution) of the simulation in ms
