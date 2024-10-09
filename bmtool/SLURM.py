@@ -2,6 +2,7 @@ import time
 import os
 import subprocess
 import json
+import requests
 
 
 def check_job_status(job_id):
@@ -18,9 +19,9 @@ def check_job_status(job_id):
         result = subprocess.run(['scontrol', 'show', 'job', job_id], capture_output=True, text=True)
         if result.returncode != 0:
             # this check is not needed if check_interval is less than 5 min (~300 seconds)
-            #if 'slurm_load_jobs error: Invalid job id specified' in result.stderr:
-            #    return 'COMPLETED'  # Treat invalid job ID as completed because scontrol expires and removed job info when done.
-            raise Exception(f"Error checking job status: {result.stderr}")
+            if 'slurm_load_jobs error: Invalid job id specified' in result.stderr:
+                return 'COMPLETED'  # Treat invalid job ID as completed because scontrol expires and removed job info when done.
+            #raise Exception(f"Error checking job status: {result.stderr}")
 
         job_state = None
         for line in result.stdout.split('\n'):
@@ -55,6 +56,20 @@ def submit_job(script_path):
         raise Exception(f"Error submitting job: {result.stderr}")
     job_id = result.stdout.strip().split()[-1]
     return job_id
+
+
+def send_teams_message(webhook,message):
+    # Message payload
+    message = {
+        "text": f"{message}" 
+    }
+
+    # Send POST request to trigger the flow
+    response = requests.post(
+        webhook,
+        json=message,  # Using 'json' instead of 'data' for automatic serialization
+        headers={'Content-Type': 'application/json'}
+    )
 
 
 class seedSweep:
@@ -239,6 +254,25 @@ export OUTPUT_DIR={case_output_dir}
             if status not in self.status_list:
                 return False
         return True
+    
+    def check_block_completed(self):
+        # Implement this method to check if all jobs are completed
+        # This should return True only if all jobs are in the COMPLETED state
+        for job_id in self.job_ids:
+            status = check_job_status(job_id)
+            if status != 'COMPLETED': # can add PENDING here for debugging NOT FOR ACTUALLY USING IT 
+                return False
+        return True
+
+
+    def check_block_running(self):
+        # Implement this method to check if all jobs are completed
+        # This should return True only if all jobs are in the COMPLETED state
+        for job_id in self.job_ids:
+            status = check_job_status(job_id)
+            if status != 'RUNNING': # 
+                return False
+        return True
 
 
 class SequentialBlockRunner:
@@ -251,11 +285,12 @@ class SequentialBlockRunner:
         param_values (list): List of values for the parameter to be modified.
     """
 
-    def __init__(self, blocks, json_editor=None, param_values=None, check_interval=200):
+    def __init__(self, blocks, json_editor=None, param_values=None, check_interval=200,webhook=None):
         self.blocks = blocks
         self.json_editor = json_editor
         self.param_values = param_values
         self.check_interval = check_interval
+        self.webhook = webhook
 
     def submit_blocks_sequentially(self):
         """
@@ -283,12 +318,24 @@ class SequentialBlockRunner:
             # Submit the block
             print(f"Submitting block: {block.block_name}", flush=True)
             block.submit_block()
-            
+            if self.webhook:
+                message = f"SIMULATION UPDATE: Block {i} has been submitted! There are {(len(self.blocks)-1)-i} left to be submitted"
+                send_teams_message(self.webhook,message)
+
+            time.sleep(self.check_interval)
             # Wait for the block to complete
-            while not block.check_block_status():
-                print(f"Waiting for block {block.block_name} to complete...", flush=True)
-                time.sleep(self.check_interval)
+            if i == len(self.blocks): # we want to wait for the last block to be completed not just running
+                while not block.check_block_completed():
+                    print(f"Waiting for the last block {i} to complete...")
+                    time.sleep(self.check_interval)
+            else:  # Not the last block so if job is running lets start a new one (checks status list)
+                while not block.check_block_status():
+                    print(f"Waiting for block {i} to complete...")
+                    time.sleep(self.check_interval)
             
             print(f"Block {block.block_name} completed.", flush=True)
         print("All blocks are done!",flush=True)
+        if self.webhook:
+            message = "SIMULATION UPDATE: Simulation are Done!"
+            send_teams_message(self.webhook,message)
 
