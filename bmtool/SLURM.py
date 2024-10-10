@@ -59,7 +59,12 @@ def submit_job(script_path):
 
 
 def send_teams_message(webhook,message):
-    # Message payload
+    """Sends a message to a teams channel or chat
+
+    Args:
+        webhook (str): A microsoft teams webhook
+        message (str): A message to send in the chat/channel
+    """
     message = {
         "text": f"{message}" 
     }
@@ -256,8 +261,11 @@ export OUTPUT_DIR={case_output_dir}
         return True
     
     def check_block_completed(self):
-        # Implement this method to check if all jobs are completed
-        # This should return True only if all jobs are in the COMPLETED state
+        """checks if all the jobs in the block have been completed by slurm
+
+        Returns:
+            bool: True if all block jobs have been ran, false if job is still running
+        """
         for job_id in self.job_ids:
             status = check_job_status(job_id)
             if status != 'COMPLETED': # can add PENDING here for debugging NOT FOR ACTUALLY USING IT 
@@ -266,8 +274,11 @@ export OUTPUT_DIR={case_output_dir}
 
 
     def check_block_running(self):
-        # Implement this method to check if all jobs are completed
-        # This should return True only if all jobs are in the COMPLETED state
+        """checks if a job is running
+
+        Returns:
+            bool: True if jobs are RUNNING false if anything else
+        """
         for job_id in self.job_ids:
             status = check_job_status(job_id)
             if status != 'RUNNING': # 
@@ -283,6 +294,7 @@ class SequentialBlockRunner:
         blocks (list): List of SimulationBlock instances to be run.
         json_editor (seedSweep or multiSweep): Instance of seedSweep to edit JSON file.
         param_values (list): List of values for the parameter to be modified.
+        webhook (str): a microsoft webhook for teams. When used will send teams messages to the hook!
     """
 
     def __init__(self, blocks, json_editor=None, param_values=None, check_interval=200,webhook=None):
@@ -322,9 +334,8 @@ class SequentialBlockRunner:
                 message = f"SIMULATION UPDATE: Block {i} has been submitted! There are {(len(self.blocks)-1)-i} left to be submitted"
                 send_teams_message(self.webhook,message)
 
-            time.sleep(self.check_interval)
             # Wait for the block to complete
-            if i == len(self.blocks): # we want to wait for the last block to be completed not just running
+            if i == len(self.blocks) - 1:  # Corrected index to check the last block
                 while not block.check_block_completed():
                     print(f"Waiting for the last block {i} to complete...")
                     time.sleep(self.check_interval)
