@@ -197,7 +197,7 @@ def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,s
 
     return
 
-def convergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean+std',include_gap=True):
+def convergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean+std',include_gap=True,return_dict=None):
     """
     Generates connection plot displaying convergence data
     config: A BMTK simulation config 
@@ -213,9 +213,9 @@ def convergence_connection_matrix(config=None,title=None,sources=None, targets=N
         raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
-    return divergence_connection_matrix(config,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method,include_gap=include_gap)
+    return divergence_connection_matrix(config,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method,include_gap=include_gap,return_dict=return_dict)
 
-def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean+std',include_gap=True):
+def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean+std',include_gap=True,return_dict=None):
     """
     Generates connection plot displaying divergence data
     config: A BMTK simulation config 
@@ -264,8 +264,12 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
             title = title + "Synaptic Convergence"
         else:
             title = title + "Synaptic Divergence"
-    plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
-    return
+    if return_dict:
+        dict = plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file,return_dict=return_dict)
+        return dict
+    else:
+        plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
+        return
 
 def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=None,tids=None, no_prepend_pop=False,save_file=None,type='convergence'):
     """
@@ -448,7 +452,7 @@ def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids
     fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
     plt.draw()
 
-def plot_connection_info(text, num, source_labels,target_labels, title, syn_info='0', save_file=None):
+def plot_connection_info(text, num, source_labels,target_labels, title, syn_info='0', save_file=None,return_dict=None):
     """
     write about function here
     """
@@ -472,10 +476,12 @@ def plot_connection_info(text, num, source_labels,target_labels, title, syn_info
     plt.setp(ax1.get_xticklabels(), rotation=45, ha="right",
             rotation_mode="anchor", size=12, weight = 'semibold')
     
+    graph_dict = {}
     # Loop over data dimensions and create text annotations.
     for i in range(num_source):
         for j in range(num_target):
             edge_info = text[i,j]
+            graph_dict[str(source_labels[i])+'2'+str(target_labels[j])] = edge_info
             if syn_info =='2' or syn_info =='3':
                 if num_source > 8 and num_source <20:
                     fig_text = ax1.text(j, i, edge_info,
@@ -499,7 +505,10 @@ def plot_connection_info(text, num, source_labels,target_labels, title, syn_info
         fig1.show()
     if save_file:
         plt.savefig(save_file)
-    return
+    if return_dict:
+        return graph_dict
+    else:
+        return
 
 def connector_percent_matrix(csv_path: str = None, exclude_shell: bool = True, 
                              exclude_assembly: bool = False, title: str = 'Percent connection matrix') -> None:

@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="bmtool",
-    version='0.5.7.1',
+    version='0.5.7.2',
     author="Neural Engineering Laboratory at the University of Missouri",
     author_email="gregglickert@mail.missouri.edu",
     description="BMTool",
@@ -27,7 +27,8 @@ setup(
         'questionary',
         'pynmodlt',
         'xarray',
-        'fooof'
+        'fooof',
+        'requests'
     ],
     classifiers=[
         'Intended Audience :: Developers',
