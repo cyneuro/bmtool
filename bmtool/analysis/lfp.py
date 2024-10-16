@@ -9,6 +9,8 @@ from fooof import FOOOF
 from fooof.sim.gen import gen_model
 import matplotlib.pyplot as plt
 from scipy import signal 
+import pywt
+from bmtool.bmplot import is_notebook
 
 
 def load_ecp_to_xarray(ecp_file: str, demean: bool = False) -> xr.DataArray:
@@ -209,7 +211,10 @@ def fit_fooof(f: np.ndarray, pxx: np.ndarray, aperiodic_mode: str = 'fixed',
             plt.gcf().set_size_inches(figsize)
         if title:
             plt.title(title)
-        plt.show()
+        if is_notebook():
+            pass
+        else:
+            plt.show()
     
     return results, fm
 
@@ -266,3 +271,137 @@ def calculate_SNR(fooof_model: FOOOF, freq_band: tuple) -> float:
     ap_power = np.trapz(band_ap, band_freq)  # Integrate aperiodic power
     normalized_power = periodic_power / ap_power  # Compute the SNR
     return normalized_power
+
+
+def wavelet_filter(x: np.ndarray, freq: float, fs: float, bandwidth: float = 1.0, axis: int = -1) -> np.ndarray:
+    """
+    Compute the Continuous Wavelet Transform (CWT) for a specified frequency using a complex Morlet wavelet.
+    """
+    wavelet = 'cmor' + str(2 * bandwidth ** 2) + '-1.0'
+    scale = pywt.scale2frequency(wavelet, 1) * fs / freq
+    x_a = pywt.cwt(x, [scale], wavelet=wavelet, axis=axis)[0][0]
+    return x_a
+
+
+def butter_bandpass_filter(data: np.ndarray, lowcut: float, highcut: float, fs: float, order: int = 5, axis: int = -1) -> np.ndarray:
+    """
+    Apply a Butterworth bandpass filter to the input data.
+    """
+    sos = signal.butter(order, [lowcut, highcut], fs=fs, btype='band', output='sos')
+    x_a = signal.sosfiltfilt(sos, data, axis=axis)
+    return x_a
+
+
+def calculate_plv(x1: np.ndarray, x2: np.ndarray, fs: float, freq_of_interest: float = None, 
+                  method: str = 'wavelet', lowcut: float = None, highcut: float = None, 
+                  bandwidth: float = 2.0) -> np.ndarray:
+    """
+    Calculate Phase Locking Value (PLV) between two signals using wavelet or Hilbert method.
+    
+    Parameters:
+    - x1, x2: Input signals (1D arrays, same length)
+    - fs: Sampling frequency
+    - freq_of_interest: Desired frequency for wavelet PLV calculation
+    - method: 'wavelet' or 'hilbert' to choose the PLV calculation method
+    - lowcut, highcut: Cutoff frequencies for the Hilbert method
+    - bandwidth: Bandwidth parameter for the wavelet
+    
+    Returns:
+    - plv: Phase Locking Value (1D array)
+    """
+    if len(x1) != len(x2):
+        raise ValueError("Input signals must have the same length.")
+    
+    if method == 'wavelet':
+        if freq_of_interest is None:
+            raise ValueError("freq_of_interest must be provided for the wavelet method.")
+        
+        # Apply CWT to both signals
+        theta1 = wavelet_filter(x=x1, freq=freq_of_interest, fs=fs, bandwidth=bandwidth)
+        theta2 = wavelet_filter(x=x2, freq=freq_of_interest, fs=fs, bandwidth=bandwidth)
+    
+    elif method == 'hilbert':
+        if lowcut is None or highcut is None:
+            raise ValueError("lowcut and highcut must be provided for the Hilbert method.")
+        
+        # Bandpass filter and get the analytic signal using the Hilbert transform
+        filtered_x1 = butter_bandpass_filter(x1, lowcut, highcut, fs)
+        filtered_x2 = butter_bandpass_filter(x2, lowcut, highcut, fs)
+        
+        # Get phase using the Hilbert transform
+        theta1 = np.angle(signal.hilbert(filtered_x1))
+        theta2 = np.angle(signal.hilbert(filtered_x2))
+    
+    else:
+        raise ValueError("Invalid method. Choose 'wavelet' or 'hilbert'.")
+    
+    # Calculate phase difference
+    phase_diff = np.angle(theta1) - np.angle(theta2)
+    
+    # Calculate PLV from standard equation from Measuring phase synchrony in brain signals(1999)
+    plv = np.abs(np.mean(np.exp(1j * phase_diff), axis=-1))
+    
+    return plv
+
+
+def calculate_plv_over_time(x1: np.ndarray, x2: np.ndarray, fs: float, 
+                            window_size: float, step_size: float, 
+                            method: str = 'wavelet', freq_of_interest: float = None, 
+                            lowcut: float = None, highcut: float = None, 
+                            bandwidth: float = 2.0):
+    """
+    Calculate the time-resolved Phase Locking Value (PLV) between two signals using a sliding window approach.
+    
+    Parameters:
+    ----------
+    x1, x2 : array-like
+        Input signals (1D arrays, same length).
+    fs : float
+        Sampling frequency of the input signals.
+    window_size : float
+        Length of the window in seconds for PLV calculation.
+    step_size : float
+        Step size in seconds to slide the window across the signals.
+    method : str, optional
+        Method to calculate PLV ('wavelet' or 'hilbert'). Defaults to 'wavelet'.
+    freq_of_interest : float, optional
+        Frequency of interest for the wavelet method. Required if method is 'wavelet'.
+    lowcut, highcut : float, optional
+        Cutoff frequencies for the Hilbert method. Required if method is 'hilbert'.
+    bandwidth : float, optional
+        Bandwidth parameter for the wavelet. Defaults to 2.0.
+        
+    Returns:
+    -------
+    plv_over_time : 1D array
+        Array of PLV values calculated over each window.
+    times : 1D array
+        The center times of each window where the PLV was calculated.
+    """
+    # Convert window and step size from seconds to samples
+    window_samples = int(window_size * fs)
+    step_samples = int(step_size * fs)
+    
+    # Initialize results
+    plv_over_time = []
+    times = []
+    
+    # Iterate over the signal with a sliding window
+    for start in range(0, len(x1) - window_samples + 1, step_samples):
+        end = start + window_samples
+        window_x1 = x1[start:end]
+        window_x2 = x2[start:end]
+        
+        # Use the updated calculate_plv function within each window
+        plv = calculate_plv(x1=window_x1, x2=window_x2, fs=fs, 
+                            method=method, freq_of_interest=freq_of_interest, 
+                            lowcut=lowcut, highcut=highcut, bandwidth=bandwidth)
+        plv_over_time.append(plv)
+        
+        # Store the time at the center of the window
+        center_time = (start + end) / 2 / fs
+        times.append(center_time)
+    
+    return np.array(plv_over_time), np.array(times)
+
+
