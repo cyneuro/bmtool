@@ -100,7 +100,7 @@ def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: 
     pop_spikes = {}  # Dictionary to store filtered spike data by population
     node_number = {}  # Dictionary to store the number of unique nodes for each population
 
-    print("Note: Node number is obtained by counting unique node spikes in the network. If the network did not run for a sufficient duration, and not all cells fired, this count might be incorrect.")
+    print("Note: Node number is obtained by counting unique node spikes in the network.\nIf the network did not run for a sufficient duration, and not all cells fired, this count might be incorrect.")
 
     for pop_name in spikes['pop_name'].unique():
         # Get the number of cells for each population by counting unique node IDs in the spike data.

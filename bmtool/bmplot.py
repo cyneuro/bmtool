@@ -480,8 +480,14 @@ def plot_connection_info(text, num, source_labels,target_labels, title, syn_info
     # Loop over data dimensions and create text annotations.
     for i in range(num_source):
         for j in range(num_target):
-            edge_info = text[i,j]
-            graph_dict[str(source_labels[i])+'2'+str(target_labels[j])] = edge_info
+            edge_info = text[i, j]
+            
+            # Initialize the dictionary for the source node if not already done
+            if source_labels[i] not in graph_dict:
+                graph_dict[source_labels[i]] = {}
+            
+            # Add edge info for the target node
+            graph_dict[source_labels[i]][target_labels[j]] = edge_info
             if syn_info =='2' or syn_info =='3':
                 if num_source > 8 and num_source <20:
                     fig_text = ax1.text(j, i, edge_info,
@@ -726,71 +732,101 @@ def plot_spikes(nodes, spikes_file,save_file=None):
     
     return
     
-def plot_3d_positions(config=None,populations_list=None,group_by=None,title=None,save_file=None):
+def plot_3d_positions(config=None, populations_list=None, group_by=None, title=None, save_file=None, subset=None):
     """
-    plots a 3D graph of all cells with x,y,z location
-    config: A BMTK simulation config 
-    populations_list: Which network(s) to plot 
-    group_by: How to name cell groups
-    title: plot title
-    save_file: If plot should be saved
+    Plots a 3D graph of all cells with x, y, z location.
+    
+    Parameters:
+    - config: A BMTK simulation config 
+    - populations_list: Which network(s) to plot 
+    - group_by: How to name cell groups
+    - title: Plot title
+    - save_file: If plot should be saved
+    - subset: Take every Nth row. This will make plotting large network graphs easier to see.
     """
     
     if not config:
         raise Exception("config not defined")
-    if populations_list == None:
+    
+    if populations_list is None:
         populations_list = "all"
+    
+    # Set group keys (e.g., node types)
     group_keys = group_by
-    if title == None:
+    if title is None:
         title = "3D positions"
 
+    # Load nodes from the configuration
     nodes = util.load_nodes_from_config(config)
     
+    # Get the list of populations to plot
     if 'all' in populations_list:
         populations = list(nodes)
     else:
         populations = populations_list.split(",")
-
+    
+    # Split group_by into list 
     group_keys = group_keys.split(",")
-    group_keys += (len(populations)-len(group_keys)) * ["node_type_id"] #Extend the array to default values if not enough given
-    fig = plt.figure(figsize=(10,10))
+    group_keys += (len(populations) - len(group_keys)) * ["node_type_id"]  # Extend the array to default values if not enough given
+    if len(group_keys) > 1:
+        raise Exception("Only one group by is supported currently!")
+    
+    fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(projection='3d')
     handles = []
-    for nodes_key,group_key in zip(list(nodes),group_keys):
-        if 'all' not in populations and nodes_key not in populations:
-            continue
-            
-        nodes_df = nodes[nodes_key]
 
+    for pop in (list(nodes)):
+        
+        if 'all' not in populations and pop not in populations:
+            continue
+        
+        nodes_df = nodes[pop]
+        group_key = group_keys[0] 
+        
+        # If group_key is provided, ensure the column exists in the dataframe
         if group_key is not None:
             if group_key not in nodes_df:
-                raise Exception('Could not find column {}'.format(group_key))
+                raise Exception(f"Could not find column '{group_key}' in {pop}")
+            
             groupings = nodes_df.groupby(group_key)
-
             n_colors = nodes_df[group_key].nunique()
-            color_norm = colors.Normalize(vmin=0, vmax=(n_colors-1))
+            color_norm = colors.Normalize(vmin=0, vmax=(n_colors - 1))
             scalar_map = cmx.ScalarMappable(norm=color_norm, cmap='hsv')
-            color_map = [scalar_map.to_rgba(i) for i in range(0, n_colors)]
+            color_map = [scalar_map.to_rgba(i) for i in range(n_colors)]
         else:
             groupings = [(None, nodes_df)]
             color_map = ['blue']
 
+        # Loop over groupings and plot
         for color, (group_name, group_df) in zip(color_map, groupings):
-            if "pos_x" not in group_df: #could also check model type == virtual
-                continue #can't plot them if there isn't an xy coordinate (may be virtual)
-            h = ax.scatter(group_df["pos_x"],group_df["pos_y"],group_df["pos_z"],color=color,label=group_name)
+            if "pos_x" not in group_df or "pos_y" not in group_df or "pos_z" not in group_df:
+                print(f"Warning: Missing position columns in group '{group_name}' for {pop}. Skipping this group.")
+                continue  # Skip if position columns are missing
+
+            # Subset the dataframe by taking every Nth row if subset is provided
+            if subset is not None:
+                group_df = group_df.iloc[::subset]
+
+            h = ax.scatter(group_df["pos_x"], group_df["pos_y"], group_df["pos_z"], color=color, label=group_name)
             handles.append(h)
+    
     if not handles:
+        print("No data to plot.")
         return
+    
+    # Set plot title and legend
     plt.title(title)
     plt.legend(handles=handles)
     
+    # Draw the plot
     plt.draw()
 
+    # Save the plot if save_file is provided
     if save_file:
         plt.savefig(save_file)
-    notebook = is_notebook
-    if notebook == False:
+
+    # Show the plot if running outside of a notebook
+    if not is_notebook:
         plt.show()
 
     return

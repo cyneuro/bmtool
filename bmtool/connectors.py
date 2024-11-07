@@ -580,9 +580,11 @@ class ReciprocalConnector(AbstractConnector):
         self.source = source
         self.target = target
         if self.source is None or len(self.source) == 0:
-            raise ValueError("Source nodes do not exists")
+            src_str, trg_str = self.get_nodes_info()
+            raise ValueError(f"{src_str} nodes do not exists")
         if self.target is None or len(self.target) == 0:
-            raise ValueError("Target nodes do not exists")
+            src_str, trg_str = self.get_nodes_info()
+            raise ValueError(f"{trg_str} nodes do not exists")
 
         # Setup nodes
         self.recurrent = is_same_pop(self.source, self.target, quick=self.quick)
@@ -1130,9 +1132,11 @@ class UnidirectionConnector(AbstractConnector):
         self.source = source
         self.target = target
         if self.source is None or len(self.source) == 0:
-            raise ValueError("Source nodes do not exists")
+            src_str, trg_str = self.get_nodes_info()
+            raise ValueError(f"{src_str} nodes do not exists")
         if self.target is None or len(self.target) == 0:
-            raise ValueError("Target nodes do not exists")
+            src_str, trg_str = self.get_nodes_info()
+            raise ValueError(f"{trg_str} nodes do not exists")
         self.n_pair = len(self.source) * len(self.target)
 
     def edge_params(self):
@@ -1179,6 +1183,7 @@ class UnidirectionConnector(AbstractConnector):
                       + src_str + "\n  to " + trg_str,flush=True)
 
         # Make random connections
+
         p_arg = self.p_arg(source, target)
         p = self.p(p_arg)
         possible = p > 0
@@ -1274,8 +1279,9 @@ class GapJunction(UnidirectionConnector):
     def setup_nodes(self, source=None, target=None):
         super().setup_nodes(source=source, target=target)
         if len(self.source) != len(self.target):
-            raise ValueError("Source and target must be the same for "
-                             "gap junction.")
+            src_str, trg_str = self.get_nodes_info()
+            raise ValueError(f"Source and target must be the same for "
+                             f"gap junction. Nodes are {src_str} and {trg_str}")
         self.n_source = len(self.source)
 
     def make_connection(self, source, target, *args, **kwargs):
@@ -1500,8 +1506,9 @@ class OneToOneSequentialConnector(AbstractConnector):
             source, target = target, source
         if self.target_count == 0:
             if source is None or len(source) == 0:
-                raise ValueError(("Target" if self.partition_source else
-                                  "Source") + " nodes do not exists")
+                src_str, trg_str = self.get_nodes_info()
+                raise ValueError((f"{trg_str}" if self.partition_source else
+                                  f"{src_str}") + " nodes do not exists")
             self.source = source
             self.n_source = len(source)
         if target is None or len(target) == 0:

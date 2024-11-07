@@ -206,7 +206,7 @@ def fit_fooof(f: np.ndarray, pxx: np.ndarray, aperiodic_mode: str = 'fixed',
         plt_range = set_range(plt_range)
         fm.plot(plt_log=plt_log)
         plt.xlim(np.log10(plt_range) if plt_log else plt_range)
-        plt.ylim(-8, -5.5)
+        #plt.ylim(-8, -5.5)
         if figsize:
             plt.gcf().set_size_inches(figsize)
         if title:
