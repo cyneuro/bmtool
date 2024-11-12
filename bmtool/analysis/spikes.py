@@ -77,42 +77,59 @@ def pop_spike_rate(spike_times: Union[np.ndarray, list], time: Optional[Tuple[fl
     return spike_rate
 
 
-
 def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: float = 0, t_stop: Optional[float] = None, 
-                        save: bool = False, save_path: Optional[str] = None) -> Dict[str, np.ndarray]:
+                              config: Optional[str] = None, network_name: Optional[str] = None,
+                              save: bool = False, save_path: Optional[str] = None,
+                              normalize: bool = False) -> Dict[str, np.ndarray]:
     """
-    Calculate the population spike rate for each population in the given spike data.
+    Calculate the population spike rate for each population in the given spike data, with an option to normalize.
 
     Args:
         spikes (pd.DataFrame): A DataFrame containing spike data with columns 'pop_name', 'timestamps', and 'node_ids'.
-        fs (float, optional): Sampling frequency in Hz. Default is 400.
+        fs (float, optional): Sampling frequency in Hz, which determines the time bin size for calculating the spike rate. Default is 400.
         t_start (float, optional): Start time (in milliseconds) for spike rate calculation. Default is 0.
-        t_stop (Optional[float], optional): Stop time (in milliseconds) for spike rate calculation. If None, it defaults to the maximum timestamp in the data. Default is None.
-        save (bool, optional): Whether to save the population spike rate to a file. Default is False.
-        save_path (Optional[str], optional): Directory path where the file should be saved if `save` is True. Default is None.
+        t_stop (Optional[float], optional): Stop time (in milliseconds) for spike rate calculation. If None, defaults to the maximum timestamp in the data.
+        config (Optional[str], optional): Path to a configuration file containing node information, used to determine the correct number of nodes per population. 
+            If None, node count is estimated from unique node spikes. Default is None.
+        network_name (Optional[str], optional): Name of the network used in the configuration file, allowing selection of nodes for that network. 
+            Required if `config` is provided. Default is None.
+        save (bool, optional): Whether to save the calculated population spike rate to a file. Default is False.
+        save_path (Optional[str], optional): Directory path where the file should be saved if `save` is True. If `save` is True and `save_path` is None, a ValueError is raised.
+        normalize (bool, optional): Whether to normalize the spike rates for each population to a range of [0, 1]. Default is False.
 
     Returns:
-        Dict[str, np.ndarray]: A dictionary where keys are population names, and values are arrays of spike rates.
+        Dict[str, np.ndarray]: A dictionary where keys are population names, and values are arrays representing the spike rate over time for each population. 
+            If `normalize` is True, each population's spike rate is scaled to [0, 1].
 
     Raises:
         ValueError: If `save` is True but `save_path` is not provided.
-    """
-    pop_spikes = {}  # Dictionary to store filtered spike data by population
-    node_number = {}  # Dictionary to store the number of unique nodes for each population
 
-    print("Note: Node number is obtained by counting unique node spikes in the network.\nIf the network did not run for a sufficient duration, and not all cells fired, this count might be incorrect.")
+    Notes:
+        - If `config` is None, the function assumes all cells in each population have fired at least once; otherwise, the node count may be inaccurate.
+        - If normalization is enabled, each population's spike rate is scaled using Min-Max normalization based on its own minimum and maximum values.
+
+    """
+    pop_spikes = {}
+    node_number = {}
+
+    if config is None:
+        print("Note: Node number is obtained by counting unique node spikes in the network.\nIf the network did not run for a sufficient duration, and not all cells fired, this count might be incorrect.")
+        print("You can provide a config to calculate the correct amount of nodes!")
 
     for pop_name in spikes['pop_name'].unique():
-        # Get the number of cells for each population by counting unique node IDs in the spike data.
-        # This approach assumes the simulation ran long enough for all cells to fire.
         ps = spikes[spikes['pop_name'] == pop_name]
-        node_number[pop_name] = ps['node_ids'].nunique()
+        
+        if config:
+            nodes = load_nodes_from_config(config)
+            nodes = nodes[network_name]
+            nodes = nodes[nodes['pop_name'] == pop_name]
+            node_number[pop_name] = nodes.index.nunique()
+        else:
+            node_number[pop_name] = ps['node_ids'].nunique()
 
-        # Set `t_stop` to the maximum timestamp if not specified
         if t_stop is None:
             t_stop = spikes['timestamps'].max()
 
-        # Filter spikes by population name and timestamp range
         filtered_spikes = spikes[
             (spikes['pop_name'] == pop_name) & 
             (spikes['timestamps'] > t_start) & 
@@ -120,24 +137,20 @@ def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: 
         ]
         pop_spikes[pop_name] = filtered_spikes
 
-    # Generate time array for calculating spike rates
     time = np.array([t_start, t_stop, 1000 / fs])
-
-    # Calculate the population spike rate for each population
     pop_rspk = {p: pop_spike_rate(spk['timestamps'], time) for p, spk in pop_spikes.items()}
-
-    # Adjust spike rate by the number of cells in each population
     spike_rate = {p: fs / node_number[p] * pop_rspk[p] for p in pop_rspk}
 
-    # Save results to file if required
+    # Normalize each spike rate series if normalize=True
+    if normalize:
+        spike_rate = {p: (sr - sr.min()) / (sr.max() - sr.min()) for p, sr in spike_rate.items()}
+
     if save:
         if save_path is None:
             raise ValueError("save_path must be provided if save is True.")
         
-        # Create directory if it does not exist
         os.makedirs(save_path, exist_ok=True)
         
-        # Define the save file path and write data to an HDF5 file
         save_file = os.path.join(save_path, 'spike_rate.h5')
         with h5py.File(save_file, 'w') as f:
             f.create_dataset('time', data=time)
@@ -147,3 +160,4 @@ def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: 
                 pop_grp.create_dataset('data', data=rspk)
 
     return spike_rate
+

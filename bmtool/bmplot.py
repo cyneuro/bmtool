@@ -405,6 +405,76 @@ def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[]
         tids = []
     util.relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=connection_pair_histogram,synaptic_info=synaptic_info)
 
+def connection_distance(config: str,source: str,target: str,
+                        source_cell_id: int,target_id_type: str) -> None:
+    """
+    Plots the 3D spatial distribution of target nodes relative to a source node
+    and a histogram of distances from the source node to each target node.
+
+    Parameters:
+    ----------
+    config: (str) A BMTK simulation config 
+    sources: (str) network name(s) to plot
+    targets: (str) network name(s) to plot
+    source_cell_id : (int) ID of the source cell for calculating distances to target nodes.
+    target_id_type : (str) A string to filter target nodes based off the target_query.
+
+    """
+    if not config:
+        raise Exception("config not defined")
+    if not source or not target:
+        raise Exception("Sources or targets not defined")
+    #if source != target:
+        #raise Exception("Code is setup for source and target to be the same! Look at source code for function to add feature")
+    
+    # Load nodes and edges based on config file
+    nodes, edges = util.load_nodes_edges_from_config(config)
+    
+    edge_network = source + "_to_" + target
+    node_network = source
+
+    # Filter edges to obtain connections originating from the source node
+    edge = edges[edge_network]
+    edge = edge[edge['source_node_id'] == source_cell_id]
+    if target_id_type:
+        edge = edge[edge['target_query'].str.contains(target_id_type, na=False)]
+
+    target_node_ids = edge['target_node_id']
+
+    # Filter nodes to obtain only the target and source nodes
+    node = nodes[node_network]
+    target_nodes = node.loc[node.index.isin(target_node_ids)]
+    source_node = node.loc[node.index == source_cell_id]
+
+    # Calculate distances between source node and each target node
+    target_positions = target_nodes[['pos_x', 'pos_y', 'pos_z']].values
+    source_position = np.array([source_node['pos_x'], source_node['pos_y'], source_node['pos_z']]).ravel()  # Ensure 1D shape
+    distances = np.linalg.norm(target_positions - source_position, axis=1)
+
+    # Plot positions of source and target nodes in 3D space
+    fig = plt.figure(figsize=(8, 6)) 
+    ax = fig.add_subplot(111, projection='3d')
+
+    ax.scatter(target_nodes['pos_x'], target_nodes['pos_y'], target_nodes['pos_z'], c='blue', label="target cells")
+    ax.scatter(source_node['pos_x'], source_node['pos_y'], source_node['pos_z'], c='red', label="source cell")
+
+    # Optional: Add text annotations for distances
+    # for i, distance in enumerate(distances):
+    #     ax.text(target_nodes['pos_x'].iloc[i], target_nodes['pos_y'].iloc[i], target_nodes['pos_z'].iloc[i],
+    #             f'{distance:.2f}', color='black', fontsize=8, ha='center')
+
+    plt.legend()
+    plt.show()
+
+    # Plot distances in a separate 2D plot
+    plt.figure(figsize=(8, 6)) 
+    plt.hist(distances, bins=20, color='blue', edgecolor='black')
+    plt.xlabel("Distance")
+    plt.ylabel("Count")
+    plt.title("Distance from Source Node to Each Target Node")
+    plt.grid(True)
+    plt.show()
+
 def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids=None,no_prepend_pop=None,edge_property = None,time = None,time_compare = None,report=None,title=None,save_file=None):
     """
     write about function here

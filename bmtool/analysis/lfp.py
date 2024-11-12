@@ -322,15 +322,16 @@ def calculate_plv(x1: np.ndarray, x2: np.ndarray, fs: float, freq_of_interest: f
     
     elif method == 'hilbert':
         if lowcut is None or highcut is None:
-            raise ValueError("lowcut and highcut must be provided for the Hilbert method.")
+            print("Lowcut and or highcut were not definded, signal will not be filter and just take hilbert transform for plv calc")
         
-        # Bandpass filter and get the analytic signal using the Hilbert transform
-        filtered_x1 = butter_bandpass_filter(x1, lowcut, highcut, fs)
-        filtered_x2 = butter_bandpass_filter(x2, lowcut, highcut, fs)
+        if lowcut and highcut:
+            # Bandpass filter and get the analytic signal using the Hilbert transform
+            x1 = butter_bandpass_filter(x1, lowcut, highcut, fs)
+            x2 = butter_bandpass_filter(x2, lowcut, highcut, fs)
         
         # Get phase using the Hilbert transform
-        theta1 = np.angle(signal.hilbert(filtered_x1))
-        theta2 = np.angle(signal.hilbert(filtered_x2))
+        theta1 = signal.hilbert(x1)
+        theta2 = signal.hilbert(x2)
     
     else:
         raise ValueError("Invalid method. Choose 'wavelet' or 'hilbert'.")
