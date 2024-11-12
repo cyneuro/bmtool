@@ -7,6 +7,7 @@ A collection of modules to make developing [Neuron](https://www.neuron.yale.edu/
 - [Getting Started](#Getting-Started)
 - [CLI](#CLI)
 - [Single Cell](#Single-Cell-Module)
+- [Synapses](#synapses-module)
 - [Connectors](#Connectors-Module)
 - [Bmplot](#bmplot-Module)
 - [Graphs](#graphs-module)
@@ -300,6 +301,12 @@ bmtool util cell --hoc cell_template.hoc vhsegbuild --build
 bmtool util cell --hoc segmented_template.hoc vhsegbuild
 ```
 ex: [https://github.com/tjbanks/two-cell-hco](https://github.com/tjbanks/two-cell-hco)
+
+### Synapses Module
+-[SynapticTuner](#synaptictuner)
+
+#### SynapticTuner - Aids in the tuning of synapses by printing out synaptic properties and giving the user sliders in a Jupyter notebook to tune the synapse. For more info view the example [here](examples/synapses/synaptic_tuner.ipynb)
+
 
 ### Connectors Module
 - [UnidirectionConnector](#unidirectional-connector---unidirectional-connections-in-bmtk-network-model-with-given-probability-within-a-single-population-or-between-two-populations)

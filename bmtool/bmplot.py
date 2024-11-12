@@ -12,6 +12,7 @@ import matplotlib.cm as cmx
 import matplotlib.colors as colors
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.axes import Axes
 from IPython import get_ipython
 from IPython.display import display, HTML
 import statistics
@@ -19,8 +20,10 @@ import pandas as pd
 import os
 import sys
 import re
+from typing import Optional, Dict
+from .analysis.spikes import load_spikes_to_df
 
-from .util.util import CellVarsFile #, missing_units
+from .util.util import CellVarsFile,load_nodes_from_config #, missing_units
 from bmtk.analyzer.utils import listify
 
 use_description = """
@@ -725,82 +728,92 @@ def connector_percent_matrix(csv_path: str = None, exclude_shell: bool = True,
     plt.tight_layout()
     plt.show()
 
-def raster_old(config=None,title=None,populations=['hippocampus']):
+def raster(spikes_df: Optional[pd.DataFrame] = None, config: Optional[str] = None, network_name: Optional[str] = None, 
+           ax: Optional[Axes] = None,tstart: Optional[float] = None,tstop: Optional[float] = None,
+           color_map: Optional[Dict[str, str]] = None) -> Axes:
     """
-    old function probs dep
-    """
-    conf = util.load_config(config)
-    spikes_path = os.path.join(conf["output"]["output_dir"],conf["output"]["spikes_file"])
-    nodes = util.load_nodes_from_config(config)
-    plot_spikes(nodes,spikes_path)
-    return
-
-def raster(config=None,title=None,population=None,group_key='pop_name'):
-    """
-    old function probs dep or more to new spike module?
-    """
-    conf = util.load_config(config)
+    Plots a raster plot of neural spikes, with different colors for each population.
     
-    cells_file = conf["networks"]["nodes"][0]["nodes_file"]
-    cell_types_file = conf["networks"]["nodes"][0]["node_types_file"]
-    spikes_path = os.path.join(conf["output"]["output_dir"],conf["output"]["spikes_file"])
-
-    from bmtk.analyzer.visualization import spikes
-    spikes.plot_spikes(cells_file,cell_types_file,spikes_path,population=population,group_key=group_key)
-    return
-
-def plot_spikes(nodes, spikes_file,save_file=None):   
+    Parameters:
+    ----------
+    spikes_df : pd.DataFrame, optional
+        DataFrame containing spike data with columns 'timestamps', 'node_ids', and optional 'pop_name'.
+    config : str, optional
+        Path to the configuration file used to load node data.
+    network_name : str, optional
+        Specific network name to select from the configuration; if not provided, uses the first network.
+    ax : matplotlib.axes.Axes, optional
+        Axes on which to plot the raster; if None, a new figure and axes are created.
+    tstart : float, optional
+        Start time for filtering spikes; only spikes with timestamps greater than `tstart` will be plotted.
+    tstop : float, optional
+        Stop time for filtering spikes; only spikes with timestamps less than `tstop` will be plotted.
+    color_map : dict, optional
+        Dictionary specifying colors for each population. Keys should be population names, and values should be color values.
+    
+    Returns:
+    -------
+    matplotlib.axes.Axes
+        Axes with the raster plot.
+    
+    Notes:
+    -----
+    - If `config` is provided, the function merges population names from the node data with `spikes_df`.
+    - Each unique population (`pop_name`) in `spikes_df` will be represented by a different color if `color_map` is not specified.
+    - If `color_map` is provided, it should contain colors for all unique `pop_name` values in `spikes_df`.
     """
-    old function probs dep
-    """
-    import h5py
+    # Initialize axes if none provided
+    if ax is None:
+        _, ax = plt.subplots(1, 1)
 
-    spikes_h5 = h5py.File(spikes_file, 'r')
-    spike_gids = np.array(spikes_h5['/spikes/gids'], dtype=np.uint)
-    spike_times = np.array(spikes_h5['/spikes/timestamps'], dtype=np.float)
+    # Filter spikes by time range if specified
+    if tstart is not None:
+        spikes_df = spikes_df[spikes_df['timestamps'] > tstart]
+    if tstop is not None:
+        spikes_df = spikes_df[spikes_df['timestamps'] < tstop]
+
+    # Load and merge node population data if config is provided
+    if config:
+        nodes = load_nodes_from_config(config)
+        if network_name:
+            nodes = nodes.get(network_name, {})
+        else:
+            nodes = list(nodes.values())[0] if nodes else {}
+            print("Grabbing first network; specify a network name to ensure correct node population is selected.")
         
-    spikes = np.rot90(np.vstack((spike_gids,spike_times))) # Make array [[gid spiketime],[gid2 spiketime2]]
+        # Find common columns, but exclude the join key from the list
+        common_columns = spikes_df.columns.intersection(nodes.columns).tolist()
+        common_columns = [col for col in common_columns if col != 'node_ids']  # Remove our join key from the common list
 
-    #spikes = spikes[spikes[:,0].argsort()] # Sort by cell number
+        # Drop all intersecting columns except the join key column from df2
+        spikes_df = spikes_df.drop(columns=common_columns)
+        # merge nodes and spikes df
+        spikes_df = spikes_df.merge(nodes['pop_name'], left_on='node_ids', right_index=True, how='left')
 
-    """
-    Author: Tyler Banks
-    Loop through all spike files, create a list of when each cell spikes, plot.
-    """
-   
-    cell_types = ['EC','CA3e','CA3o','CA3b','DGg','DGh','DGb']
-    cell_nums = [30,63,8,8,384,32,32]
-    d = [[] for _ in range(sum(cell_nums))]
+
+    # Get unique population names
+    unique_pop_names = spikes_df['pop_name'].unique()
     
-    color_picker=['red','orange','yellow','green','blue','purple','black']
-    colors = []
-    offset=0
+    # Generate colors if no color_map is provided
+    if color_map is None:
+        cmap = plt.get_cmap('tab10')  # Default colormap
+        color_map = {pop_name: cmap(i / len(unique_pop_names)) for i, pop_name in enumerate(unique_pop_names)}
+    else:
+        # Ensure color_map contains all population names
+        missing_colors = [pop for pop in unique_pop_names if pop not in color_map]
+        if missing_colors:
+            raise ValueError(f"color_map is missing colors for populations: {missing_colors}")
     
-    for i, row in enumerate(spikes):
-        d[int(row[0])+offset].append(row[1])
-            
-    for i, n in enumerate(cell_nums):
-        for _ in range(n):
-            colors.append(color_picker[i])
-        
-    fig, axs = plt.subplots(1,1)
-    axs.eventplot(d,colors=colors)
-    axs.set_title('Hipp BMTK')
-    axs.set_ylabel('Cell Number')
-    axs.set_xlabel('Time (ms)')
-    axs.legend(cell_types[::-1])
+    # Plot each population with its specified or generated color
+    for pop_name, group in spikes_df.groupby('pop_name'):
+        ax.scatter(group['timestamps'], group['node_ids'], label=pop_name, color=color_map[pop_name], s=0.5)
+
+    # Label axes
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Node ID")
+    ax.legend(title="Population", loc='upper right', framealpha=0.9, markerfirst=False)
     
-    leg = axs.get_legend()
-    for i,c in enumerate(color_picker):
-        leg.legendHandles[-i-1].set_color(c)
-    
-    #splt.savefig('raster3_after_pycvode_fixes.png')
-    if save_file:
-        plt.savefig(save_file)
-    
-    plt.draw()
-    
-    return
+    return ax
     
 def plot_3d_positions(config=None, populations_list=None, group_by=None, title=None, save_file=None, subset=None):
     """

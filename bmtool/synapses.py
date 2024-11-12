@@ -115,7 +115,7 @@ class SynapseTuner:
         - `set_up_cell()` should be called before setting up the synapse.
         - Synapse location, type, and properties are specified within `spec_syn_param` and `spec_settings`.
         """
-        self.syn = getattr(h, self.conn['spec_syn_param']['level_of_detail'])(list(self.cell.all)[self.conn['spec_settings']['sec_id']](self.conn['spec_settings']['sec_x']))
+        self.syn = getattr(h, self.conn['spec_settings']['level_of_detail'])(list(self.cell.all)[self.conn['spec_settings']['sec_id']](self.conn['spec_settings']['sec_x']))
         for key, value in self.conn['spec_syn_param'].items():
             if isinstance(value, (int, float)):  # Only create sliders for numeric values
                 if hasattr(self.syn, key):
