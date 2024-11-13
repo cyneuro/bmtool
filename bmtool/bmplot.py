@@ -274,7 +274,7 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
         plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
         return
 
-def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=None,tids=None, no_prepend_pop=False,save_file=None,type='convergence'):
+def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=None,tids=None, no_prepend_pop=False,save_file=None,method='convergence'):
     """
     Generates connection plot displaying gap junction data.
     config: A BMTK simulation config 
@@ -290,7 +290,7 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
         raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
-    if type !='convergence' and type!='percent':
+    if method !='convergence' and method!='percent':
         raise Exception("type must be 'convergence' or 'percent'")
     sources = sources.split(",")
     targets = targets.split(",")
@@ -302,7 +302,7 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
         tids = tids.split(",")
     else:
         tids = []
-    syn_info, data, source_labels, target_labels = util.gap_junction_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,type=type)
+    syn_info, data, source_labels, target_labels = util.gap_junction_connections(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,method=method)
     
     
     def filter_rows(syn_info, data, source_labels, target_labels):
@@ -350,7 +350,7 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
     plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
     return
     
-def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,synaptic_info='0',
+def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],no_prepend_pop=True,synaptic_info='0',
                       source_cell = None,target_cell = None,include_gap=True):
     """
     Generates histogram of number of connections individual cells in a population receieve from another population
@@ -379,15 +379,15 @@ def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[]
                 conn_mean = statistics.mean(node_pairs.values)
                 conn_std = statistics.stdev(node_pairs.values)
                 conn_median = statistics.median(node_pairs.values)
-                label = "mean {:.2f} std ({:.2f}) median {:.2f}".format(conn_mean,conn_std,conn_median)
+                label = "mean {:.2f} std {:.2f} median {:.2f}".format(conn_mean,conn_std,conn_median)
             except: # lazy fix for std not calculated with 1 node
                 conn_mean = statistics.mean(node_pairs.values)
                 conn_median = statistics.median(node_pairs.values)
                 label = "mean {:.2f} median {:.2f}".format(conn_mean,conn_median)
-            plt.hist(node_pairs.values,density=True,bins='auto',stacked=True,label=label)
+            plt.hist(node_pairs.values,density=False,bins='auto',stacked=True,label=label)
             plt.legend()
             plt.xlabel("# of conns from {} to {}".format(source_cell,target_cell))
-            plt.ylabel("Density")
+            plt.ylabel("# of cells")
             plt.show()
         else: # dont care about other cell pairs so pass
             pass
@@ -406,10 +406,10 @@ def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[]
         tids = tids.split(",")
     else:
         tids = []
-    util.relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=connection_pair_histogram,synaptic_info=synaptic_info)
+    util.relation_matrix(config,nodes,edges,sources,targets,sids,tids,not no_prepend_pop,relation_func=connection_pair_histogram,synaptic_info=synaptic_info)
 
-def connection_distance(config: str,source: str,target: str,
-                        source_cell_id: int,target_id_type: str) -> None:
+def connection_distance(config: str,sources: str,targets: str,
+                        source_cell_id: int,target_id_type: str,ignore_z:bool=False) -> None:
     """
     Plots the 3D spatial distribution of target nodes relative to a source node
     and a histogram of distances from the source node to each target node.
@@ -421,11 +421,12 @@ def connection_distance(config: str,source: str,target: str,
     targets: (str) network name(s) to plot
     source_cell_id : (int) ID of the source cell for calculating distances to target nodes.
     target_id_type : (str) A string to filter target nodes based off the target_query.
+    ignore_z : (bool) A bool to ignore_z axis or not for when calculating distance default is False
 
     """
     if not config:
         raise Exception("config not defined")
-    if not source or not target:
+    if not sources or not targets:
         raise Exception("Sources or targets not defined")
     #if source != target:
         #raise Exception("Code is setup for source and target to be the same! Look at source code for function to add feature")
@@ -433,8 +434,8 @@ def connection_distance(config: str,source: str,target: str,
     # Load nodes and edges based on config file
     nodes, edges = util.load_nodes_edges_from_config(config)
     
-    edge_network = source + "_to_" + target
-    node_network = source
+    edge_network = sources + "_to_" + targets
+    node_network = sources
 
     # Filter edges to obtain connections originating from the source node
     edge = edges[edge_network]
@@ -450,16 +451,25 @@ def connection_distance(config: str,source: str,target: str,
     source_node = node.loc[node.index == source_cell_id]
 
     # Calculate distances between source node and each target node
-    target_positions = target_nodes[['pos_x', 'pos_y', 'pos_z']].values
-    source_position = np.array([source_node['pos_x'], source_node['pos_y'], source_node['pos_z']]).ravel()  # Ensure 1D shape
+    if ignore_z:
+        target_positions = target_nodes[['pos_x', 'pos_y']].values
+        source_position = np.array([source_node['pos_x'], source_node['pos_y']]).ravel()  # Ensure 1D shape
+    else:
+        target_positions = target_nodes[['pos_x', 'pos_y', 'pos_z']].values
+        source_position = np.array([source_node['pos_x'], source_node['pos_y'], source_node['pos_z']]).ravel()  # Ensure 1D shape
     distances = np.linalg.norm(target_positions - source_position, axis=1)
 
-    # Plot positions of source and target nodes in 3D space
-    fig = plt.figure(figsize=(8, 6)) 
-    ax = fig.add_subplot(111, projection='3d')
-
-    ax.scatter(target_nodes['pos_x'], target_nodes['pos_y'], target_nodes['pos_z'], c='blue', label="target cells")
-    ax.scatter(source_node['pos_x'], source_node['pos_y'], source_node['pos_z'], c='red', label="source cell")
+    # Plot positions of source and target nodes in 3D space or 2D
+    if ignore_z:
+        fig = plt.figure(figsize=(8, 6)) 
+        ax = fig.add_subplot(111)
+        ax.scatter(target_nodes['pos_x'], target_nodes['pos_y'], c='blue', label="target cells")
+        ax.scatter(source_node['pos_x'], source_node['pos_y'], c='red', label="source cell")
+    else:
+        fig = plt.figure(figsize=(8, 6)) 
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(target_nodes['pos_x'], target_nodes['pos_y'], target_nodes['pos_z'], c='blue', label="target cells")
+        ax.scatter(source_node['pos_x'], source_node['pos_y'], source_node['pos_z'], c='red', label="source cell")
 
     # Optional: Add text annotations for distances
     # for i, distance in enumerate(distances):
@@ -474,7 +484,7 @@ def connection_distance(config: str,source: str,target: str,
     plt.hist(distances, bins=20, color='blue', edgecolor='black')
     plt.xlabel("Distance")
     plt.ylabel("Count")
-    plt.title("Distance from Source Node to Each Target Node")
+    plt.title(f"Distance from Source Node to Each Target Node")
     plt.grid(True)
     plt.show()
 
@@ -914,7 +924,7 @@ def plot_3d_positions(config=None, populations_list=None, group_by=None, title=N
 
     return
 
-def cell_rotation_3d(config=None, populations_list=None, group_by=None, title=None, save_file=None, quiver_length=None, arrow_length_ratio=None, group=None, max_cells=1000000):
+def plot_3d_cell_rotation(config=None, populations_list=None, group_by=None, title=None, save_file=None, quiver_length=None, arrow_length_ratio=None, group=None, subset=None):
     from scipy.spatial.transform import Rotation as R
     if not config:
         raise Exception("config not defined")
@@ -957,22 +967,15 @@ def cell_rotation_3d(config=None, populations_list=None, group_by=None, title=No
             groupings = [(None, nodes_df)]
             color_map = ['blue']
 
-        cells_plotted = 0
         for color, (group_name, group_df) in zip(color_map, groupings):
+            if subset is not None:
+                group_df = group_df.iloc[::subset]
+            
             if group and group_name not in group.split(","):
                 continue
 
             if "pos_x" not in group_df or "rotation_angle_xaxis" not in group_df:
                 continue
-
-            if cells_plotted >= max_cells:
-                continue
-
-            if len(group_df) + cells_plotted > max_cells:
-                total_remaining = max_cells - cells_plotted
-                group_df = group_df[:total_remaining]
-
-            cells_plotted += len(group_df)
 
             X = group_df["pos_x"]
             Y = group_df["pos_y"]

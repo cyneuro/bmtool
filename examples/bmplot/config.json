@@ -1,4 +1,4 @@
 {
-  "network": "/Users/gregglickert/Documents/GitHub/bmtool/examples/bmplot/circuit_config.json",
-  "simulation": "/Users/gregglickert/Documents/GitHub/bmtool/examples/bmplot/simulation_config.json"
+  "network": "/home/gjgpb9/cortex_modeling/bmtool/examples/bmplot/circuit_config.json",
+  "simulation": "/home/gjgpb9/cortex_modeling/bmtool/examples/bmplot/simulation_config.json"
 }

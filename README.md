@@ -4,12 +4,12 @@ A collection of modules to make developing [Neuron](https://www.neuron.yale.edu/
 [![license](https://img.shields.io/github/license/mashape/apistatus.svg?maxAge=2592000)](https://github.com/cyneuro/bmtool/blob/master/LICENSE) 
 
 ## Table of Contents
-- [Getting Started](#Getting-Started)
-- [CLI](#CLI)
-- [Single Cell](#Single-Cell-Module)
+- [Getting Started](#getting-started)
+- [CLI](#cli)
+- [Single Cell](#single-cell-module)
 - [Synapses](#synapses-module)
-- [Connectors](#Connectors-Module)
-- [Bmplot](#bmplot-Module)
+- [Connectors](#connectors-module)
+- [Bmplot](#bmplot-module)
 - [Graphs](#graphs-module)
 
 ## Getting Started
@@ -363,146 +363,51 @@ connector.setup_nodes(target=net.nodes(pop_name = 'PopB'))
 net.add_edges(**connector.edge_params())
 ```
 
-## Bmplot Module
-- [Total connections](#Total-connection-plot)
-- [Percent connections](#Percent-connection-plot)
-- [Convergence connnections](#convergence-plot)
-- [Divergence connections](#divergence-plot)
-- [Gap Junction connections](#gap-junction-plot)
-- [connection histogram](#connection-histogram)
-- [probability connection](#probability-of-connection-plot)
-- [3D location](#3d-position-plot)
-- [3D rotation](#cell-rotations)
-- [Plot Connection Diagram](#plot-connection-diagram)
+## Bmplot Module 
+### for a demo please see the notebook [here](examples/bmplot/bmplot.ipynb) 
+- [total_connection_matrix](#total_connection_matrix)
+- [percent_connection_matrix](#percent_connection_matrix)
+- [convergence_connection_matrix](#convergence_connection_matrix)
+- [divergence_connection_matrix](#divergence_connection_matrix)
+- [gap_junction_matrix](#gap_junction_matrix)
+- [connection_distance](#connection_distance)
+- [connection_histogram](#connection_histogram)
+- [plot_3d_positions](#plot_3d_positions)
+- [plot_3d_cell_rotation](#plot_3d_cell_rotation)
 
-### Total connection plot
+### total_connection_matrix
 #### Generates a table of total number of connections each neuron population recieves
 
-
-```python
-from bmtool import bmplot
-bmplot.total_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,include_gap=False)
-```
-
-
     
-![png](readme_figures/output_19_0.png)
-    
-
-
-### Percent connection plot
+### percent_connection_matrix
 #### Generates a table of the percent connectivity of neuron populations.Method can change if you want the table to be total percent connectivity, only unidirectional connectivity or only bi directional connectvity 
 
 
-```python
-bmplot.percent_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,method='total',include_gap=False)
-```
-
-
-    
-![png](readme_figures/output_21_0.png)
-    
-
-
-### Convergence plot
+### convergence_connection_matrix
 #### Generates a table of the mean convergence of neuron populations. Method can be changed to show max, min, mean, or std for convergence a cell recieves
 
-
-```python
-bmplot.convergence_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,include_gap=False,method='mean+std')
-```
-
-
     
-![png](readme_figures/output_23_0.png)
-    
-
-
-### Divergence plot
+### divergence_connection_matrix
 #### Generates a table of the mean divergence of neuron populations. Method can be changed to show max, min, mean or std divergence a cell recieves.
 
-
-```python
-bmplot.divergence_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,include_gap=False,method='mean+std')
-```
-
-
     
-![png](readme_figures/output_25_0.png)
-    
-### Gap Junction plot
-#### While gap junctions can be include in the above plots, you can use this function to only view gap junctions.Type can be either 'convergence' or 'percent' connections to generate different plots
+### gap_junction_matrix
+#### While gap junctions can be include in the above plots, you can use this function to only view gap junctions. Method can be either 'convergence' or 'percent' connections to generate different plots
 
 
-```python
-bmplot.gap_junction_matrix(config='config.json',sources='LA',targets='LA',sids='pop_name',tids='pop_name',no_prepend_pop=True,type='percent')
-```
+### connection_distance
+#### Generates a 3d plot with the source and target cells location along with a histogram showing connection distance
 
-
-    
-![png](output_gap.png)
-
-
-### Connection histogram 
+### connection_histogram 
 #### Generates a histogram of the distribution of connections a population of cells give to individual cells of another population 
 
 
-```python
-bmplot.connection_histogram(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',source_cell='PV',target_cell='PV',include_gap=False)
-```
-
-
-    
-![png](readme_figures/output_27_0.png)
-    
-
-
-### probability of connection plot
-#### this function needs some work
-
-
-```python
-bmplot.probability_connection_matrix(config='config.json',sources='LA',targets='LA',tids='pop_name',sids='pop_name',no_prepend_pop=True,line_plot=True)
-```
-
-
-    
-![png](readme_figures/output_29_0.png)
-    
-
-
-
-    
-![png](readme_figures/output_29_1.png)
-    
-
-
-### 3D position plot
+### plot_3d_positions
 #### Generates a plot of cells positions in 3D space 
 
 
-```python
-bmplot.plot_3d_positions(config='config.json',populations_list='LA',group_by='pop_name',save_file=False)
-```
-
-
-    
-![png](readme_figures/output_31_0.png)
-    
-
-
-### cell rotations
+### plot_3d_cell_rotation
 #### Generates a plot of cells location in 3D plot and also the cells rotation
-
-
-```python
-bmplot.cell_rotation_3d(config='config2.json',populations_list='all',group_by='pop_name',save_file=False,quiver_length=20,arrow_length_ratio=0.25,max_cells=100)
-```
-
-
-    
-![png](readme_figures/output_33_0.png)
-    
 
 
 ### Plot Connection Diagram
@@ -519,259 +424,12 @@ bmplot.plot_network_graph(config='config.json',sources='LA',targets='LA',tids='p
 
 
 
-
-
-```python
-from bmtool import bmplot
-bmplot.plot_basic_cell_info(config_file='config.json')
-```
-
-    Network and node info:
-    LA:
-
-
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>node_type</th>
-      <th>pop_name</th>
-      <th>model_type</th>
-      <th>model_template</th>
-      <th>morphology</th>
-      <th>count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>100</td>
-      <td>PNa</td>
-      <td>biophysical</td>
-      <td>hoc:Cell_Af</td>
-      <td>blank.swc</td>
-      <td>800</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>101</td>
-      <td>PNc</td>
-      <td>biophysical</td>
-      <td>hoc:Cell_Cf</td>
-      <td>blank.swc</td>
-      <td>800</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>102</td>
-      <td>PV</td>
-      <td>biophysical</td>
-      <td>hoc:InterneuronCellf</td>
-      <td>blank.swc</td>
-      <td>240</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>103</td>
-      <td>SOM</td>
-      <td>biophysical</td>
-      <td>hoc:LTS_Cell</td>
-      <td>blank.swc</td>
-      <td>160</td>
-    </tr>
-  </tbody>
-</table>
-
-
-    thalamus_pyr:
-
-
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>node_type</th>
-      <th>pop_name</th>
-      <th>model_type</th>
-      <th>count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>100</td>
-      <td>pyr_inp</td>
-      <td>virtual</td>
-      <td>1600</td>
-    </tr>
-  </tbody>
-</table>
-
-
-    thalamus_pv:
-
-
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>node_type</th>
-      <th>pop_name</th>
-      <th>model_type</th>
-      <th>count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>100</td>
-      <td>pv_inp</td>
-      <td>virtual</td>
-      <td>240</td>
-    </tr>
-  </tbody>
-</table>
-
-
-    thalamus_som:
-
-
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>node_type</th>
-      <th>pop_name</th>
-      <th>model_type</th>
-      <th>count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>100</td>
-      <td>som_inp</td>
-      <td>virtual</td>
-      <td>160</td>
-    </tr>
-  </tbody>
-</table>
-
-
-    tone:
-
-
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>node_type</th>
-      <th>pop_name</th>
-      <th>model_type</th>
-      <th>count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>100</td>
-      <td>tone</td>
-      <td>virtual</td>
-      <td>1840</td>
-    </tr>
-  </tbody>
-</table>
-
-
-    shock:
-
-
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>node_type</th>
-      <th>pop_name</th>
-      <th>model_type</th>
-      <th>count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>100</td>
-      <td>shock</td>
-      <td>virtual</td>
-      <td>400</td>
-    </tr>
-  </tbody>
-</table>
-
-
-    shell:
-
-
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>node_type</th>
-      <th>pop_name</th>
-      <th>model_type</th>
-      <th>count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>100</td>
-      <td>PNa</td>
-      <td>virtual</td>
-      <td>3975</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>101</td>
-      <td>PNc</td>
-      <td>virtual</td>
-      <td>3975</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>102</td>
-      <td>PV</td>
-      <td>virtual</td>
-      <td>1680</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>103</td>
-      <td>SOM</td>
-      <td>virtual</td>
-      <td>1120</td>
-    </tr>
-  </tbody>
-</table>
-
-
-
-
-
-    'LA'
 ## Graphs Module
 - [Generate graph](#generate-graph)
 - [Plot Graph](#plot-graph)
 - [Connectioon table](#generate-graph-connection-table)
 
 ### Generate Graph
-
 
 ```python
 from bmtool import graphs

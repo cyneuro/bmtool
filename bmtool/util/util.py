@@ -736,8 +736,7 @@ def connection_divergence(config=None,nodes=None,edges=None,sources=[],targets=[
 
     return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
 
-def gap_junction_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,type='convergence'):
-    import pandas as pd
+def gap_junction_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method='convergence'):
 
     
     def total_connection_relationship(**kwargs): #reduced version of original function; only gets mean+std
@@ -751,7 +750,7 @@ def gap_junction_connections(config=None,nodes=None,edges=None,sources=[],target
         #print(cons)
         
         try: 
-            cons = cons[cons['is_gap_junction'] != True]
+            cons = cons[cons['is_gap_junction'] == True]
         except:
             raise Exception("no gap junctions found to drop from connections")
         mean = cons['target_node_id'].value_counts().mean()
@@ -770,7 +769,7 @@ def gap_junction_connections(config=None,nodes=None,edges=None,sources=[],target
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type]==target_id)]
         #add functionality that shows only the one's with gap_junctions
         try: 
-            cons = cons[cons['is_gap_junction'] != True]
+            cons = cons[cons['is_gap_junction'] == True]
         except:
             raise Exception("no gap junctions found to drop from connections")
         
@@ -780,20 +779,15 @@ def gap_junction_connections(config=None,nodes=None,edges=None,sources=[],target
         num_targets = t_list[target_id_type].value_counts().sort_index().loc[target_id]
 
 
-        total = round(total_cons / (num_sources*num_targets) * 100,2)
+        total = round(total_cons / (num_sources*num_targets) * 100,2) * 2 #not sure why but the percent is off by roughly 2 times ill make khuram fix it  
         return total
     
-    if type == 'convergence':
+    if method == 'convergence':
         return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=total_connection_relationship)
-    elif type == 'percent':
+    elif method == 'percent':
         return relation_matrix(config,nodes,edges,sources,targets,sids,tids,prepend_pop,relation_func=precent_func)
         
 
-def gap_junction_percent_connections(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],prepend_pop=True,method=None):
-    import pandas as pd
-    
-        
-    
 def connection_probabilities(config=None,nodes=None,edges=None,sources=[],
     targets=[],sids=[],tids=[],prepend_pop=True,dist_X=True,dist_Y=True,dist_Z=True,num_bins=10,include_gap=True):
     

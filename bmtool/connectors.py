@@ -1272,8 +1272,8 @@ class GapJunction(UnidirectionConnector):
         Similar to `UnidirectionConnector`.
     """
 
-    def __init__(self, p=1., p_arg=None, verbose=True,report_name=None):
-        super().__init__(p=p, p_arg=p_arg, verbose=verbose,report_name=None)
+    def __init__(self, p=1., p_arg=None, verbose=True,save_report=True,report_name=None):
+        super().__init__(p=p, p_arg=p_arg, verbose=verbose,save_report=save_report,report_name=None)
 
 
     def setup_nodes(self, source=None, target=None):
