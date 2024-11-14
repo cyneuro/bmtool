@@ -1064,8 +1064,8 @@ class ReciprocalConnector(AbstractConnector):
         data = {
             "Source": [src_str],
             "Target": [trg_str],
-            "Fraction of connected pairs in possible ones (%)": [fraction[0]*100],
-            "Fraction of connected pairs in all pairs (%)": [fraction[1]*100]
+            "Percent connectionivity within possible connections": [fraction[0]*100],
+            "Percent connectionivity within all connections": [fraction[1]*100]
         }
         df = pd.DataFrame(data)
         
@@ -1235,8 +1235,8 @@ class UnidirectionConnector(AbstractConnector):
         data = {
             "Source": [src_str],
             "Target": [trg_str],
-            "Fraction of connected pairs in possible ones (%)": [possible_fraction],
-            "Fraction of connected pairs in all pairs (%)": [all_fraction]
+            "Percent connectionivity within possible connections": [possible_fraction],
+            "Percent connectionivity within all connections": [all_fraction]
         }
         df = pd.DataFrame(data)
         
@@ -1336,8 +1336,8 @@ class GapJunction(UnidirectionConnector):
         data = {
             "Source": [src_str+"Gap"],
             "Target": [trg_str+"Gap"],
-            "Fraction of connected pairs in possible ones (%)": [fraction_0*100],
-            "Fraction of connected pairs in all pairs (%)": [fraction_1*100]
+            "Percent connectionivity within possible connections": [fraction_0*100],
+            "Percent connectionivity within all connections": [fraction_1*100]
         }
         df = pd.DataFrame(data)
         

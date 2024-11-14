@@ -649,6 +649,4 @@ class SynapseTuner:
         display(ui)
 
 
-
-
     

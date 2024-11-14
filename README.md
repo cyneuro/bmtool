@@ -367,6 +367,7 @@ net.add_edges(**connector.edge_params())
 ### for a demo please see the notebook [here](examples/bmplot/bmplot.ipynb) 
 - [total_connection_matrix](#total_connection_matrix)
 - [percent_connection_matrix](#percent_connection_matrix)
+- [connector_percent_matrix](#connector_percent_matrix)
 - [convergence_connection_matrix](#convergence_connection_matrix)
 - [divergence_connection_matrix](#divergence_connection_matrix)
 - [gap_junction_matrix](#gap_junction_matrix)
@@ -381,6 +382,9 @@ net.add_edges(**connector.edge_params())
     
 ### percent_connection_matrix
 #### Generates a table of the percent connectivity of neuron populations.Method can change if you want the table to be total percent connectivity, only unidirectional connectivity or only bi directional connectvity 
+
+### connector_percent_matrix
+#### Generates a table of the percent connectivity using the output from bmtool.connector. By default will generate the percent connectivity of the possible connections meaning factoring in distance rules.
 
 
 ### convergence_connection_matrix
