@@ -890,7 +890,7 @@ def plot_3d_positions(config=None, populations_list=None, group_by=None, title=N
     if not is_notebook:
         plt.show()
 
-    return
+    return ax
 
 def plot_3d_cell_rotation(config=None, populations_list=None, group_by=None, title=None, save_file=None, quiver_length=None, arrow_length_ratio=None, group=None, subset=None):
     from scipy.spatial.transform import Rotation as R
