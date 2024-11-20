@@ -306,46 +306,47 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
     
     
     def filter_rows(syn_info, data, source_labels, target_labels):
-        new_syn_info = syn_info
-        new_data = data
-        new_source_labels = source_labels
-        new_target_labels = target_labels
-        for row in new_data:
-            row_index = -1
-            try:
-                if((np.isnan(row).all())): #checks if all of a row is nan
-                    row_index = np.where(np.isnan(new_data)==np.isnan(row))[0][0]  
-            except:
-                row_index = -1
-            finally:          
-                if(all(x==0 for x in row)): #checks if all of a row is zeroes
-                    row_index = np.where(new_data==row)[0][0] 
-                if row_index!=-1:   #deletes corresponding row accordingly in all relevant variables.
-                    new_syn_info = np.delete(new_syn_info,row_index,0) 
-                    new_data = np.delete(new_data,row_index,0)
-                    new_source_labels = np.delete(new_source_labels,row_index)
-        return new_syn_info, new_data,new_source_labels,new_target_labels
+        # Identify rows with all NaN or all zeros
+        valid_rows = ~np.all(np.isnan(data), axis=1) & ~np.all(data == 0, axis=1)
 
-    def filter_rows_and_columns(syn_info,data,source_labels,target_labels):
+        # Filter rows based on valid_rows mask
+        new_syn_info = syn_info[valid_rows]
+        new_data = data[valid_rows]
+        new_source_labels = np.array(source_labels)[valid_rows]
+
+        return new_syn_info, new_data, new_source_labels, target_labels
+
+    def filter_rows_and_columns(syn_info, data, source_labels, target_labels):
+        # Filter rows first
         syn_info, data, source_labels, target_labels = filter_rows(syn_info, data, source_labels, target_labels)
-        transposed_syn_info = np.transpose(syn_info) #transpose everything and put it in to make sure columns get filtered
+
+        # Transpose data to filter columns
+        transposed_syn_info = np.transpose(syn_info)
         transposed_data = np.transpose(data)
         transposed_source_labels = target_labels
         transposed_target_labels = source_labels
-        syn_info, data, source_labels, target_labels = filter_rows(transposed_syn_info, transposed_data, transposed_source_labels, transposed_target_labels)
-        filtered_syn_info = np.transpose(syn_info) #transpose everything back to original order after filtering.
-        filtered_data = np.transpose(data)
-        filtered_source_labels = target_labels
-        filtered_target_labels = source_labels
-        return filtered_syn_info,filtered_data,filtered_source_labels,filtered_target_labels
+
+        # Filter columns (by treating them as rows in transposed data)
+        transposed_syn_info, transposed_data, transposed_source_labels, transposed_target_labels = filter_rows(
+            transposed_syn_info, transposed_data, transposed_source_labels, transposed_target_labels
+        )
+
+        # Transpose back to original orientation
+        filtered_syn_info = np.transpose(transposed_syn_info)
+        filtered_data = np.transpose(transposed_data)
+        filtered_source_labels = transposed_target_labels  # Back to original source_labels
+        filtered_target_labels = transposed_source_labels  # Back to original target_labels
+
+        return filtered_syn_info, filtered_data, filtered_source_labels, filtered_target_labels
+
     
     syn_info, data, source_labels, target_labels = filter_rows_and_columns(syn_info, data, source_labels, target_labels)
 
     if title == None or title=="":
         title = 'Gap Junction'
-        if type == 'convergence':
+        if method == 'convergence':
             title+=' Syn Convergence'
-        elif type == 'percent':
+        elif method == 'percent':
             title+=' Percent Connectivity'
     plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
     return
@@ -535,35 +536,42 @@ def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids
     fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
     plt.draw()
 
-def plot_connection_info(text, num, source_labels,target_labels, title, syn_info='0', save_file=None,return_dict=None):
+def plot_connection_info(text, num, source_labels, target_labels, title, syn_info='0', save_file=None, return_dict=None):
     """
-    write about function here
+    Function to plot connection information as a heatmap, including handling missing source and target values.
+    If there is no source or target, set the value to 0.
     """
     
-    #num = pd.DataFrame(num).fillna('nc').to_numpy() # replace nan with nc * does not work with imshow
+    # Ensure text dimensions match num dimensions
+    num_source = len(source_labels)
+    num_target = len(target_labels)
     
-    num_source=len(source_labels)
-    num_target=len(target_labels)
+    # Set color map
     matplotlib.rc('image', cmap='viridis')
     
-    fig1, ax1 = plt.subplots(figsize=(num_source,num_target))
+    # Create figure and axis for the plot
+    fig1, ax1 = plt.subplots(figsize=(num_source, num_target))
+    num = np.nan_to_num(num, nan=0) # replace NaN with 0
     im1 = ax1.imshow(num)
-    #fig.colorbar(im, ax=ax,shrink=0.4)
-    # We want to show all ticks...
+    
+    # Set ticks and labels for source and target
     ax1.set_xticks(list(np.arange(len(target_labels))))
     ax1.set_yticks(list(np.arange(len(source_labels))))
-    # ... and label them with the respective list entries
     ax1.set_xticklabels(target_labels)
-    ax1.set_yticklabels(source_labels,size=12, weight = 'semibold')
-    # Rotate the tick labels and set their alignment.
-    plt.setp(ax1.get_xticklabels(), rotation=45, ha="right",
-            rotation_mode="anchor", size=12, weight = 'semibold')
+    ax1.set_yticklabels(source_labels, size=12, weight='semibold')
     
+    # Rotate the tick labels for better visibility
+    plt.setp(ax1.get_xticklabels(), rotation=45, ha="right",
+             rotation_mode="anchor", size=12, weight='semibold')
+    
+    # Dictionary to store connection information
     graph_dict = {}
-    # Loop over data dimensions and create text annotations.
+    
+    # Loop over data dimensions and create text annotations
     for i in range(num_source):
         for j in range(num_target):
-            edge_info = text[i, j]
+            # Get the edge info, or set it to '0' if it's missing
+            edge_info = text[i, j] if text[i, j] is not None else 0
             
             # Initialize the dictionary for the source node if not already done
             if source_labels[i] not in graph_dict:
@@ -571,35 +579,41 @@ def plot_connection_info(text, num, source_labels,target_labels, title, syn_info
             
             # Add edge info for the target node
             graph_dict[source_labels[i]][target_labels[j]] = edge_info
-            if syn_info =='2' or syn_info =='3':
-                if num_source > 8 and num_source <20:
+            
+            # Set text annotations based on syn_info type
+            if syn_info == '2' or syn_info == '3':
+                if num_source > 8 and num_source < 20:
                     fig_text = ax1.text(j, i, edge_info,
-                            ha="center", va="center", color="w",rotation=37.5, size=8, weight = 'semi\bold')
+                                        ha="center", va="center", color="w", rotation=37.5, size=8, weight='semibold')
                 elif num_source > 20:
                     fig_text = ax1.text(j, i, edge_info,
-                            ha="center", va="center", color="w",rotation=37.5, size=7, weight = 'semibold')
+                                        ha="center", va="center", color="w", rotation=37.5, size=7, weight='semibold')
                 else:
                     fig_text = ax1.text(j, i, edge_info,
-                            ha="center", va="center", color="w",rotation=37.5, size=11, weight = 'semibold')
+                                        ha="center", va="center", color="w", rotation=37.5, size=11, weight='semibold')
             else:
                 fig_text = ax1.text(j, i, edge_info,
-                            ha="center", va="center", color="w", size=11, weight = 'semibold')
-
-    ax1.set_ylabel('Source', size=11, weight = 'semibold')
-    ax1.set_xlabel('Target', size=11, weight = 'semibold')
-    ax1.set_title(title,size=20, weight = 'semibold')
-    #plt.tight_layout()
-    notebook = is_notebook()
+                                    ha="center", va="center", color="w", size=11, weight='semibold')
+    
+    # Set labels and title for the plot
+    ax1.set_ylabel('Source', size=11, weight='semibold')
+    ax1.set_xlabel('Target', size=11, weight='semibold')
+    ax1.set_title(title, size=20, weight='semibold')
+    
+    # Display the plot or save it based on the environment and arguments
+    notebook = is_notebook()  # Check if running in a Jupyter notebook
     if notebook == False:
         fig1.show()
+    
     if save_file:
         plt.savefig(save_file)
+    
     if return_dict:
         return graph_dict
     else:
         return
 
-def connector_percent_matrix(csv_path: str = None, exclude_strings=None, title: str = 'Percent connection matrix', pop_order=None) -> None:
+def connector_percent_matrix(csv_path: str = None, exclude_strings=None, assemb_key=None, title: str = 'Percent connection matrix', pop_order=None) -> None:
     """
     Generates and plots a connection matrix based on connection probabilities from a CSV file produced by bmtool.connector.
 
@@ -633,6 +647,7 @@ def connector_percent_matrix(csv_path: str = None, exclude_strings=None, title: 
     # Filter the DataFrame based on exclude_strings
     def filter_dataframe(df, column_name, exclude_strings):
         def process_string(string):
+            
             match = re.search(r"\[\'(.*?)\'\]", string)
             if exclude_strings and any(ex_string in string for ex_string in exclude_strings):
                 return None
@@ -640,17 +655,55 @@ def connector_percent_matrix(csv_path: str = None, exclude_strings=None, title: 
                 filtered_string = match.group(1)
                 if 'Gap' in string:
                         filtered_string = filtered_string + "-Gap"
+                if assemb_key in string:
+                    filtered_string = filtered_string + assemb_key
                 return filtered_string  # Return matched string
 
             return string  # If no match, return the original string
-
+        
         df[column_name] = df[column_name].apply(process_string)
         df = df.dropna(subset=[column_name])
+        
         return df
 
     df = filter_dataframe(df, 'Source', exclude_strings)
     df = filter_dataframe(df, 'Target', exclude_strings)
+    
+    #process assem rows and combine them into one prob per assem type
+    assems = df[df['Source'].str.contains(assemb_key)]
+    unique_sources = assems['Source'].unique()
 
+    for source in unique_sources:
+        source_assems = assems[assems['Source'] == source]
+        unique_targets = source_assems['Target'].unique()  # Filter targets for the current source
+
+        for target in unique_targets:
+            # Filter the assemblies with the current source and target
+            unique_assems = source_assems[source_assems['Target'] == target]
+            
+            # find the prob of a conn
+            forward_probs = []
+            for _,row in unique_assems.iterrows():
+                selected_percentage = row[selected_column]
+                selected_percentage = [float(p) for p in selected_percentage.strip('[]').split()]
+                if len(selected_percentage) == 1 or len(selected_percentage) == 2:
+                    forward_probs.append(selected_percentage[0])
+                if len(selected_percentage) == 3:
+                    forward_probs.append(selected_percentage[0])
+                    forward_probs.append(selected_percentage[1])
+                    
+            mean_probs = np.mean(forward_probs)
+            source = source.replace(assemb_key, "")
+            target = target.replace(assemb_key, "")
+            new_row = pd.DataFrame({
+                'Source': [source],
+                'Target': [target],
+                'Percent connectionivity within possible connections': [mean_probs],
+                'Percent connectionivity within all connections': [0]
+            })
+
+            df = pd.concat([df, new_row], ignore_index=False)
+            
     # Prepare connection data
     connection_data = {}
     for _, row in df.iterrows():
@@ -671,14 +724,18 @@ def connector_percent_matrix(csv_path: str = None, exclude_strings=None, title: 
         if source in populations and target in populations:
             source_idx = populations.index(source)
             target_idx = populations.index(target)
-            connection_matrix[source_idx][target_idx] = probabilities[0]
-            if len(probabilities) == 1:
+
+            if type(probabilities) == float:
+                connection_matrix[source_idx][target_idx] = probabilities
+            elif len(probabilities) == 1:
                 connection_matrix[source_idx][target_idx] = probabilities[0]
-            if len(probabilities) == 2:
+            elif len(probabilities) == 2:
                 connection_matrix[source_idx][target_idx] = probabilities[0]
-            if len(probabilities) == 3:
+            elif len(probabilities) == 3:
                 connection_matrix[source_idx][target_idx] = probabilities[0] 
                 connection_matrix[target_idx][source_idx] = probabilities[1]
+            else:
+                raise Exception("unsupported format")
 
     # Plotting
     fig, ax = plt.subplots(figsize=(10, 8))
