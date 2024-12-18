@@ -21,7 +21,6 @@ import os
 import sys
 import re
 from typing import Optional, Dict
-from .analysis.spikes import load_spikes_to_df
 
 from .util.util import CellVarsFile,load_nodes_from_config #, missing_units
 from bmtk.analyzer.utils import listify
