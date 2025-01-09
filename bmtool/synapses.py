@@ -653,5 +653,113 @@ class SynapseTuner:
         # run model with default parameters 
         update_ui()
 
+class GapJunctionTuner:
+    def __init__(self, mechanisms_dir: str, templates_dir: str, general_settings: dict, conn_type_settings: dict):
+        neuron.load_mechanisms(mechanisms_dir)
+        h.load_file(templates_dir)
+        
+        self.general_settings = general_settings
+        self.conn_type_settings = conn_type_settings
+        
+        h.tstop = general_settings['tstart'] + general_settings['tdur'] + 100.
+        h.dt = general_settings['dt']  # Time step (resolution) of the simulation in ms
+        h.steps_per_ms = 1 / h.dt
+        h.celsius = general_settings['celsius']
+
+        self.cell_name = conn_type_settings['cell']
+        
+        # set up gap junctions
+        pc = h.ParallelContext()
+
+        self.cell1 = getattr(h, self.cell_name)()
+        self.cell2 = getattr(h, self.cell_name)()
+        
+        self.icl = h.IClamp(self.cell1.soma[0](0.5))
+        self.icl.delay = self.general_settings['tstart'] 
+        self.icl.dur = self.general_settings['tdur'] 
+        self.icl.amp = self.conn_type_settings['iclamp_amp'] # nA
+        
+        sec1 = list(self.cell1.all)[conn_type_settings['sec_id']]
+        sec2 = list(self.cell2.all)[conn_type_settings['sec_id']]
+
+        pc.source_var(sec1(conn_type_settings['sec_x'])._ref_v, 0, sec=sec1)
+        self.gap_junc_1 = h.Gap(sec1(0.5))
+        pc.target_var(self.gap_junc_1 ._ref_vgap, 1)
+
+        pc.source_var(sec2(conn_type_settings['sec_x'])._ref_v, 1, sec=sec2)
+        self.gap_junc_2 = h.Gap(sec2(0.5))
+        pc.target_var(self.gap_junc_2._ref_vgap, 0)
+
+        pc.setup_transfer()
+    
+    def model(self,resistance):
+
+        self.gap_junc_1.g = resistance
+        self.gap_junc_2.g = resistance
+        
+        t_vec = h.Vector()
+        soma_v_1 = h.Vector()
+        soma_v_2 = h.Vector()
+        t_vec.record(h._ref_t)
+        soma_v_1.record(self.cell1.soma[0](0.5)._ref_v)
+        soma_v_2.record(self.cell2.soma[0](0.5)._ref_v)
+        
+        self.t_vec = t_vec
+        self.soma_v_1 = soma_v_1
+        self.soma_v_2 = soma_v_2
+        
+        h.finitialize(-70 * mV)
+        h.continuerun(h.tstop * ms)
+ 
+ 
+    def plot_model(self):
+        t_range = [self.general_settings['tstart'] - 100., self.general_settings['tstart']+self.general_settings['tdur'] + 100.]
+        t = np.array(self.t_vec)
+        v1 = np.array(self.soma_v_1)
+        v2 = np.array(self.soma_v_2)
+        tidx = (t >= t_range[0]) & (t <= t_range[1])
+
+        plt.figure()
+        plt.plot(t[tidx], v1[tidx], 'b', label=f'{self.cell_name} 1')
+        plt.plot(t[tidx], v2[tidx], 'r', label=f'{self.cell_name} 2')
+        plt.title(f"{self.cell_name} gap junction")
+        plt.xlabel('Time (ms)')
+        plt.ylabel('Membrane Voltage (mV)')
+        plt.legend()
+        plt.show()        
+
+
+    def coupling_coefficient(self,t, v1, v2, t_start, t_end, dt=h.dt):
+        t = np.asarray(t)
+        v1 = np.asarray(v1)
+        v2 = np.asarray(v2)
+        idx1 = np.nonzero(t < t_start)[0][-1]
+        idx2 = np.nonzero(t < t_end)[0][-1]
+        return (v2[idx2] - v2[idx1]) / (v1[idx2] - v1[idx1])
 
     
+    def run_model(self):
+        w_run = widgets.Button(description='Run', icon='history', button_style='primary')
+        values = [i * 10**-4 for i in range(1, 101)]  # From 1e-4 to 1e-2
+
+        # Create the SelectionSlider widget with appropriate formatting
+        resistance = widgets.SelectionSlider(
+            options=[("%g"%i,i) for i in values],  # Use scientific notation for display
+            value=10**-3,  # Default value
+            description='Resistance: ',
+            continuous_update=True
+)
+
+        ui = VBox([w_run,resistance])
+        display(ui)
+        def on_button(*args):
+            clear_output()
+            display(ui)
+            resistance_for_gap = resistance.value
+            self.model(resistance_for_gap)
+            self.plot_model()
+            cc = self.coupling_coefficient(self.t_vec, self.soma_v_1, self.soma_v_2, 500, 1000)
+            print(f"coupling_coefficient is {cc:0.4f}")
+
+        on_button()    
+        w_run.on_click(on_button)

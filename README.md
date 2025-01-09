@@ -10,6 +10,7 @@ A collection of modules to make developing [Neuron](https://www.neuron.yale.edu/
 - [Synapses](#synapses-module)
 - [Connectors](#connectors-module)
 - [Bmplot](#bmplot-module)
+- [SLURM](#slurm-module)
 - [Graphs](#graphs-module)
 
 ## Getting Started
@@ -304,9 +305,10 @@ ex: [https://github.com/tjbanks/two-cell-hco](https://github.com/tjbanks/two-cel
 
 ### Synapses Module
 -[SynapticTuner](#synaptictuner)
+-Gap Junction tuner
 
 #### SynapticTuner - Aids in the tuning of synapses by printing out synaptic properties and giving the user sliders in a Jupyter notebook to tune the synapse. For more info view the example [here](examples/synapses/synaptic_tuner.ipynb)
-
+#### GapJunctionTuner - Provides jupyter sliders to tune for coupling coefficient in a similar style to the SynapticTuner an example can be viewed [here](examples/synapses/gap_junction_tuner.ipynb)
 
 ### Connectors Module
 - [UnidirectionConnector](#unidirectional-connector---unidirectional-connections-in-bmtk-network-model-with-given-probability-within-a-single-population-or-between-two-populations)
@@ -425,7 +427,8 @@ bmplot.plot_network_graph(config='config.json',sources='LA',targets='LA',tids='p
     
 ![png](readme_figures/output_35_0.png)
     
-
+## SLURM Module
+### This is an extremely helpful module that can simplify using SLURM too submit your models. There is also features to enable doing a seedSweep. This will vary the parameters of the simulation and make tuning the model easier. An example can be found [here](examples/SLURM/using_BlockRunner.ipynb) 
 
 
 ## Graphs Module
