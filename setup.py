@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="bmtool",
-    version='0.6.2',
+    version='0.6.4',
     author="Neural Engineering Laboratory at the University of Missouri",
     author_email="gregglickert@mail.missouri.edu",
     description="BMTool",
@@ -41,7 +41,8 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         "Operating System :: OS Independent",
     ],
-    packages=find_packages(exclude=['tests']),
+    packages=find_packages(),  # Automatically finds all packages
+    include_package_data=True,
     entry_points={
         'console_scripts': [
             'bmtool = bmtool.manage:cli'

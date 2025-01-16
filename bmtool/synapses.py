@@ -1,13 +1,17 @@
 import os
 import json
-import numpy as np
 import neuron
+import numpy as np
 from neuron import h
-from neuron.units import ms, mV
+from typing import List, Dict, Callable, Optional,Tuple
+from tqdm.notebook import tqdm
 import matplotlib.pyplot as plt
+from neuron.units import ms, mV
+from dataclasses import dataclass
+# scipy
 from scipy.signal import find_peaks
-from scipy.optimize import curve_fit
-
+from scipy.optimize import curve_fit,minimize_scalar,minimize
+# widgets
 import ipywidgets as widgets
 from IPython.display import display, clear_output
 from ipywidgets import HBox, VBox
@@ -319,10 +323,14 @@ class SynapseTuner:
         axs = axs.ravel()
         
         # Plot synaptic current (always included)
-        axs[0].plot(self.t, 1000 * self.rec_vectors[self.current_name])
+        current = self.rec_vectors[self.current_name]
+        syn_prop = self._get_syn_prop(short=True)
+        current = (current - syn_prop['baseline']) 
+        current = current * 1000
+        
+        axs[0].plot(self.t, current)
         if self.ispk !=None:
             for num in range(len(self.ispk)):
-                current = 1000 * np.array(self.rec_vectors[self.current_name].to_python())
                 axs[0].text(self.t[self.ispk[num]],current[self.ispk[num]],f"{str(num+1)}")
 
         axs[0].set_ylabel('Synaptic Current (pA)')
@@ -407,7 +415,7 @@ class SynapseTuner:
             A list containing the peak amplitudes for each segment of the recorded synaptic current.
         
         """
-        isyn = np.asarray(self.rec_vectors['i'])
+        isyn = np.array(self.rec_vectors[self.current_name].to_python())
         tspk = np.append(np.asarray(self.tspk), h.tstop)
         syn_prop = self._get_syn_prop(short=True)
         # print("syn_prp[sign] = " + str(syn_prop['sign']))
@@ -415,6 +423,7 @@ class SynapseTuner:
         isyn *= syn_prop['sign']
         ispk = np.floor((tspk + self.general_settings['delay']) / h.dt).astype(int)
 
+        
         try:        
             amp = [isyn[ispk[i]:ispk[i + 1]].max() for i in range(ispk.size - 1)]
             # indexs of where the max of the synaptic current is at. This is then plotted     
@@ -423,7 +432,7 @@ class SynapseTuner:
         except:
             amp = [isyn[ispk[i]:ispk[i + 1]].max() for i in range(ispk.size - 2)]  
             self.ispk = [np.argmax(isyn[ispk[i]:ispk[i + 1]]) + ispk[i] for i in range(ispk.size - 2)]
-            
+        
         return amp
 
 
@@ -450,7 +459,7 @@ class SynapseTuner:
         return max_amp
 
 
-    def _print_ppr_induction_recovery(self,amp, normalize_by_trial=True):
+    def _calc_ppr_induction_recovery(self,amp, normalize_by_trial=True,print_math=True):
         """
         Calculates induction and recovery metrics from the synaptic response amplitudes.
 
@@ -471,46 +480,51 @@ class SynapseTuner:
             The maximum amplitude in the response.
         """
         amp = np.array(amp)
+        amp = (amp * 1000) # scale up
         amp = amp.reshape(-1, amp.shape[-1])
         maxamp = amp.max(axis=1 if normalize_by_trial else None)
 
-        # functions used to round array to 2 sig figs
-        def format_value(x):
-            return f"{x:.2g}"
-
-        # Function to apply format_value to an entire array
         def format_array(arr):
-            # Flatten the array and format each element
-            return ' '.join([format_value(x) for x in arr.flatten()])
+            """Format an array to 2 significant figures for cleaner output."""
+            return np.array2string(arr, precision=2, separator=', ', suppress_small=True)
         
-        print("Short Term Plasticity")
-        print("PPR: above 1 is facilitating below 1 is depressing")
-        print("Induction: above 0 is facilitating below 0 is depressing")
-        print("Recovery: measure of how fast STP decays")
-        print("")
-        
-        ppr = amp[:,1:2] / amp[:,0:1]
-        print(f"Paired Pulse Response Calculation: 2nd pulse / 1st pulse ")
-        print(f"{format_array(amp[:,1:2])} - {format_array(amp[:,0:1])} = {format_array(ppr)}")
-        print("")
+        if print_math:
+            print("\n" + "="*40)
+            print("Short Term Plasticity Results")
+            print("="*40)
+            print("PPR: Above 1 is facilitating, below 1 is depressing.")
+            print("Induction: Above 0 is facilitating, below 0 is depressing.")
+            print("Recovery: A measure of how fast STP decays.\n")
 
-        induction = np.mean((amp[:, 5:8].mean(axis=1) - amp[:, :1].mean(axis=1)) / maxamp)
-        print(f"Induction Calculation: (avg(6,7,8 pulses) - 1 pulse) / max amps")
-        # Format and print arrays with 2 significant figures
-        print(f"{format_array(amp[:, 5:8])} - {format_array(amp[:, :1])} / {format_array(maxamp)}")
-        print(f"{format_array(amp[:, 5:8].mean(axis=1))} - {format_array(amp[:, :1].mean(axis=1))} / {format_array(maxamp)} = {format_array(induction)}")
-        print("")
+            # PPR Calculation
+            ppr = amp[:, 1:2] / amp[:, 0:1]
+            print("Paired Pulse Response (PPR)")
+            print("Calculation: 2nd pulse / 1st pulse")
+            print(f"Values: ({format_array(amp[:, 1:2])}) / ({format_array(amp[:, 0:1])}) = {format_array(ppr)}\n")
+
+            # Induction Calculation
+            induction = np.mean((amp[:, 5:8].mean(axis=1) - amp[:, :1].mean(axis=1)) / maxamp)
+            print("Induction")
+            print("Calculation: (avg(6th, 7th, 8th pulses) - 1st pulse) / max amps")
+            print(f"Values: avg({format_array(amp[:, 5:8])}) - {format_array(amp[:, :1])} / {format_array(maxamp)}")
+            print(f"({format_array(amp[:, 5:8].mean(axis=1))}) - ({format_array(amp[:, :1].mean(axis=1))}) / {format_array(maxamp)} = {induction:.3f}\n")
+
+            # Recovery Calculation
+            recovery = np.mean((amp[:, 8:12].mean(axis=1) - amp[:, :4].mean(axis=1)) / maxamp)
+            print("Recovery")
+            print("Calculation: (avg(9th, 10th, 11th, 12th pulses) - avg(1st to 4th pulses)) / max amps")
+            print(f"Values: avg({format_array(amp[:, 8:12])}) - avg({format_array(amp[:, :4])}) / {format_array(maxamp)}")
+            print(f"({format_array(amp[:, 8:12].mean(axis=1))}) - ({format_array(amp[:, :4].mean(axis=1))}) / {format_array(maxamp)} = {recovery:.3f}\n")
+
+            print("="*40 + "\n")
 
         recovery = np.mean((amp[:, 8:12].mean(axis=1) - amp[:, :4].mean(axis=1)) / maxamp)
-        print("Recovery Calculation: avg(9,10,11,12 pulses) - avg(1,2,3,4 pulses) / max amps")
-        print(f"{format_array(amp[:, 8:12])} - {format_array(amp[:, :4])} / {format_array(maxamp)}")
-        print(f"{format_array(amp[:, 8:12].mean(axis=1))} - {format_array(amp[:, :4].mean(axis=1))} / {format_array(maxamp)} = {format_array(recovery)}")
-        print("")
-
-        
+        induction = np.mean((amp[:, 5:8].mean(axis=1) - amp[:, :1].mean(axis=1)) / maxamp)
+        ppr = amp[:, 1:2] / amp[:, 0:1]
         # maxamp = max(amp, key=lambda x: abs(x[0]))
         maxamp = maxamp.max()
-        #return induction, recovery, maxamp
+        
+        return ppr, induction, recovery
 
 
     def _set_syn_prop(self, **kwargs):
@@ -614,7 +628,7 @@ class SynapseTuner:
                 self._simulate_model(w_input_freq.value, self.w_duration.value, w_vclamp.value)
             amp = self._response_amplitude()
             self._plot_model([self.general_settings['tstart'] - self.nstim.interval / 3, self.tstop])
-            self._print_ppr_induction_recovery(amp)
+            _ = self._calc_ppr_induction_recovery(amp)
             # print('Single trial ' + ('PSC' if self.vclamp else 'PSP'))
             # print(f'Induction: {induction_single:.2f}; Recovery: {recovery:.2f}')
             #print(f'Rest Amp: {amp[0]:.2f}; Maximum Amp: {maxamp:.2f}')
@@ -653,5 +667,510 @@ class SynapseTuner:
         # run model with default parameters 
         update_ui()
 
+class GapJunctionTuner:
+    def __init__(self, mechanisms_dir: str, templates_dir: str, general_settings: dict, conn_type_settings: dict):
+        neuron.load_mechanisms(mechanisms_dir)
+        h.load_file(templates_dir)
+        
+        self.general_settings = general_settings
+        self.conn_type_settings = conn_type_settings
+        
+        h.tstop = general_settings['tstart'] + general_settings['tdur'] + 100.
+        h.dt = general_settings['dt']  # Time step (resolution) of the simulation in ms
+        h.steps_per_ms = 1 / h.dt
+        h.celsius = general_settings['celsius']
+
+        self.cell_name = conn_type_settings['cell']
+        
+        # set up gap junctions
+        pc = h.ParallelContext()
+
+        self.cell1 = getattr(h, self.cell_name)()
+        self.cell2 = getattr(h, self.cell_name)()
+        
+        self.icl = h.IClamp(self.cell1.soma[0](0.5))
+        self.icl.delay = self.general_settings['tstart'] 
+        self.icl.dur = self.general_settings['tdur'] 
+        self.icl.amp = self.conn_type_settings['iclamp_amp'] # nA
+        
+        sec1 = list(self.cell1.all)[conn_type_settings['sec_id']]
+        sec2 = list(self.cell2.all)[conn_type_settings['sec_id']]
+
+        pc.source_var(sec1(conn_type_settings['sec_x'])._ref_v, 0, sec=sec1)
+        self.gap_junc_1 = h.Gap(sec1(0.5))
+        pc.target_var(self.gap_junc_1 ._ref_vgap, 1)
+
+        pc.source_var(sec2(conn_type_settings['sec_x'])._ref_v, 1, sec=sec2)
+        self.gap_junc_2 = h.Gap(sec2(0.5))
+        pc.target_var(self.gap_junc_2._ref_vgap, 0)
+
+        pc.setup_transfer()
+    
+    def model(self,resistance):
+
+        self.gap_junc_1.g = resistance
+        self.gap_junc_2.g = resistance
+        
+        t_vec = h.Vector()
+        soma_v_1 = h.Vector()
+        soma_v_2 = h.Vector()
+        t_vec.record(h._ref_t)
+        soma_v_1.record(self.cell1.soma[0](0.5)._ref_v)
+        soma_v_2.record(self.cell2.soma[0](0.5)._ref_v)
+        
+        self.t_vec = t_vec
+        self.soma_v_1 = soma_v_1
+        self.soma_v_2 = soma_v_2
+        
+        h.finitialize(-70 * mV)
+        h.continuerun(h.tstop * ms)
+ 
+ 
+    def plot_model(self):
+        t_range = [self.general_settings['tstart'] - 100., self.general_settings['tstart']+self.general_settings['tdur'] + 100.]
+        t = np.array(self.t_vec)
+        v1 = np.array(self.soma_v_1)
+        v2 = np.array(self.soma_v_2)
+        tidx = (t >= t_range[0]) & (t <= t_range[1])
+
+        plt.figure()
+        plt.plot(t[tidx], v1[tidx], 'b', label=f'{self.cell_name} 1')
+        plt.plot(t[tidx], v2[tidx], 'r', label=f'{self.cell_name} 2')
+        plt.title(f"{self.cell_name} gap junction")
+        plt.xlabel('Time (ms)')
+        plt.ylabel('Membrane Voltage (mV)')
+        plt.legend()
+        plt.show()        
+
+
+    def coupling_coefficient(self,t, v1, v2, t_start, t_end, dt=h.dt):
+        t = np.asarray(t)
+        v1 = np.asarray(v1)
+        v2 = np.asarray(v2)
+        idx1 = np.nonzero(t < t_start)[0][-1]
+        idx2 = np.nonzero(t < t_end)[0][-1]
+        return (v2[idx2] - v2[idx1]) / (v1[idx2] - v1[idx1])
 
     
+    def InteractiveTuner(self):
+        w_run = widgets.Button(description='Run', icon='history', button_style='primary')
+        values = [i * 10**-4 for i in range(1, 101)]  # From 1e-4 to 1e-2
+
+        # Create the SelectionSlider widget with appropriate formatting
+        resistance = widgets.SelectionSlider(
+            options=[("%g"%i,i) for i in values],  # Use scientific notation for display
+            value=10**-3,  # Default value
+            description='Resistance: ',
+            continuous_update=True
+)
+
+        ui = VBox([w_run,resistance])
+        display(ui)
+        def on_button(*args):
+            clear_output()
+            display(ui)
+            resistance_for_gap = resistance.value
+            self.model(resistance_for_gap)
+            self.plot_model()
+            cc = self.coupling_coefficient(self.t_vec, self.soma_v_1, self.soma_v_2, 500, 1000)
+            print(f"coupling_coefficient is {cc:0.4f}")
+
+        on_button()    
+        w_run.on_click(on_button)
+        
+        
+# optimizers!       
+        
+@dataclass
+class SynapseOptimizationResult:
+    """Container for synaptic parameter optimization results"""
+    optimal_params: Dict[str, float]
+    achieved_metrics: Dict[str, float]
+    target_metrics: Dict[str, float]
+    error: float
+    optimization_path: List[Dict[str, float]]
+
+class SynapseOptimizer:
+    def __init__(self, tuner):
+        """
+        Initialize the synapse optimizer with parameter scaling
+        
+        Parameters:
+        -----------
+        tuner : SynapseTuner
+            Instance of the SynapseTuner class
+        """
+        self.tuner = tuner
+        self.optimization_history = []
+        self.param_scales = {}
+        
+    def _normalize_params(self, params: np.ndarray, param_names: List[str]) -> np.ndarray:
+        """Normalize parameters to similar scales"""
+        return np.array([params[i] / self.param_scales[name] for i, name in enumerate(param_names)])
+        
+    def _denormalize_params(self, normalized_params: np.ndarray, param_names: List[str]) -> np.ndarray:
+        """Convert normalized parameters back to original scale"""
+        return np.array([normalized_params[i] * self.param_scales[name] for i, name in enumerate(param_names)])
+        
+    def _calculate_metrics(self) -> Dict[str, float]:
+        """Calculate standard metrics from the current simulation"""
+        self.tuner._simulate_model(50, 250) # 50 Hz with 250ms Delay
+        amp = self.tuner._response_amplitude()
+        ppr, induction, recovery = self.tuner._calc_ppr_induction_recovery(amp, print_math=False)
+        return {
+            'induction': float(induction),  # Ensure these are scalar values
+            'ppr': float(ppr),
+            'recovery': float(recovery),
+            'amplitudes': amp
+        }
+        
+    def _default_cost_function(self, metrics: Dict[str, float], target_metrics: Dict[str, float]) -> float:
+        """Default cost function that targets induction"""
+        return float((metrics['induction'] - target_metrics['induction']) ** 2)
+        
+    def _objective_function(self, 
+                          normalized_params: np.ndarray, 
+                          param_names: List[str], 
+                          cost_function: Callable,
+                          target_metrics: Dict[str, float]) -> float:
+        """
+        Calculate error using provided cost function
+        """
+        # Denormalize parameters
+        params = self._denormalize_params(normalized_params, param_names)
+        
+        # Set parameters
+        for name, value in zip(param_names, params):
+            setattr(self.tuner.syn, name, value)
+        
+        # Calculate metrics and error
+        metrics = self._calculate_metrics()
+        error = float(cost_function(metrics, target_metrics))  # Ensure error is scalar
+        
+        # Store history with denormalized values
+        history_entry = {
+            'params': dict(zip(param_names, params)),
+            'metrics': metrics,
+            'error': error
+        }
+        self.optimization_history.append(history_entry)
+        
+        return error
+    
+    def optimize_parameters(self, 
+                          target_metrics: Dict[str, float],
+                          param_bounds: Dict[str, Tuple[float, float]],
+                          cost_function: Optional[Callable] = None,
+                          method: str = 'SLSQP',init_guess='random') -> SynapseOptimizationResult:
+        """
+        Optimize synaptic parameters using custom cost function
+        """
+        self.optimization_history = []
+        param_names = list(param_bounds.keys())
+        bounds = [param_bounds[name] for name in param_names]
+        
+        if cost_function is None:
+            cost_function = self._default_cost_function
+        
+        # Calculate scaling factors
+        self.param_scales = {
+            name: max(abs(bounds[i][0]), abs(bounds[i][1]))
+            for i, name in enumerate(param_names)
+        }
+        
+        # Normalize bounds
+        normalized_bounds = [
+            (b[0]/self.param_scales[name], b[1]/self.param_scales[name])
+            for name, b in zip(param_names, bounds)
+        ]
+        
+        # picks with method of init value we want to use
+        if init_guess=='random':
+            x0 = np.array([np.random.uniform(b[0], b[1]) for b in bounds])
+        elif init_guess=='middle_guess':
+            x0 = [(b[0] + b[1])/2 for b in bounds]
+        else:
+            raise Exception("Pick a vaid init guess method either random or midde_guess")
+        normalized_x0 = self._normalize_params(np.array(x0), param_names)
+        
+        
+        # Run optimization
+        result = minimize(
+            self._objective_function,
+            normalized_x0,
+            args=(param_names, cost_function, target_metrics),
+            method=method,
+            bounds=normalized_bounds
+        )
+        
+        # Get final parameters and metrics
+        final_params = dict(zip(param_names, self._denormalize_params(result.x, param_names)))
+        for name, value in final_params.items():
+            setattr(self.tuner.syn, name, value)
+        final_metrics = self._calculate_metrics()
+        
+        return SynapseOptimizationResult(
+            optimal_params=final_params,
+            achieved_metrics=final_metrics,
+            target_metrics=target_metrics,
+            error=result.fun,
+            optimization_path=self.optimization_history
+        )
+    
+    def plot_optimization_results(self, result: SynapseOptimizationResult):
+        """Plot optimization results including convergence and final traces."""
+        # Ensure errors are properly shaped for plotting
+        iterations = range(len(result.optimization_path))
+        errors = np.array([float(h['error']) for h in result.optimization_path]).flatten()
+        
+        # Plot error convergence
+        fig1, ax1 = plt.subplots(figsize=(8, 5))
+        ax1.plot(iterations, errors, label='Error')
+        ax1.set_xlabel('Iteration')
+        ax1.set_ylabel('Error')
+        ax1.set_title('Error Convergence')
+        ax1.set_yscale('log')
+        ax1.legend()
+        plt.tight_layout()
+        plt.show()
+        
+        # Plot parameter convergence
+        param_names = list(result.optimal_params.keys())
+        num_params = len(param_names)
+        fig2, axs = plt.subplots(nrows=num_params, ncols=1, figsize=(8, 5 * num_params))
+        
+        if num_params == 1:
+            axs = [axs]
+            
+        for ax, param in zip(axs, param_names):
+            values = [float(h['params'][param]) for h in result.optimization_path]
+            ax.plot(iterations, values, label=f'{param}')
+            ax.set_xlabel('Iteration')
+            ax.set_ylabel('Parameter Value')
+            ax.set_title(f'Convergence of {param}')
+            ax.legend()
+        
+        plt.tight_layout()
+        plt.show()
+        
+        # Print final results
+        print("Optimization Results:")
+        print(f"Final Error: {float(result.error):.2e}\n")
+        print("Target Metrics:")
+        for metric, value in result.target_metrics.items():
+            achieved = result.achieved_metrics.get(metric)
+            if achieved is not None and metric != 'amplitudes':  # Skip amplitude array
+                print(f"{metric}: {float(achieved):.3f} (target: {float(value):.3f})")
+        
+        print("\nOptimal Parameters:")
+        for param, value in result.optimal_params.items():
+            print(f"{param}: {float(value):.3f}")
+        
+        # Plot final model response
+        self.tuner._plot_model([self.tuner.general_settings['tstart'] - self.tuner.nstim.interval / 3, self.tuner.tstop])
+        amp = self.tuner._response_amplitude()
+        self.tuner._calc_ppr_induction_recovery(amp)        
+        
+        
+# dataclass means just init the typehints as self.typehint. looks a bit cleaner
+@dataclass
+class GapOptimizationResult:
+    """Container for gap junction optimization results"""
+    optimal_resistance: float
+    achieved_cc: float
+    target_cc: float
+    error: float
+    optimization_path: List[Dict[str, float]]
+
+class GapJunctionOptimizer:
+    def __init__(self, tuner):
+        """
+        Initialize the gap junction optimizer
+        
+        Parameters:
+        -----------
+        tuner : GapJunctionTuner
+            Instance of the GapJunctionTuner class
+        """
+        self.tuner = tuner
+        self.optimization_history = []
+        
+    def _objective_function(self, resistance: float, target_cc: float) -> float:
+        """
+        Calculate error between achieved and target coupling coefficient
+        
+        Parameters:
+        -----------
+        resistance : float
+            Gap junction resistance to try
+        target_cc : float
+            Target coupling coefficient to match
+            
+        Returns:
+        --------
+        float : Error between achieved and target coupling coefficient
+        """
+        # Run model with current resistance
+        self.tuner.model(resistance)
+        
+        # Calculate coupling coefficient
+        achieved_cc = self.tuner.coupling_coefficient(
+            self.tuner.t_vec, 
+            self.tuner.soma_v_1, 
+            self.tuner.soma_v_2,
+            self.tuner.general_settings['tstart'],
+            self.tuner.general_settings['tstart'] + self.tuner.general_settings['tdur']
+        )
+        
+        # Calculate error
+        error = (achieved_cc - target_cc) ** 2 #MSE
+        
+        # Store history
+        self.optimization_history.append({
+            'resistance': resistance,
+            'achieved_cc': achieved_cc,
+            'error': error
+        })
+        
+        return error
+    
+    def optimize_resistance(self, target_cc: float, 
+                          resistance_bounds: tuple = (1e-4, 1e-2),
+                          method: str = 'bounded') -> GapOptimizationResult:
+        """
+        Optimize gap junction resistance to achieve target coupling coefficient
+        
+        Parameters:
+        -----------
+        target_cc : float
+            Target coupling coefficient to achieve
+        resistance_bounds : tuple, optional
+            (min, max) bounds for resistance search
+        method : str, optional
+            Optimization method to use (default: 'bounded')
+            
+        Returns:
+        --------
+        GapOptimizationResult
+            Container with optimization results
+        """
+        self.optimization_history = []
+        
+        # Run optimization
+        result = minimize_scalar(
+            self._objective_function,
+            args=(target_cc,),
+            bounds=resistance_bounds,
+            method=method
+        )
+        
+        # Run final model with optimal resistance
+        self.tuner.model(result.x)
+        final_cc = self.tuner.coupling_coefficient(
+            self.tuner.t_vec,
+            self.tuner.soma_v_1,
+            self.tuner.soma_v_2,
+            self.tuner.general_settings['tstart'],
+            self.tuner.general_settings['tstart'] + self.tuner.general_settings['tdur']
+        )
+        
+        # Package up our results
+        optimization_result = GapOptimizationResult(
+            optimal_resistance=result.x,
+            achieved_cc=final_cc,
+            target_cc=target_cc,
+            error=result.fun,
+            optimization_path=self.optimization_history
+        )
+        
+        return optimization_result
+    
+    def plot_optimization_results(self, result: GapOptimizationResult):
+        """
+        Plot optimization results including convergence and final voltage traces
+        
+        Parameters:
+        -----------
+        result : GapOptimizationResult
+            Results from optimization
+        """
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+        
+        # Plot voltage traces
+        t_range = [
+            self.tuner.general_settings['tstart'] - 100.,
+            self.tuner.general_settings['tstart'] + self.tuner.general_settings['tdur'] + 100.
+        ]
+        t = np.array(self.tuner.t_vec)
+        v1 = np.array(self.tuner.soma_v_1)
+        v2 = np.array(self.tuner.soma_v_2)
+        tidx = (t >= t_range[0]) & (t <= t_range[1])
+        
+        ax1.plot(t[tidx], v1[tidx], 'b', label=f'{self.tuner.cell_name} 1')
+        ax1.plot(t[tidx], v2[tidx], 'r', label=f'{self.tuner.cell_name} 2')
+        ax1.set_xlabel('Time (ms)')
+        ax1.set_ylabel('Membrane Voltage (mV)')
+        ax1.legend()
+        ax1.set_title('Optimized Voltage Traces')
+        
+        # Plot error convergence
+        errors = [h['error'] for h in result.optimization_path]
+        ax2.plot(errors)
+        ax2.set_xlabel('Iteration')
+        ax2.set_ylabel('Error')
+        ax2.set_title('Error Convergence')
+        ax2.set_yscale('log')
+        
+        # Plot resistance convergence
+        resistances = [h['resistance'] for h in result.optimization_path]
+        ax3.plot(resistances)
+        ax3.set_xlabel('Iteration')
+        ax3.set_ylabel('Resistance')
+        ax3.set_title('Resistance Convergence')
+        ax3.set_yscale('log')
+        
+        # Print final results
+        result_text = (
+            f'Optimal Resistance: {result.optimal_resistance:.2e}\n'
+            f'Target CC: {result.target_cc:.3f}\n'
+            f'Achieved CC: {result.achieved_cc:.3f}\n'
+            f'Final Error: {result.error:.2e}'
+        )
+        ax4.text(0.1, 0.7, result_text, transform=ax4.transAxes, fontsize=10)
+        ax4.axis('off')
+        
+        plt.tight_layout()
+        plt.show()
+
+    def parameter_sweep(self, resistance_range: np.ndarray) -> dict:
+        """
+        Perform a parameter sweep across different resistance values
+        
+        Parameters:
+        -----------
+        resistance_range : np.ndarray
+            Array of resistance values to test
+            
+        Returns:
+        --------
+        dict : Results of parameter sweep including coupling coefficients
+        """
+        results = {
+            'resistance': [],
+            'coupling_coefficient': []
+        }
+        
+        for resistance in tqdm(resistance_range, desc="Sweeping resistance values"):
+            self.tuner.model(resistance)
+            cc = self.tuner.coupling_coefficient(
+                self.tuner.t_vec,
+                self.tuner.soma_v_1,
+                self.tuner.soma_v_2,
+                self.tuner.general_settings['tstart'],
+                self.tuner.general_settings['tstart'] + self.tuner.general_settings['tdur']
+            )
+            
+            results['resistance'].append(resistance)
+            results['coupling_coefficient'].append(cc)
+            
+        return results

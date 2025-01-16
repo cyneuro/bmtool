@@ -379,32 +379,36 @@ class BlockRunner:
         if self.webhook:
             message = "SIMULATION UPDATE: Simulations have been submited in parallel!"
             send_teams_message(self.webhook,message)
-        for i, block in enumerate(self.blocks):
-            if block.component_path == None:
-                raise Exception("Unable to use parallel submitter without defining the component path")
-            new_value = self.param_values[i]
-            
-            source_dir = block.component_path
-            destination_dir = f"{source_dir}{i+1}"
-            block.component_path = destination_dir
+        if self.param_values == None:
+            print(f"skipping json editing for block {block.block_name}",flush=True)
+        else:
+            for i, block in enumerate(self.blocks):
+                if block.component_path == None:
+                    raise Exception("Unable to use parallel submitter without defining the component path")
+                new_value = self.param_values[i]
+                
+                source_dir = block.component_path
+                destination_dir = f"{source_dir}{i+1}"
+                block.component_path = destination_dir
 
-            shutil.copytree(source_dir, destination_dir) # create new components folder 
-            json_file_path = os.path.join(destination_dir,self.json_file_path)
-            if self.syn_dict_list == None:
-                json_editor = seedSweep(json_file_path, self.param_name)
-                json_editor.edit_json(new_value)
-            else:
-                json_editor = multiSeedSweep(json_file_path,self.param_name,
-                                             self.syn_dict_list,base_ratio=1)
-                json_editor.edit_all_jsons(new_value)  
+                shutil.copytree(source_dir, destination_dir) # create new components folder 
+                json_file_path = os.path.join(destination_dir,self.json_file_path)
+                if self.syn_dict_list == None:
+                    json_editor = seedSweep(json_file_path, self.param_name)
+                    json_editor.edit_json(new_value)
+                else:
+                    json_editor = multiSeedSweep(json_file_path,self.param_name,
+                                                self.syn_dict_list,base_ratio=1)
+                    json_editor.edit_all_jsons(new_value)  
             
             # submit block with new component path 
             print(f"Submitting block: {block.block_name}", flush=True)
             block.submit_block()
-            if i == len(self.blocks) - 1:  
-                while not block.check_block_completed():
-                    print(f"Waiting for the last block {i} to complete...")
-                    time.sleep(self.check_interval)
+            if i == len(self.blocks) - 1:
+                if self.webook:  
+                    while not block.check_block_completed():
+                        print(f"Waiting for the last block {i} to complete...")
+                        time.sleep(self.check_interval)
                 
         if self.webhook:
             message = "SIMULATION UPDATE: Simulations are Done!"
