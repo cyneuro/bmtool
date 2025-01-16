@@ -71,7 +71,9 @@ Commands:
 - [ZAP](#zap)
 - [Tuner](#single-cell-tuning)
 - [VHalf Segregation](#vhalf-segregation-module)
-#### The single cell module can take any neuron HOC object and calculate passive properties, run a current clamp, calculate FI curve, or run a ZAP. The module is designed to work with HOC template files and can also turn Allen database SWC and json files into HOC objects and use those. The examples below uses "Cell_Cf" which is the name of a HOC templated loaded by the profiler.
+#### Jupyter Notebook for how to use passive properties, current injection, FI curve, and ZAP can be found [here](examples/single_cell/). There are versions with example how to use single cells in HOC format and in the Allen Database format. 
+
+#### The single cell module can take any neuron HOC object and calculate passive properties, run a current clamp, calculate FI curve, or run a ZAP. The module is designed to work with HOC template files and can also turn Allen database SWC and json files into HOC objects and use those. The examples below uses "Cell_Cf" which is the name of a HOC templated loaded by the profiler. E
 
 #### First step is it initialize the profiler.
 
@@ -308,7 +310,7 @@ ex: [https://github.com/tjbanks/two-cell-hco](https://github.com/tjbanks/two-cel
 -Gap Junction tuner
 
 #### SynapticTuner - Aids in the tuning of synapses by printing out synaptic properties and giving the user sliders in a Jupyter notebook to tune the synapse. For more info view the example [here](examples/synapses/synaptic_tuner.ipynb)
-#### GapJunctionTuner - Provides jupyter sliders to tune for coupling coefficient in a similar style to the SynapticTuner an example can be viewed [here](examples/synapses/gap_junction_tuner.ipynb)
+#### GapJunctionTuner - Provides jupyter sliders to tune for coupling coefficient in a similar style to the SynapticTuner. The Gap junction tuner also has an optimizer which can find the best resistance for the desired coupling coefficient. an example can be viewed [here](examples/synapses/gap_junction_tuner.ipynb)
 
 ### Connectors Module
 - [UnidirectionConnector](#unidirectional-connector---unidirectional-connections-in-bmtk-network-model-with-given-probability-within-a-single-population-or-between-two-populations)
@@ -366,7 +368,6 @@ net.add_edges(**connector.edge_params())
 ```
 
 ## Bmplot Module 
-### for a demo please see the notebook [here](examples/bmplot/bmplot.ipynb) 
 - [total_connection_matrix](#total_connection_matrix)
 - [percent_connection_matrix](#percent_connection_matrix)
 - [connector_percent_matrix](#connector_percent_matrix)
@@ -377,6 +378,7 @@ net.add_edges(**connector.edge_params())
 - [connection_histogram](#connection_histogram)
 - [plot_3d_positions](#plot_3d_positions)
 - [plot_3d_cell_rotation](#plot_3d_cell_rotation)
+### for a demo please see the notebook [here](examples/bmplot/bmplot.ipynb) 
 
 ### total_connection_matrix
 #### Generates a table of total number of connections each neuron population recieves

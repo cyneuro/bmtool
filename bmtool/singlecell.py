@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import neuron
 from neuron import h
+import pandas as pd
 
 
 def load_biophys1():
@@ -356,8 +357,12 @@ class FI(object):
         self.nspks = [len(v) for v in self.tspk_vecs]
         print()
         print("Results")
-        print(f'Injection (nA): ' + ', '.join(f'{x:g}' for x in self.amps))
-        print(f'Number of spikes: ' + ', '.join(f'{x:d}' for x in self.nspks))
+        # lets make a df so the results line up nice
+        data = {'Injection (nA):':self.amps,'number of spikes':self.nspks}
+        df = pd.DataFrame(data)
+        print(df)
+        #print(f'Injection (nA): ' + ', '.join(f'{x:g}' for x in self.amps))
+        #print(f'Number of spikes: ' + ', '.join(f'{x:d}' for x in self.nspks))
         print()
 
         return self.amps, self.nspks
