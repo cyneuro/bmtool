@@ -178,6 +178,11 @@ class SynapseTuner:
         """
         self._set_up_cell()
         self._set_up_synapse()
+        
+        # user slider values if the sliders are set up
+        if hasattr(self, 'dynamic_sliders'):
+            syn_props = {var: slider.value for var, slider in self.dynamic_sliders.items()}
+            self._set_syn_prop(**syn_props)
 
         # Set up the stimulus
         self.nstim = h.NetStim()
@@ -204,10 +209,17 @@ class SynapseTuner:
         self.nstim.number = 1
         self.nstim2.start = h.tstop
         h.run()
+        
+        current = np.array(self.rec_vectors[self.current_name])
+        syn_prop = self._get_syn_prop(short=True)
+        current = (current - syn_prop['baseline']) * 1000  # Convert to pA
+        current_integral = np.trapz(current, dx=h.dt)  # pA·ms
+        
         self._plot_model([self.general_settings['tstart'] - 5, self.general_settings['tstart'] + self.general_settings['tdur']])
         syn_props = self._get_syn_prop(rise_interval=self.general_settings['rise_interval'])     
         for prop in syn_props.items():
             print(prop)
+        print(f'Current Integral in pA: {current_integral:.2f}')
 
 
     def _find_first(self, x):
@@ -436,27 +448,25 @@ class SynapseTuner:
         return amp
 
 
-    def _find_max_amp(self, amp, normalize_by_trial=True):
+    def _find_max_amp(self, amp):
         """
-        Determines the maximum amplitude from the response data.
+        Determines the maximum amplitude from the response data and returns the max in pA
 
         Parameters:
         -----------
         amp : array-like
             Array containing the amplitudes of synaptic responses.
-        normalize_by_trial : bool, optional
-            If True, normalize the maximum amplitude within each trial. Default is True.
         
         Returns:
         --------
         max_amp : float
             The maximum or minimum amplitude based on the sign of the response.
         """
-        max_amp = amp.max(axis=1 if normalize_by_trial else None)
-        min_amp = amp.min(axis=1 if normalize_by_trial else None)
+        max_amp = max(amp)
+        min_amp = min(amp)
         if(abs(min_amp) > max_amp):
-            return min_amp
-        return max_amp
+            return min_amp * 1000 # scale unit
+        return max_amp * 1000 # scale unit
 
 
     def _calc_ppr_induction_recovery(self,amp, normalize_by_trial=True,print_math=True):
@@ -589,17 +599,19 @@ class SynapseTuner:
         duration0 = 300
         vlamp_status = self.vclamp
 
-        w_run = widgets.Button(description='Run', icon='history', button_style='primary')
+        w_run = widgets.Button(description='Run Train', icon='history', button_style='primary')
+        w_single = widgets.Button(description='Single Event', icon='check', button_style='success')
         w_vclamp = widgets.ToggleButton(value=vlamp_status, description='Voltage Clamp', icon='fast-backward', button_style='warning')
         w_input_mode = widgets.ToggleButton(value=False, description='Continuous input', icon='eject', button_style='info')
         w_input_freq = widgets.SelectionSlider(options=freqs, value=freq0, description='Input Freq')
+
 
         # Sliders for delay and duration
         self.w_delay = widgets.SelectionSlider(options=delays, value=delay0, description='Delay')
         self.w_duration = widgets.SelectionSlider(options=durations, value=duration0, description='Duration')
 
         # Generate sliders dynamically based on valid numeric entries in self.slider_vars
-        dynamic_sliders = {}
+        self.dynamic_sliders = {}
         print("Setting up slider! The sliders ranges are set by their init value so try changing that if you dont like the slider range!")
         for key, value in self.slider_vars.items():
             if isinstance(value, (int, float)):  # Only create sliders for numeric values
@@ -609,9 +621,17 @@ class SynapseTuner:
                         slider = widgets.FloatSlider(value=value, min=0, max=1000, step=1, description=key)
                     else:
                         slider = widgets.FloatSlider(value=value, min=0, max=value*20, step=value/5, description=key)
-                    dynamic_sliders[key] = slider
+                    self.dynamic_sliders[key] = slider
                 else:
                     print(f"skipping slider for {key} due to not being a synaptic variable")
+
+        def run_single_event(*args):
+            clear_output()
+            display(ui)
+            self.vclamp = w_vclamp.value
+            # Update synaptic properties based on slider values
+            self.ispk=None
+            self.SingleEvent()
 
         # Function to update UI based on input mode
         def update_ui(*args):
@@ -619,8 +639,7 @@ class SynapseTuner:
             display(ui)
             self.vclamp = w_vclamp.value
             self.input_mode = w_input_mode.value
-            # Update synaptic properties based on slider values
-            syn_props = {var: slider.value for var, slider in dynamic_sliders.items()}
+            syn_props = {var: slider.value for var, slider in self.dynamic_sliders.items()}
             self._set_syn_prop(**syn_props)
             if self.input_mode == False:
                 self._simulate_model(w_input_freq.value, self.w_delay.value, w_vclamp.value)
@@ -629,9 +648,6 @@ class SynapseTuner:
             amp = self._response_amplitude()
             self._plot_model([self.general_settings['tstart'] - self.nstim.interval / 3, self.tstop])
             _ = self._calc_ppr_induction_recovery(amp)
-            # print('Single trial ' + ('PSC' if self.vclamp else 'PSP'))
-            # print(f'Induction: {induction_single:.2f}; Recovery: {recovery:.2f}')
-            #print(f'Rest Amp: {amp[0]:.2f}; Maximum Amp: {maxamp:.2f}')
 
         # Function to switch between delay and duration sliders
         def switch_slider(*args):
@@ -648,23 +664,23 @@ class SynapseTuner:
         # Hide the duration slider initially until the user selects it
         self.w_duration.layout.display = 'none'  # Hide duration slider
 
+        w_single.on_click(run_single_event)
         w_run.on_click(update_ui)
 
         # Add the dynamic sliders to the UI
-        slider_widgets = [slider for slider in dynamic_sliders.values()]
+        slider_widgets = [slider for slider in self.dynamic_sliders.values()]
 
-        # Divide sliders into two columns
-        half = len(slider_widgets) // 2
-        col1 = VBox(slider_widgets[:half])  # First half of sliders
-        col2 = VBox(slider_widgets[half:])  # Second half of sliders
+        button_row = HBox([w_run, w_single, w_vclamp, w_input_mode])
+        slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
         
-        # Create a two-column layout with HBox
+        half = len(slider_widgets) // 2
+        col1 = VBox(slider_widgets[:half])
+        col2 = VBox(slider_widgets[half:])
         slider_columns = HBox([col1, col2])
 
-        ui = VBox([HBox([w_run, w_vclamp, w_input_mode]), HBox([w_input_freq, self.w_delay, self.w_duration]), slider_columns])
+        ui = VBox([button_row, slider_row, slider_columns])
 
         display(ui)
-        # run model with default parameters 
         update_ui()
 
 class GapJunctionTuner:
@@ -817,11 +833,12 @@ class SynapseOptimizer:
         self.tuner._simulate_model(50, 250) # 50 Hz with 250ms Delay
         amp = self.tuner._response_amplitude()
         ppr, induction, recovery = self.tuner._calc_ppr_induction_recovery(amp, print_math=False)
+        amp = self.tuner._find_max_amp(amp)
         return {
             'induction': float(induction),  # Ensure these are scalar values
             'ppr': float(ppr),
             'recovery': float(recovery),
-            'amplitudes': amp
+            'max_amplitude': float(amp)
         }
         
     def _default_cost_function(self, metrics: Dict[str, float], target_metrics: Dict[str, float]) -> float:

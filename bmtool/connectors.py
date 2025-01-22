@@ -1082,7 +1082,7 @@ class ReciprocalConnector(AbstractConnector):
 
 class UnidirectionConnector(AbstractConnector):
     """
-    Object for buiilding unidirectional connections in bmtk network model with
+    Object for building unidirectional connections in bmtk network model with
     given probability within a single population (or between two populations).
 
     Parameters:
