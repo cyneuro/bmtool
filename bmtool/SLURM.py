@@ -208,7 +208,7 @@ class SimulationBlock:
         # Conditional account linegit
         account_line = f"#SBATCH --account={self.account}\n" if self.account else ""
         env_var_component_path = f"export COMPONENT_PATH={self.component_path}" if self.component_path else ""
-        
+        mem_per_cpu = int(int(self.mem)/int(self.ntasks))
 
         # Write the batch script to the file
         with open(batch_script_path, 'w') as script_file:
@@ -220,7 +220,7 @@ class SimulationBlock:
 #SBATCH --partition={self.partition}
 #SBATCH --nodes={self.nodes}
 #SBATCH --ntasks={self.ntasks}
-#SBATCH --mem={self.mem}
+#SBATCH --mem-per-cpu={mem_per_cpu}G
 {account_line}
 
 # Additional user-defined commands
