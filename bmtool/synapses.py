@@ -687,8 +687,8 @@ class SynapseTuner:
         display(ui)
         update_ui()
         
-    def analyze_frequency_response(self, freqs=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200], 
-                                delay=250, plot=True):
+    def stp_frequency_response(self, freqs=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200], 
+                                delay=250, plot=True,log_plot=True):
         """
         Analyze synaptic response across different stimulation frequencies.
         
@@ -729,11 +729,11 @@ class SynapseTuner:
         self.ispk = original_ispk
         
         if plot:
-            self._plot_frequency_analysis(results)
+            self._plot_frequency_analysis(results,log_plot=log_plot)
         
         return results
 
-    def _plot_frequency_analysis(self, results):
+    def _plot_frequency_analysis(self, results,log_plot):
         """
         Plot the frequency-dependent synaptic properties.
         
@@ -744,11 +744,12 @@ class SynapseTuner:
         """
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
         
-        # Convert frequencies to log scale for better visualization
-        frequencies = np.array(results['frequencies'])
         
         # Plot PPR
-        ax1.semilogx(frequencies, results['ppr'], 'o-')
+        if log_plot:
+            ax1.semilogx(results['frequencies'], results['ppr'], 'o-')
+        else:
+            ax1.plot(results['frequencies'], results['ppr'], 'o-')
         ax1.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
         ax1.set_xlabel('Frequency (Hz)')
         ax1.set_ylabel('Paired Pulse Ratio')
@@ -756,7 +757,10 @@ class SynapseTuner:
         ax1.grid(True)
         
         # Plot Induction
-        ax2.semilogx(frequencies, results['induction'], 'o-')
+        if log_plot:
+            ax2.semilogx(results['frequencies'], results['induction'], 'o-')
+        else:
+            ax2.plot(results['frequencies'], results['induction'], 'o-')
         ax2.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
         ax2.set_xlabel('Frequency (Hz)')
         ax2.set_ylabel('Induction')
@@ -764,7 +768,10 @@ class SynapseTuner:
         ax2.grid(True)
         
         # Plot Recovery
-        ax3.semilogx(frequencies, results['recovery'], 'o-')
+        if log_plot:
+            ax3.semilogx(results['frequencies'], results['recovery'], 'o-')
+        else:
+            ax3.plot(results['frequencies'], results['recovery'], 'o-')
         ax3.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
         ax3.set_xlabel('Frequency (Hz)')
         ax3.set_ylabel('Recovery')
