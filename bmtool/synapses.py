@@ -405,6 +405,10 @@ class SynapseTuner:
         ------
         - This function is based on experiments from the Allen Database.
         """
+        # lets also set the train drive and delay here
+        self.train_freq = freq
+        self.train_delay = delay
+        
         n_init_pulse = 8
         n_ending_pulse = 4
         self.nstim.start = self.general_settings['tstart']
@@ -500,7 +504,7 @@ class SynapseTuner:
         
         if print_math:
             print("\n" + "="*40)
-            print("Short Term Plasticity Results")
+            print(f"Short Term Plasticity Results for {self.train_freq}Hz with {self.train_delay} Delay")
             print("="*40)
             print("PPR: Above 1 is facilitating, below 1 is depressing.")
             print("Induction: Above 0 is facilitating, below 0 is depressing.")
@@ -682,6 +686,93 @@ class SynapseTuner:
 
         display(ui)
         update_ui()
+        
+    def analyze_frequency_response(self, freqs=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200], 
+                                delay=250, plot=True):
+        """
+        Analyze synaptic response across different stimulation frequencies.
+        
+        Parameters:
+        -----------
+        freqs : list, optional
+            List of frequencies to analyze (in Hz)
+        delay : float, optional
+            Delay between pulse trains in ms
+        plot : bool, optional
+            Whether to plot the results
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing frequency-dependent metrics
+        """
+        results = {
+            'frequencies': freqs,
+            'ppr': [],
+            'induction': [],
+            'recovery': []
+        }
+        
+        # Store original state
+        original_ispk = self.ispk
+        
+        for freq in tqdm(freqs, desc="Analyzing frequencies"):
+            self._simulate_model(freq, delay)
+            amp = self._response_amplitude()
+            ppr, induction, recovery = self._calc_ppr_induction_recovery(amp, print_math=False)
+            
+            results['ppr'].append(float(ppr))
+            results['induction'].append(float(induction))
+            results['recovery'].append(float(recovery))
+        
+        # Restore original state
+        self.ispk = original_ispk
+        
+        if plot:
+            self._plot_frequency_analysis(results)
+        
+        return results
+
+    def _plot_frequency_analysis(self, results):
+        """
+        Plot the frequency-dependent synaptic properties.
+        
+        Parameters:
+        -----------
+        results : dict
+            Dictionary containing frequency analysis results
+        """
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+        
+        # Convert frequencies to log scale for better visualization
+        frequencies = np.array(results['frequencies'])
+        
+        # Plot PPR
+        ax1.semilogx(frequencies, results['ppr'], 'o-')
+        ax1.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
+        ax1.set_xlabel('Frequency (Hz)')
+        ax1.set_ylabel('Paired Pulse Ratio')
+        ax1.set_title('PPR vs Frequency')
+        ax1.grid(True)
+        
+        # Plot Induction
+        ax2.semilogx(frequencies, results['induction'], 'o-')
+        ax2.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+        ax2.set_xlabel('Frequency (Hz)')
+        ax2.set_ylabel('Induction')
+        ax2.set_title('Induction vs Frequency')
+        ax2.grid(True)
+        
+        # Plot Recovery
+        ax3.semilogx(frequencies, results['recovery'], 'o-')
+        ax3.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+        ax3.set_xlabel('Frequency (Hz)')
+        ax3.set_ylabel('Recovery')
+        ax3.set_title('Recovery vs Frequency')
+        ax3.grid(True)
+        
+        plt.tight_layout()
+        plt.show()
 
 class GapJunctionTuner:
     def __init__(self, mechanisms_dir: str, templates_dir: str, general_settings: dict, conn_type_settings: dict):
@@ -829,13 +920,13 @@ class SynapseOptimizer:
         return np.array([normalized_params[i] * self.param_scales[name] for i, name in enumerate(param_names)])
         
     def _calculate_metrics(self) -> Dict[str, float]:
-        """Calculate standard metrics from the current simulation"""
-        self.tuner._simulate_model(50, 250) # 50 Hz with 250ms Delay
+        """Calculate standard metrics from the current simulation using specified frequency"""
+        self.tuner._simulate_model(self.train_frequency, self.train_delay)
         amp = self.tuner._response_amplitude()
         ppr, induction, recovery = self.tuner._calc_ppr_induction_recovery(amp, print_math=False)
         amp = self.tuner._find_max_amp(amp)
         return {
-            'induction': float(induction),  # Ensure these are scalar values
+            'induction': float(induction),
             'ppr': float(ppr),
             'recovery': float(recovery),
             'max_amplitude': float(amp)
@@ -874,15 +965,40 @@ class SynapseOptimizer:
         
         return error
     
-    def optimize_parameters(self, 
-                          target_metrics: Dict[str, float],
-                          param_bounds: Dict[str, Tuple[float, float]],
-                          cost_function: Optional[Callable] = None,
-                          method: str = 'SLSQP',init_guess='random') -> SynapseOptimizationResult:
+    def optimize_parameters(self, target_metrics: Dict[str, float],
+                            param_bounds: Dict[str, Tuple[float, float]],
+                            train_frequency: float = 50,train_delay: float = 250,
+                            cost_function: Optional[Callable] = None,
+                            method: str = 'SLSQP',init_guess='random') -> SynapseOptimizationResult:
         """
         Optimize synaptic parameters using custom cost function
-        """
+        
+        Parameters:
+        -----------
+        target_metrics : Dict[str, float]
+            Target values for synaptic metrics
+        param_bounds : Dict[str, Tuple[float, float]]
+            Bounds for each parameter to optimize
+        train_frequency : float, optional
+            Frequency of the stimulus train in Hz (default: 50)
+        train_delay : float, optional
+            Delay between pulse trains in ms (default: 250)
+        cost_function : Optional[Callable]
+            Custom cost function for optimization
+        method : str, optional
+            Optimization method to use (default: 'SLSQP')
+        init_guess : str, optional
+            Method for initial parameter guess ('random' or 'middle_guess')
+            
+        Returns:
+        --------
+        SynapseOptimizationResult
+            Results of the optimization
+    """
         self.optimization_history = []
+        self.train_frequency = train_frequency
+        self.train_delay = train_delay
+        
         param_names = list(param_bounds.keys())
         bounds = [param_bounds[name] for name in param_names]
         
