@@ -84,6 +84,20 @@ class SynapseTuner:
         h.dt = general_settings['dt']  # Time step (resolution) of the simulation in ms
         h.steps_per_ms = 1 / h.dt
         h.celsius = general_settings['celsius']
+        
+        # get some stuff set up we need for both SingleEvent and Interactive Tuner
+        self._set_up_cell()
+        self._set_up_synapse()
+        
+        self.nstim = h.NetStim()
+        self.nstim2 = h.NetStim()
+        
+        self.vcl = h.VClamp(self.cell.soma[0](0.5))
+        
+        self.nc = h.NetCon(self.nstim, self.syn, self.general_settings['threshold'], self.general_settings['delay'], self.general_settings['weight'])
+        self.nc2 = h.NetCon(self.nstim2, self.syn, self.general_settings['threshold'], self.general_settings['delay'], self.general_settings['weight'])
+        
+        self._set_up_recorders()
 
     def _update_spec_syn_param(self, json_folder_path):
         """
@@ -168,7 +182,7 @@ class SynapseTuner:
         self.ivcl.record(self.vcl._ref_i)
 
 
-    def SingleEvent(self):
+    def SingleEvent(self,plot_and_print=True):
         """
         Simulate a single synaptic event by delivering an input stimulus to the synapse.
         
@@ -176,32 +190,29 @@ class SynapseTuner:
         and then runs the NEURON simulation for a single event. The single synaptic event will occur at general_settings['tstart']
         Will display graphs and synaptic properies works best with a jupyter notebook
         """
-        self._set_up_cell()
-        self._set_up_synapse()
+        self.ispk = None
         
         # user slider values if the sliders are set up
         if hasattr(self, 'dynamic_sliders'):
             syn_props = {var: slider.value for var, slider in self.dynamic_sliders.items()}
             self._set_syn_prop(**syn_props)
+                  
+        # sets values based off optimizer   
+        if hasattr(self,'using_optimizer'):
+            for name, value in zip(self.param_names, self.params):
+                setattr(self.syn, name, value)
 
         # Set up the stimulus
-        self.nstim = h.NetStim()
         self.nstim.start = self.general_settings['tstart']
         self.nstim.noise = 0
-        self.nstim2 = h.NetStim()
         self.nstim2.start = h.tstop
         self.nstim2.noise = 0
-        self.nc = h.NetCon(self.nstim, self.syn, self.general_settings['threshold'], self.general_settings['delay'], self.general_settings['weight'])
-        self.nc2 = h.NetCon(self.nstim2, self.syn, self.general_settings['threshold'], self.general_settings['delay'], self.general_settings['weight'])
         
         # Set up voltage clamp
-        self.vcl = h.VClamp(self.cell.soma[0](0.5))
         vcldur = [[0, 0, 0], [self.general_settings['tstart'], h.tstop, 1e9]]
         for i in range(3):
             self.vcl.amp[i] = self.conn['spec_settings']['vclamp_amp']
             self.vcl.dur[i] = vcldur[1][i]
-
-        self._set_up_recorders()
 
         # Run simulation
         h.tstop = self.general_settings['tstart'] + self.general_settings['tdur']
@@ -211,15 +222,18 @@ class SynapseTuner:
         h.run()
         
         current = np.array(self.rec_vectors[self.current_name])
-        syn_prop = self._get_syn_prop(short=True)
-        current = (current - syn_prop['baseline']) * 1000  # Convert to pA
+        syn_props = self._get_syn_prop(rise_interval=self.general_settings['rise_interval']) 
+        current = (current - syn_props['baseline']) * 1000  # Convert to pA
         current_integral = np.trapz(current, dx=h.dt)  # pA·ms
         
-        self._plot_model([self.general_settings['tstart'] - 5, self.general_settings['tstart'] + self.general_settings['tdur']])
-        syn_props = self._get_syn_prop(rise_interval=self.general_settings['rise_interval'])     
-        for prop in syn_props.items():
-            print(prop)
-        print(f'Current Integral in pA: {current_integral:.2f}')
+        if plot_and_print:
+            self._plot_model([self.general_settings['tstart'] - 5, self.general_settings['tstart'] + self.general_settings['tdur']])    
+            for prop in syn_props.items():
+                print(prop)
+            print(f'Current Integral in pA*ms: {current_integral:.2f}')
+        
+        self.rise_time = syn_props['rise_time']
+        self.decay_time = syn_props['decay_time']
 
 
     def _find_first(self, x):
@@ -687,6 +701,7 @@ class SynapseTuner:
         display(ui)
         update_ui()
         
+        
     def stp_frequency_response(self, freqs=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200], 
                                 delay=250, plot=True,log_plot=True):
         """
@@ -732,6 +747,7 @@ class SynapseTuner:
             self._plot_frequency_analysis(results,log_plot=log_plot)
         
         return results
+
 
     def _plot_frequency_analysis(self, results,log_plot):
         """
@@ -928,15 +944,33 @@ class SynapseOptimizer:
         
     def _calculate_metrics(self) -> Dict[str, float]:
         """Calculate standard metrics from the current simulation using specified frequency"""
-        self.tuner._simulate_model(self.train_frequency, self.train_delay)
-        amp = self.tuner._response_amplitude()
-        ppr, induction, recovery = self.tuner._calc_ppr_induction_recovery(amp, print_math=False)
-        amp = self.tuner._find_max_amp(amp)
+        
+        # Set these to 0 for when we return the dict 
+        induction = 0
+        ppr = 0
+        recovery = 0
+        amp = 0
+        rise_time = 0
+        decay_time = 0
+        
+        if self.run_single_event:
+            self.tuner.SingleEvent(plot_and_print=False)
+            rise_time = self.tuner.rise_time
+            decay_time = self.tuner.decay_time
+        
+        if self.run_train_input:
+            self.tuner._simulate_model(self.train_frequency, self.train_delay)
+            amp = self.tuner._response_amplitude()
+            ppr, induction, recovery = self.tuner._calc_ppr_induction_recovery(amp, print_math=False)
+            amp = self.tuner._find_max_amp(amp)
+        
         return {
             'induction': float(induction),
             'ppr': float(ppr),
             'recovery': float(recovery),
-            'max_amplitude': float(amp)
+            'max_amplitude': float(amp),
+            'rise_time': float(rise_time),
+            'decay_time': float(decay_time)
         }
         
     def _default_cost_function(self, metrics: Dict[str, float], target_metrics: Dict[str, float]) -> float:
@@ -957,7 +991,13 @@ class SynapseOptimizer:
         # Set parameters
         for name, value in zip(param_names, params):
             setattr(self.tuner.syn, name, value)
-        
+            
+        # just do this and have the SingleEvent handle it     
+        if self.run_single_event:
+            self.tuner.using_optimizer = True
+            self.tuner.param_names = param_names
+            self.tuner.params = params
+                    
         # Calculate metrics and error
         metrics = self._calculate_metrics()
         error = float(cost_function(metrics, target_metrics))  # Ensure error is scalar
@@ -974,6 +1014,7 @@ class SynapseOptimizer:
     
     def optimize_parameters(self, target_metrics: Dict[str, float],
                             param_bounds: Dict[str, Tuple[float, float]],
+                            run_single_event:bool = False, run_train_input:bool = True,
                             train_frequency: float = 50,train_delay: float = 250,
                             cost_function: Optional[Callable] = None,
                             method: str = 'SLSQP',init_guess='random') -> SynapseOptimizationResult:
@@ -1005,6 +1046,8 @@ class SynapseOptimizer:
         self.optimization_history = []
         self.train_frequency = train_frequency
         self.train_delay = train_delay
+        self.run_single_event = run_single_event
+        self.run_train_input = run_train_input
         
         param_names = list(param_bounds.keys())
         bounds = [param_bounds[name] for name in param_names]
@@ -1107,9 +1150,14 @@ class SynapseOptimizer:
             print(f"{param}: {float(value):.3f}")
         
         # Plot final model response
-        self.tuner._plot_model([self.tuner.general_settings['tstart'] - self.tuner.nstim.interval / 3, self.tuner.tstop])
-        amp = self.tuner._response_amplitude()
-        self.tuner._calc_ppr_induction_recovery(amp)        
+        if self.run_train_input:
+            self.tuner._plot_model([self.tuner.general_settings['tstart'] - self.tuner.nstim.interval / 3, self.tuner.tstop])
+            amp = self.tuner._response_amplitude()
+            self.tuner._calc_ppr_induction_recovery(amp)
+        if self.run_single_event:
+            self.tuner.ispk=None
+            self.tuner.SingleEvent(plot_and_print=True)
+                    
         
         
 # dataclass means just init the typehints as self.typehint. looks a bit cleaner
