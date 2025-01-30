@@ -197,7 +197,7 @@ class SynapseTuner:
             syn_props = {var: slider.value for var, slider in self.dynamic_sliders.items()}
             self._set_syn_prop(**syn_props)
                   
-        # sets values based off optimizer   
+        # sets values based off optimizer 
         if hasattr(self,'using_optimizer'):
             for name, value in zip(self.param_names, self.params):
                 setattr(self.syn, name, value)
@@ -222,7 +222,7 @@ class SynapseTuner:
         h.run()
         
         current = np.array(self.rec_vectors[self.current_name])
-        syn_props = self._get_syn_prop(rise_interval=self.general_settings['rise_interval']) 
+        syn_props = self._get_syn_prop(rise_interval=self.general_settings['rise_interval'],dt=h.dt) 
         current = (current - syn_props['baseline']) * 1000  # Convert to pA
         current_integral = np.trapz(current, dx=h.dt)  # pA·ms
         
@@ -277,7 +277,7 @@ class SynapseTuner:
         if self.vclamp:
             isyn = self.ivcl
         else:
-            isyn = self.rec_vectors['i']
+            isyn = self.rec_vectors[self.current_name]
         isyn = np.asarray(isyn)
         tspk = np.asarray(self.tspk)
         if tspk.size:
@@ -350,7 +350,7 @@ class SynapseTuner:
         
         # Plot synaptic current (always included)
         current = self.rec_vectors[self.current_name]
-        syn_prop = self._get_syn_prop(short=True)
+        syn_prop = self._get_syn_prop(short=True,dt=h.dt)
         current = (current - syn_prop['baseline']) 
         current = current * 1000
         
@@ -447,13 +447,12 @@ class SynapseTuner:
         """
         isyn = np.array(self.rec_vectors[self.current_name].to_python())
         tspk = np.append(np.asarray(self.tspk), h.tstop)
-        syn_prop = self._get_syn_prop(short=True)
+        syn_prop = self._get_syn_prop(short=True,dt=h.dt)
         # print("syn_prp[sign] = " + str(syn_prop['sign']))
         isyn = (isyn - syn_prop['baseline']) 
         isyn *= syn_prop['sign']
         ispk = np.floor((tspk + self.general_settings['delay']) / h.dt).astype(int)
 
-        
         try:        
             amp = [isyn[ispk[i]:ispk[i + 1]].max() for i in range(ispk.size - 1)]
             # indexs of where the max of the synaptic current is at. This is then plotted     
@@ -1158,7 +1157,6 @@ class SynapseOptimizer:
             self.tuner.ispk=None
             self.tuner.SingleEvent(plot_and_print=True)
                     
-        
         
 # dataclass means just init the typehints as self.typehint. looks a bit cleaner
 @dataclass
