@@ -4,6 +4,8 @@ import subprocess
 import json
 import requests
 import shutil
+import time
+import copy
 
 
 def check_job_status(job_id):
@@ -117,7 +119,7 @@ class multiSeedSweep(seedSweep):
     MultSeedSweeps are centered around some base JSON cell file. When that base JSON is updated, the other JSONs
     change according to their ratio with the base JSON.
     """
-    def __init__(self, base_json_file_path, param_name, syn_dict_list=[], base_ratio=1):
+    def __init__(self, base_json_file_path, param_name, syn_dict, base_ratio=1):
         """
         Initializes the multipleSeedSweep instance.
 
@@ -128,7 +130,7 @@ class multiSeedSweep(seedSweep):
             base_ratio (float): The ratio between the other JSONs; usually the current value for the parameter.
         """
         super().__init__(base_json_file_path, param_name)
-        self.syn_dict_list = syn_dict_list
+        self.syn_dict_for_multi = syn_dict
         self.base_ratio = base_ratio
 
     def edit_all_jsons(self, new_value):
@@ -140,19 +142,19 @@ class multiSeedSweep(seedSweep):
         """
         self.edit_json(new_value)
         base_ratio = self.base_ratio
-        for syn_dict in self.syn_dict_list:
-            json_file_path = syn_dict['json_file_path']
-            new_ratio = syn_dict['ratio'] / base_ratio
-            
-            with open(json_file_path, 'r') as f:
-                data = json.load(f)
-            altered_value = new_ratio * new_value
-            data[self.param_name] = altered_value
+
+        json_file_path = self.syn_dict_for_multi['json_file_path']
+        new_ratio = self.syn_dict_for_multi['ratio'] / base_ratio
         
-            with open(json_file_path, 'w') as f:
-                json.dump(data, f, indent=4)
-        
-            print(f"JSON file '{json_file_path}' modified successfully with {self.param_name}={altered_value}.", flush=True)
+        with open(json_file_path, 'r') as f:
+            data = json.load(f)
+        altered_value = new_ratio * new_value
+        data[self.param_name] = altered_value
+    
+        with open(json_file_path, 'w') as f:
+            json.dump(data, f, indent=4)
+    
+        print(f"JSON file '{json_file_path}' modified successfully with {self.param_name}={altered_value}.", flush=True)
 
 
 class SimulationBlock:
@@ -273,6 +275,7 @@ export OUTPUT_DIR={case_output_dir}
         """
         for job_id in self.job_ids:
             status = check_job_status(job_id)
+            #print(f"status of job is {status}")
             if status != 'COMPLETED': # can add PENDING here for debugging NOT FOR ACTUALLY USING IT 
                 return False
         return True
@@ -314,7 +317,7 @@ class BlockRunner:
     """
 
     def __init__(self, blocks, json_editor=None,json_file_path=None, param_name=None, 
-                 param_values=None, check_interval=60,syn_dict_list = None,
+                 param_values=None, check_interval=60,syn_dict = None,
                  webhook=None):
         self.blocks = blocks
         self.json_editor = json_editor
@@ -323,29 +326,46 @@ class BlockRunner:
         self.webhook = webhook
         self.param_name = param_name
         self.json_file_path = json_file_path
-        self.syn_dict_list = syn_dict_list
+        self.syn_dict = syn_dict
 
     def submit_blocks_sequentially(self):
         """
         Submits all blocks sequentially, ensuring each block starts only after the previous block has completed or is running.
         Updates the JSON file with new parameters before each block run.
-        json file path should be the path WITH the components folder 
         """
         for i, block in enumerate(self.blocks):
             # Update JSON file with new parameter value
-            if self.json_editor == None and self.param_values == None:
+            if self.json_file_path == None and self.param_values == None:
+                source_dir = block.component_path
+                destination_dir = f"{source_dir}{i+1}"
+                block.component_path = destination_dir
+                shutil.copytree(source_dir, destination_dir) # create new components folder 
                 print(f"skipping json editing for block {block.block_name}",flush=True)
             else:
                 if len(self.blocks) != len(self.param_values):
                     raise Exception("Number of blocks needs to each number of params given")
                 new_value = self.param_values[i]
+                # hope this path is correct
+                source_dir = block.component_path
+                destination_dir = f"{source_dir}{i+1}"
+                block.component_path = destination_dir
+
+                shutil.copytree(source_dir, destination_dir) # create new components folder
+                json_file_path = os.path.join(destination_dir,self.json_file_path)
                 
-                if self.syn_dict_list == None:
-                    json_editor = seedSweep(self.json_file_path, self.param_name)
+                # need to keep the orignal around
+                syn_dict_temp = copy.deepcopy(self.syn_dict)
+                print(self.syn_dict['json_file_path'])
+                json_to_be_ratioed = syn_dict_temp['json_file_path']
+                corrected_ratio_path = os.path.join(destination_dir,json_to_be_ratioed)
+                syn_dict_temp['json_file_path'] = corrected_ratio_path
+                
+                if self.syn_dict == None:
+                    json_editor = seedSweep(json_file_path , self.param_name)
                     json_editor.edit_json(new_value)
                 else:
-                    json_editor = multiSeedSweep(self.json_file_path,self.param_name,
-                                                self.syn_dict_list,base_ratio=1)
+                    json_editor = multiSeedSweep(json_file_path ,self.param_name,
+                                                syn_dict=syn_dict_temp,base_ratio=1)
                     json_editor.edit_all_jsons(new_value) 
 
             # Submit the block
@@ -357,7 +377,7 @@ class BlockRunner:
 
             # Wait for the block to complete
             if i == len(self.blocks) - 1:  
-                while not block.check_block_completed():
+                while not block.check_block_status():
                     print(f"Waiting for the last block {i} to complete...")
                     time.sleep(self.check_interval)
             else:  # Not the last block so if job is running lets start a new one (checks status list)
@@ -376,13 +396,14 @@ class BlockRunner:
         submits all the blocks at once onto the queue. To do this the components dir will be cloned and each block will have its own.
         Also the json_file_path should be the path after the components dir
         """
-        if self.webhook:
-            message = "SIMULATION UPDATE: Simulations have been submited in parallel!"
-            send_teams_message(self.webhook,message)
-        if self.param_values == None:
-            print(f"skipping json editing for block {block.block_name}",flush=True)
-        else:
-            for i, block in enumerate(self.blocks):
+        for i, block in enumerate(self.blocks):
+            if self.param_values == None:
+                source_dir = block.component_path
+                destination_dir = f"{source_dir}{i+1}"
+                block.component_path = destination_dir
+                shutil.copytree(source_dir, destination_dir) # create new components folder 
+                print(f"skipping json editing for block {block.block_name}",flush=True)
+            else:
                 if block.component_path == None:
                     raise Exception("Unable to use parallel submitter without defining the component path")
                 new_value = self.param_values[i]
@@ -393,22 +414,29 @@ class BlockRunner:
 
                 shutil.copytree(source_dir, destination_dir) # create new components folder 
                 json_file_path = os.path.join(destination_dir,self.json_file_path)
-                if self.syn_dict_list == None:
-                    json_editor = seedSweep(json_file_path, self.param_name)
+                
+                # need to keep the orignal around
+                syn_dict_temp = copy.deepcopy(self.syn_dict)
+                print(self.syn_dict['json_file_path'])
+                json_to_be_ratioed = syn_dict_temp['json_file_path']
+                corrected_ratio_path = os.path.join(destination_dir,json_to_be_ratioed)
+                syn_dict_temp['json_file_path'] = corrected_ratio_path
+                
+                if self.syn_dict == None:
+                    json_editor = seedSweep(json_file_path , self.param_name)
                     json_editor.edit_json(new_value)
                 else:
-                    json_editor = multiSeedSweep(json_file_path,self.param_name,
-                                                self.syn_dict_list,base_ratio=1)
-                    json_editor.edit_all_jsons(new_value)  
-            
-            # submit block with new component path 
+                    json_editor = multiSeedSweep(json_file_path ,self.param_name,
+                                                syn_dict_temp,base_ratio=1)
+                    json_editor.edit_all_jsons(new_value) 
+                # submit block with new component path 
             print(f"Submitting block: {block.block_name}", flush=True)
             block.submit_block()
             if i == len(self.blocks) - 1:
-                if self.webook:  
-                    while not block.check_block_completed():
-                        print(f"Waiting for the last block {i} to complete...")
-                        time.sleep(self.check_interval)
+                print("\nEverything has been submitted. You can close out of this or keep this script running to get a message when everything is finished\n")
+                while not block.check_block_status():
+                    print(f"Waiting for the last block {i} to complete...")
+                    time.sleep(self.check_interval)
                 
         if self.webhook:
             message = "SIMULATION UPDATE: Simulations are Done!"
