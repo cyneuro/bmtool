@@ -9,7 +9,8 @@ from typing import Dict, Optional,Tuple, Union
 import numpy as np
 import os
 
-def load_spikes_to_df(spike_file: str, network_name: str, sort: bool = True,config: str = None) -> pd.DataFrame:
+
+def load_spikes_to_df(spike_file: str, network_name: str, sort: bool = True, config: str = None, groupby: str = 'pop_name') -> pd.DataFrame:
     """
     Load spike data from an HDF5 file into a pandas DataFrame.
 
@@ -17,7 +18,8 @@ def load_spikes_to_df(spike_file: str, network_name: str, sort: bool = True,conf
         spike_file (str): Path to the HDF5 file containing spike data.
         network_name (str): The name of the network within the HDF5 file from which to load spike data.
         sort (bool, optional): Whether to sort the DataFrame by 'timestamps'. Defaults to True.
-        config(str, optional): Will label the cell type of each spike 
+        config (str, optional): Will label the cell type of each spike.
+        groupby (str or list of str, optional): The column(s) to group by. Defaults to 'pop_name'.
 
     Returns:
         pd.DataFrame: A pandas DataFrame containing 'node_ids' and 'timestamps' columns from the spike data.
@@ -30,17 +32,26 @@ def load_spikes_to_df(spike_file: str, network_name: str, sort: bool = True,conf
             'node_ids': f['spikes'][network_name]['node_ids'],
             'timestamps': f['spikes'][network_name]['timestamps']
         })
+
         if sort:
             spikes_df.sort_values(by='timestamps', inplace=True, ignore_index=True)
+        
         if config:
             nodes = load_nodes_from_config(config)
             nodes = nodes[network_name]
-            spikes_df = spikes_df.merge(nodes['pop_name'], left_on='node_ids', right_index=True, how='left')
+
+            # Check if 'groupby' is a string or a list of strings and handle accordingly
+            if isinstance(groupby, str):
+                spikes_df = spikes_df.merge(nodes[groupby], left_on='node_ids', right_index=True, how='left')
+            elif isinstance(groupby, list):
+                for group in groupby:
+                    spikes_df = spikes_df.merge(nodes[group], left_on='node_ids', right_index=True, how='left')
 
     return spikes_df
 
 
-def pop_spike_rate(spike_times: Union[np.ndarray, list], time: Optional[Tuple[float, float, float]] = None, 
+
+def _pop_spike_rate(spike_times: Union[np.ndarray, list], time: Optional[Tuple[float, float, float]] = None, 
                    time_points: Optional[Union[np.ndarray, list]] = None, frequeny: bool = False) -> np.ndarray:
     """
     Calculate the spike count or frequency histogram over specified time intervals.
@@ -115,13 +126,20 @@ def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: 
     if config is None:
         print("Note: Node number is obtained by counting unique node spikes in the network.\nIf the network did not run for a sufficient duration, and not all cells fired, this count might be incorrect.")
         print("You can provide a config to calculate the correct amount of nodes!")
+        
+    if config:
+        if not network_name:
+            print("Grabbing first network; specify a network name to ensure correct node population is selected.")
 
     for pop_name in spikes['pop_name'].unique():
         ps = spikes[spikes['pop_name'] == pop_name]
         
         if config:
             nodes = load_nodes_from_config(config)
-            nodes = nodes[network_name]
+            if network_name:
+                nodes = nodes[network_name]
+            else:
+                nodes = list(nodes.values())[0] if nodes else {}
             nodes = nodes[nodes['pop_name'] == pop_name]
             node_number[pop_name] = nodes.index.nunique()
         else:
@@ -138,7 +156,7 @@ def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: 
         pop_spikes[pop_name] = filtered_spikes
 
     time = np.array([t_start, t_stop, 1000 / fs])
-    pop_rspk = {p: pop_spike_rate(spk['timestamps'], time) for p, spk in pop_spikes.items()}
+    pop_rspk = {p: _pop_spike_rate(spk['timestamps'], time) for p, spk in pop_spikes.items()}
     spike_rate = {p: fs / node_number[p] * pop_rspk[p] for p in pop_rspk}
 
     # Normalize each spike rate series if normalize=True

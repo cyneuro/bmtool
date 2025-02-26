@@ -90,7 +90,11 @@ class CurrentClamp(object):
         self.inj_dur = inj_dur
         self.inj_amp = inj_amp * 1e-3 # pA to nA
 
-        self.cell = self.create_cell()
+        # sometimes people may put a hoc object in for the template name 
+        if callable(template_name):
+            self.cell = template_name
+        else:    
+            self.cell = self.create_cell()
         if post_init_function:
             eval(f"self.cell.{post_init_function}")
 

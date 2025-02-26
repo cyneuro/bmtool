@@ -762,7 +762,7 @@ def connector_percent_matrix(csv_path: str = None, exclude_strings=None, assemb_
     plt.tight_layout()
     plt.show()
 
-def raster(spikes_df: Optional[pd.DataFrame] = None, config: Optional[str] = None, network_name: Optional[str] = None, 
+def raster(spikes_df: Optional[pd.DataFrame] = None, config: Optional[str] = None, network_name: Optional[str] = None, groupby:Optional[str] = 'pop_name',
            ax: Optional[Axes] = None,tstart: Optional[float] = None,tstop: Optional[float] = None,
            color_map: Optional[Dict[str, str]] = None) -> Axes:
     """
@@ -793,7 +793,7 @@ def raster(spikes_df: Optional[pd.DataFrame] = None, config: Optional[str] = Non
     Notes:
     -----
     - If `config` is provided, the function merges population names from the node data with `spikes_df`.
-    - Each unique population (`pop_name`) in `spikes_df` will be represented by a different color if `color_map` is not specified.
+    - Each unique population from groupby in `spikes_df` will be represented by a different color if `color_map` is not specified.
     - If `color_map` is provided, it should contain colors for all unique `pop_name` values in `spikes_df`.
     """
     # Initialize axes if none provided
@@ -822,11 +822,11 @@ def raster(spikes_df: Optional[pd.DataFrame] = None, config: Optional[str] = Non
         # Drop all intersecting columns except the join key column from df2
         spikes_df = spikes_df.drop(columns=common_columns)
         # merge nodes and spikes df
-        spikes_df = spikes_df.merge(nodes['pop_name'], left_on='node_ids', right_index=True, how='left')
+        spikes_df = spikes_df.merge(nodes[groupby], left_on='node_ids', right_index=True, how='left')
 
 
     # Get unique population names
-    unique_pop_names = spikes_df['pop_name'].unique()
+    unique_pop_names = spikes_df[groupby].unique()
     
     # Generate colors if no color_map is provided
     if color_map is None:
@@ -839,7 +839,7 @@ def raster(spikes_df: Optional[pd.DataFrame] = None, config: Optional[str] = Non
             raise ValueError(f"color_map is missing colors for populations: {missing_colors}")
     
     # Plot each population with its specified or generated color
-    for pop_name, group in spikes_df.groupby('pop_name'):
+    for pop_name, group in spikes_df.groupby(groupby):
         ax.scatter(group['timestamps'], group['node_ids'], label=pop_name, color=color_map[pop_name], s=0.5)
 
     # Label axes

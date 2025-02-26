@@ -37,7 +37,7 @@ begintemplate CP_Cell
 		bdendDiam = 2.2799248874
 
 		// passive properties
-		Cap_scale = 0.8 //1.5
+		Cap_scale = 1 // 1 1.5
 		RM_scale = 1 //1.2
 		rall = 114.510490019 // Ra all
 		axonCap =  1.01280903702 * Cap_scale // capacitance

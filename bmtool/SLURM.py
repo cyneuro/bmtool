@@ -353,17 +353,15 @@ class BlockRunner:
                 shutil.copytree(source_dir, destination_dir) # create new components folder
                 json_file_path = os.path.join(destination_dir,self.json_file_path)
                 
-                # need to keep the orignal around
-                syn_dict_temp = copy.deepcopy(self.syn_dict)
-                print(self.syn_dict['json_file_path'])
-                json_to_be_ratioed = syn_dict_temp['json_file_path']
-                corrected_ratio_path = os.path.join(destination_dir,json_to_be_ratioed)
-                syn_dict_temp['json_file_path'] = corrected_ratio_path
-                
                 if self.syn_dict == None:
                     json_editor = seedSweep(json_file_path , self.param_name)
                     json_editor.edit_json(new_value)
                 else:
+                    # need to keep the orignal around
+                    syn_dict_temp = copy.deepcopy(self.syn_dict)
+                    json_to_be_ratioed = syn_dict_temp['json_file_path']
+                    corrected_ratio_path = os.path.join(destination_dir,json_to_be_ratioed)
+                    syn_dict_temp['json_file_path'] = corrected_ratio_path
                     json_editor = multiSeedSweep(json_file_path ,self.param_name,
                                                 syn_dict=syn_dict_temp,base_ratio=1)
                     json_editor.edit_all_jsons(new_value) 
@@ -415,17 +413,15 @@ class BlockRunner:
                 shutil.copytree(source_dir, destination_dir) # create new components folder 
                 json_file_path = os.path.join(destination_dir,self.json_file_path)
                 
-                # need to keep the orignal around
-                syn_dict_temp = copy.deepcopy(self.syn_dict)
-                print(self.syn_dict['json_file_path'])
-                json_to_be_ratioed = syn_dict_temp['json_file_path']
-                corrected_ratio_path = os.path.join(destination_dir,json_to_be_ratioed)
-                syn_dict_temp['json_file_path'] = corrected_ratio_path
-                
                 if self.syn_dict == None:
                     json_editor = seedSweep(json_file_path , self.param_name)
                     json_editor.edit_json(new_value)
                 else:
+                    # need to keep the orignal around
+                    syn_dict_temp = copy.deepcopy(self.syn_dict)
+                    json_to_be_ratioed = syn_dict_temp['json_file_path']
+                    corrected_ratio_path = os.path.join(destination_dir,json_to_be_ratioed)
+                    syn_dict_temp['json_file_path'] = corrected_ratio_path
                     json_editor = multiSeedSweep(json_file_path ,self.param_name,
                                                 syn_dict_temp,base_ratio=1)
                     json_editor.edit_all_jsons(new_value) 

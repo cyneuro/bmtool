@@ -1,0 +1,38 @@
+{
+  "manifest": {
+    "$BASE_DIR": "${configdir}",
+    "$NETWORK_DIR": "$BASE_DIR/network",
+    "$COMPONENTS_DIR": "$BASE_DIR/components"
+  },
+  "components": {
+    "biophysical_neuron_models_dir": "$COMPONENTS_DIR/biophysical_neuron_models",
+    "mechanisms_dir": "$COMPONENTS_DIR/mechanisms",
+    "morphologies_dir": "$COMPONENTS_DIR/morphologies",
+    "point_neuron_models_dir": "$COMPONENTS_DIR/point_neuron_models",
+    "synaptic_models_dir": "$COMPONENTS_DIR/synaptic_models",
+    "templates_dir": "$COMPONENTS_DIR/templates"
+  },
+  "networks": {
+    "nodes": [
+      {
+        "nodes_file": "$NETWORK_DIR/network_nodes.h5",
+        "node_types_file": "$NETWORK_DIR/network_node_types.csv"
+      },
+      {
+        "nodes_file": "$NETWORK_DIR/extnet_nodes.h5",
+        "node_types_file": "$NETWORK_DIR/extnet_node_types.csv"
+      }
+    ],
+    "edges": [
+      {
+        "edges_file": "$NETWORK_DIR/network_network_edges.h5",
+        "edge_types_file": "$NETWORK_DIR/network_network_edge_types.csv" 
+      },
+      {
+        "edges_file": "$NETWORK_DIR/extnet_network_edges.h5",
+        "edge_types_file": "$NETWORK_DIR/extnet_network_edge_types.csv" 
+      }
+    ],
+    "gap_juncs": []
+  }
+}
