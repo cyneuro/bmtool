@@ -5,7 +5,7 @@ Module for processing BMTK spikes output.
 import h5py
 import pandas as pd
 from bmtool.util.util import load_nodes_from_config
-from typing import Dict, Optional,Tuple, Union
+from typing import Dict, Optional,Tuple, Union, List
 import numpy as np
 import os
 
@@ -40,15 +40,88 @@ def load_spikes_to_df(spike_file: str, network_name: str, sort: bool = True, con
             nodes = load_nodes_from_config(config)
             nodes = nodes[network_name]
 
-            # Check if 'groupby' is a string or a list of strings and handle accordingly
+            # Convert single string to a list for uniform handling
             if isinstance(groupby, str):
-                spikes_df = spikes_df.merge(nodes[groupby], left_on='node_ids', right_index=True, how='left')
-            elif isinstance(groupby, list):
-                for group in groupby:
-                    spikes_df = spikes_df.merge(nodes[group], left_on='node_ids', right_index=True, how='left')
+                groupby = [groupby]
+
+            # Ensure all requested columns exist
+            missing_cols = [col for col in groupby if col not in nodes.columns]
+            if missing_cols:
+                raise KeyError(f"Columns {missing_cols} not found in nodes DataFrame.")
+
+            spikes_df = spikes_df.merge(nodes[groupby], left_on='node_ids', right_index=True, how='left')
 
     return spikes_df
 
+
+def compute_firing_rate_stats(df: pd.DataFrame, groupby: Union[str, List[str]] = "pop_name", start_time: float = None, stop_time: float = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Computes the firing rates of individual nodes and the mean and standard deviation of firing rates per group.
+
+    Args:
+        df (pd.DataFrame): Dataframe containing spike timestamps and node IDs.
+        groupby (str or list of str, optional): Column(s) to group by (e.g., 'pop_name' or ['pop_name', 'layer']).
+        start_time (float, optional): Start time for the analysis window. Defaults to the minimum timestamp in the data.
+        stop_time (float, optional): Stop time for the analysis window. Defaults to the maximum timestamp in the data.
+
+    Returns:
+        Tuple[pd.DataFrame, pd.DataFrame]: 
+            - The first DataFrame (`pop_stats`) contains the mean and standard deviation of firing rates per group.
+            - The second DataFrame (`individual_stats`) contains the firing rate of each individual node.
+    """
+
+    # Ensure groupby is a list
+    if isinstance(groupby, str):
+        groupby = [groupby]
+    
+    # Ensure all columns exist in the dataframe
+    for col in groupby:
+        if col not in df.columns:
+            raise ValueError(f"Column '{col}' not found in dataframe.")
+
+    # Filter dataframe based on start/stop time
+    if start_time is not None:
+        df = df[df["timestamps"] >= start_time]
+    if stop_time is not None:
+        df = df[df["timestamps"] <= stop_time]
+
+    # Compute total duration for firing rate calculation
+    if start_time is None:
+        min_time = df["timestamps"].min()
+    else:
+        min_time = start_time
+    
+    if stop_time is None: 
+        max_time = df["timestamps"].max()
+    else:
+        max_time = stop_time
+ 
+    duration = max_time - min_time  # Avoid division by zero
+
+    if duration <= 0:
+        raise ValueError("Invalid time window: Stop time must be greater than start time.")
+
+    # Compute firing rate for each node
+    import pandas as pd
+
+    # Compute spike counts per node
+    spike_counts = df["node_ids"].value_counts().reset_index()
+    spike_counts.columns = ["node_ids", "spike_count"]  # Rename columns
+
+    # Merge with original dataframe to get corresponding labels (e.g., 'pop_name')
+    spike_counts = spike_counts.merge(df[["node_ids"] + groupby].drop_duplicates(), on="node_ids", how="left")
+
+    # Compute firing rate
+    spike_counts["firing_rate"] = spike_counts["spike_count"] / duration * 1000 # scale to Hz
+    indivdual_stats = spike_counts
+    
+    # Compute mean and standard deviation per group
+    pop_stats = spike_counts.groupby(groupby)["firing_rate"].agg(["mean", "std"]).reset_index()
+
+    # Rename columns
+    pop_stats.rename(columns={"mean": "firing_rate_mean", "std": "firing_rate_std"}, inplace=True)
+
+    return pop_stats,indivdual_stats
 
 
 def _pop_spike_rate(spike_times: Union[np.ndarray, list], time: Optional[Tuple[float, float, float]] = None, 

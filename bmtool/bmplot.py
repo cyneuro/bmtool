@@ -13,6 +13,7 @@ import matplotlib.colors as colors
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.axes import Axes
+import seaborn as sns
 from IPython import get_ipython
 from IPython.display import display, HTML
 import statistics
@@ -20,7 +21,7 @@ import pandas as pd
 import os
 import sys
 import re
-from typing import Optional, Dict
+from typing import Optional, Dict, Union, List
 
 from .util.util import CellVarsFile,load_nodes_from_config #, missing_units
 from bmtk.analyzer.utils import listify
@@ -849,6 +850,169 @@ def raster(spikes_df: Optional[pd.DataFrame] = None, config: Optional[str] = Non
     
     return ax
     
+# uses df from bmtool.analysis.spikes compute_firing_rate_stats
+def plot_firing_rate_pop_stats(firing_stats: pd.DataFrame, groupby: Union[str, List[str]], ax: Optional[Axes] = None, 
+                               color_map: Optional[Dict[str, str]] = None) -> Axes:
+    """
+    Plots a bar graph of mean firing rates with error bars (standard deviation).
+
+    Parameters:
+    ----------
+    firing_stats : pd.DataFrame
+        Dataframe containing 'firing_rate_mean' and 'firing_rate_std'.
+    groupby : str or list of str
+        Column(s) used for grouping.
+    ax : matplotlib.axes.Axes, optional
+        Axes on which to plot the bar chart; if None, a new figure and axes are created.
+    color_map : dict, optional
+        Dictionary specifying colors for each group. Keys should be group names, and values should be color values.
+
+    Returns:
+    -------
+    matplotlib.axes.Axes
+        Axes with the bar plot.
+    """
+    # Ensure groupby is a list for consistent handling
+    if isinstance(groupby, str):
+        groupby = [groupby]
+
+    # Create a categorical column for grouping
+    firing_stats["group"] = firing_stats[groupby].astype(str).agg("_".join, axis=1)
+
+    # Get unique group names
+    unique_groups = firing_stats["group"].unique()
+
+    # Generate colors if no color_map is provided
+    if color_map is None:
+        cmap = plt.get_cmap('viridis')
+        color_map = {group: cmap(i / len(unique_groups)) for i, group in enumerate(unique_groups)}
+    else:
+        # Ensure color_map contains all groups
+        missing_colors = [group for group in unique_groups if group not in color_map]
+        if missing_colors:
+            raise ValueError(f"color_map is missing colors for groups: {missing_colors}")
+
+    # Create new figure and axes if ax is not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Sort data for consistent plotting
+    firing_stats = firing_stats.sort_values(by="group")
+
+    # Extract values for plotting
+    x_labels = firing_stats["group"]
+    means = firing_stats["firing_rate_mean"]
+    std_devs = firing_stats["firing_rate_std"]
+
+    # Get colors for each group
+    colors = [color_map[group] for group in x_labels]
+
+    # Create bar plot
+    bars = ax.bar(x_labels, means, yerr=std_devs, capsize=5, color=colors, edgecolor="black")
+
+    # Add error bars manually with caps
+    _, caps, _ = ax.errorbar(
+        x=np.arange(len(x_labels)), 
+        y=means, 
+        yerr=std_devs, 
+        fmt='none', 
+        capsize=5, 
+        capthick=2, 
+        color="black"
+    )
+
+    # Formatting
+    ax.set_xticks(np.arange(len(x_labels)))
+    ax.set_xticklabels(x_labels, rotation=45, ha="right")
+    ax.set_xlabel("Population Group")
+    ax.set_ylabel("Mean Firing Rate (spikes/s)")
+    ax.set_title("Firing Rate Statistics by Population")
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+
+    return ax
+
+# uses df from bmtool.analysis.spikes compute_firing_rate_stats
+def plot_firing_rate_distribution(individual_stats: pd.DataFrame, groupby: Union[str, list], ax: Optional[Axes] = None, 
+                                  color_map: Optional[Dict[str, str]] = None, 
+                                  plot_type: Union[str, list] = "box", swarm_alpha: float = 0.6) -> Axes:
+    """
+    Plots a distribution of individual firing rates using one or more plot types
+    (box plot, violin plot, or swarm plot), overlaying them on top of each other.
+
+    Parameters:
+    ----------
+    individual_stats : pd.DataFrame
+        Dataframe containing individual firing rates and corresponding group labels.
+    groupby : str or list of str
+        Column(s) used for grouping.
+    ax : matplotlib.axes.Axes, optional
+        Axes on which to plot the graph; if None, a new figure and axes are created.
+    color_map : dict, optional
+        Dictionary specifying colors for each group. Keys should be group names, and values should be color values.
+    plot_type : str or list of str, optional
+        List of plot types to generate. Options: "box", "violin", "swarm". Default is "box".
+    swarm_alpha : float, optional
+        Transparency of swarm plot points. Default is 0.6.
+
+    Returns:
+    -------
+    matplotlib.axes.Axes
+        Axes with the selected plot type(s) overlayed.
+    """
+    # Ensure groupby is a list for consistent handling
+    if isinstance(groupby, str):
+        groupby = [groupby]
+
+    # Create a categorical column for grouping
+    individual_stats["group"] = individual_stats[groupby].astype(str).agg("_".join, axis=1)
+
+    # Validate plot_type (it can be a list or a single type)
+    if isinstance(plot_type, str):
+        plot_type = [plot_type]
+    
+    for pt in plot_type:
+        if pt not in ["box", "violin", "swarm"]:
+            raise ValueError("plot_type must be one of: 'box', 'violin', 'swarm'.")
+
+    # Get unique groups for coloring
+    unique_groups = individual_stats["group"].unique()
+
+    # Generate colors if no color_map is provided
+    if color_map is None:
+        cmap = plt.get_cmap('viridis')
+        color_map = {group: cmap(i / len(unique_groups)) for i, group in enumerate(unique_groups)}
+    
+    # Ensure color_map contains all groups
+    missing_colors = [group for group in unique_groups if group not in color_map]
+    if missing_colors:
+        raise ValueError(f"color_map is missing colors for groups: {missing_colors}")
+
+    # Create new figure and axes if ax is not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Sort data for consistent plotting
+    individual_stats = individual_stats.sort_values(by="group")
+
+    # Loop over each plot type and overlay them
+    for pt in plot_type:
+        if pt == "box":
+            sns.boxplot(data=individual_stats, x="group", y="firing_rate", ax=ax, palette=color_map, width=0.5)
+        elif pt == "violin":
+            sns.violinplot(data=individual_stats, x="group", y="firing_rate", ax=ax, palette=color_map, inner="quartile", alpha=0.4)
+        elif pt == "swarm":
+            sns.swarmplot(data=individual_stats, x="group", y="firing_rate", ax=ax, palette=color_map, alpha=swarm_alpha)
+
+    # Formatting
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+    ax.set_xlabel("Population Group")
+    ax.set_ylabel("Firing Rate (spikes/s)")
+    ax.set_title("Firing Rate Distribution by Population")
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+
+    return ax
+  
+    
 def plot_3d_positions(config=None, populations_list=None, group_by=None, title=None, save_file=None, subset=None):
     """
     Plots a 3D graph of all cells with x, y, z location.
@@ -1154,164 +1318,3 @@ def plot_report_default(config, report_name, variables, gids):
     plot_report(config_file=config, report_file=report_file, report_name=report_name, variables=variables, gids=gids);
     
     return
-
-# The following code was developed by Matthew Stroud 7/15/21 neural engineering supervisor: Satish Nair
-# This is an extension of bmtool: a development of Tyler Banks. 
-# The goal of the sim_setup() function is to output relevant simulation information that can be gathered by providing only the main configuration file.
-
-
-def sim_setup(config_file='simulation_config.json',network=None):
-    if "JPY_PARENT_PID" in os.environ:
-        print("Inside a notebook:")
-        get_ipython().run_line_magic('matplotlib', 'tk')
-
-    
-    # Output tables that contain the cells involved in the configuration file given. Also returns the first biophysical network found
-    bio=plot_basic_cell_info(config_file)
-    if network == None:
-        network=bio
-
-    print("Please wait. This may take a while depending on your network size...")
-    # Plot connection probabilities
-    plt.close(1)
-    probability_connection_matrix(config=config_file,sources=network,targets=network, no_prepend_pop=True,sids= 'pop_name', tids= 'pop_name', bins=10,line_plot=True,verbose=False)
-    # Gives current clamp information
-    plot_I_clamps(config_file)
-    # Plot spike train info
-    plot_inspikes(config_file)
-    # Using bmtool, print total number of connections between cell groups
-    total_connection_matrix(config=config_file,sources='all',targets='all',sids='pop_name',tids='pop_name',title='All Connections found', size_scalar=2, no_prepend_pop=True, synaptic_info='0')
-    # Plot 3d positions of the network
-    plot_3d_positions(populations='all',config=config_file,group_by='pop_name',title='3D Positions',save_file=None)
-
-def plot_I_clamps(fp):
-    print("Plotting current clamp info...")
-    clamps = util.load_I_clamp_from_config(fp)
-    if not clamps:
-        print("     No current clamps were found.")
-        return
-    time=[]
-    num_clamps=0
-    fig, ax = plt.subplots()
-    ax = plt.gca()
-    for clinfo in clamps:
-        simtime=len(clinfo[0])*clinfo[1]
-        time.append(np.arange(0,simtime,clinfo[1]).tolist())
-
-        line,=ax.plot(time[num_clamps],clinfo[0],drawstyle='steps')
-        line.set_label('I Clamp to: '+str(clinfo[2]))
-        plt.legend()
-        num_clamps=num_clamps+1
-
-def plot_basic_cell_info(config_file):
-    print("Network and node info:")
-    nodes=util.load_nodes_from_config(config_file)
-    if not nodes:
-        print("No nodes were found.")
-        return
-    pd.set_option("display.max_rows", None, "display.max_columns", None)
-    bio=[]
-    i=0
-    j=0
-    for j in nodes:
-        node=nodes[j]
-        node_type_id=node['node_type_id']
-        num_cells=len(node['node_type_id'])
-        if node['model_type'][0]=='virtual':
-            CELLS=[]
-            count=1
-            for i in range(num_cells-1):
-                if(node_type_id[i]==node_type_id[i+1]):
-                    count+=1
-                else:
-                    node_type=node_type_id[i]
-                    pop_name=node['pop_name'][i]
-                    model_type=node['model_type'][i]
-                    CELLS.append([node_type,pop_name,model_type,count])
-                    count=1
-            else:
-                node_type=node_type_id[i]
-                pop_name=node['pop_name'][i]
-                model_type=node['model_type'][i]
-                CELLS.append([node_type,pop_name,model_type,count])
-                count=1
-            df1 = pd.DataFrame(CELLS, columns = ["node_type","pop_name","model_type","count"])
-            print(j+':')
-            notebook = is_notebook()
-            if notebook == True:
-                display(HTML(df1.to_html()))
-            else:
-                print(df1)
-        elif node['model_type'][0]=='biophysical':
-            CELLS=[]
-            count=1
-            node_type_id=node['node_type_id']
-            num_cells=len(node['node_type_id'])
-            for i in range(num_cells-1):
-                if(node_type_id[i]==node_type_id[i+1]):
-                    count+=1
-                else:
-                    node_type=node_type_id[i]
-                    pop_name=node['pop_name'][i]
-                    model_type=node['model_type'][i]
-                    model_template=node['model_template'][i]
-                    morphology=node['morphology'][i] if node['morphology'][i] else ''
-                    CELLS.append([node_type,pop_name,model_type,model_template,morphology,count])
-                    count=1
-            else:
-                node_type=node_type_id[i]
-                pop_name=node['pop_name'][i]
-                model_type=node['model_type'][i]
-                model_template=node['model_template'][i]
-                morphology=node['morphology'][i] if node['morphology'][i] else ''
-                CELLS.append([node_type,pop_name,model_type,model_template,morphology,count])
-                count=1
-            df2 = pd.DataFrame(CELLS, columns = ["node_type","pop_name","model_type","model_template","morphology","count"])
-            print(j+':')
-            bio.append(j)
-            notebook = is_notebook()
-            if notebook == True:
-                display(HTML(df2.to_html()))
-            else:
-                print(df2)
-    if len(bio)>0:      
-        return bio[0]        
-
-def plot_inspikes(fp):
-    
-    print("Plotting spike Train info...")
-    trains = util.load_inspikes_from_config(fp)
-    if not trains:
-        print("No spike trains were found.")
-    num_trains=len(trains)
-
-    time=[]
-    node=[]
-    fig, ax = plt.subplots(num_trains, figsize=(12,12),squeeze=False)
-    fig.subplots_adjust(hspace=0.5, wspace=0.5)
-
-    pos=0
-    for tr in trains:
-        node_group=tr[0][2]
-        if node_group=='':
-            node_group='Defined by gids (y-axis)'
-        time=[]
-        node=[]
-        for sp in tr:
-            node.append(sp[1])
-            time.append(sp[0])
-
-        #plotting spike train
-        
-        ax[pos,0].scatter(time,node,s=1)
-        ax[pos,0].title.set_text('Input Spike Train to: '+node_group)
-        plt.xticks(rotation = 45)
-        if num_trains <=4:
-            ax[pos,0].xaxis.set_major_locator(plt.MaxNLocator(20))
-        if num_trains <=9 and num_trains >4:
-            ax[pos,0].xaxis.set_major_locator(plt.MaxNLocator(4))
-        elif num_trains <9:
-            ax[pos,0].xaxis.set_major_locator(plt.MaxNLocator(2))
-        #fig.suptitle('Input Spike Train to: '+node_group, fontsize=14)
-        fig.show()
-        pos+=1

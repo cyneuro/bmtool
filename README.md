@@ -10,6 +10,7 @@ A collection of modules to make developing [Neuron](https://www.neuron.yale.edu/
 - [Synapses](#synapses-module)
 - [Connectors](#connectors-module)
 - [Bmplot](#bmplot-module)
+- [Analysis](#analysis-module)
 - [SLURM](#slurm-module)
 - [Graphs](#graphs-module)
 
@@ -428,7 +429,11 @@ bmplot.plot_network_graph(config='config.json',sources='LA',targets='LA',tids='p
 
     
 ![png](readme_figures/output_35_0.png)
-    
+
+
+## Analysis Module
+### A notebook example of how to use the spikes module can be found [here](examples/analysis/using_spikes.ipynb)
+
 ## SLURM Module
 ### This is an extremely helpful module that can simplify using SLURM too submit your models. There is also features to enable doing a seedSweep. This will vary the parameters of the simulation and make tuning the model easier. An example can be found [here](examples/SLURM/using_BlockRunner.ipynb) 
 
