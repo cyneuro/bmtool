@@ -1007,7 +1007,7 @@ def plot_firing_rate_distribution(individual_stats: pd.DataFrame, groupby: Union
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     ax.set_xlabel("Population Group")
     ax.set_ylabel("Firing Rate (spikes/s)")
-    ax.set_title("Firing Rate Distribution by Population")
+    ax.set_title("Firing Rate Distribution for individual cells")
     ax.grid(axis='y', linestyle='--', alpha=0.7)
 
     return ax
