@@ -305,6 +305,45 @@ export OUTPUT_DIR={case_output_dir}
         return True
 
 
+def get_relative_path(endpoint, absolute_path):
+    """Convert absolute path to relative path for Globus transfer."""
+    try:
+        # Get the directories at the mount point
+        result = subprocess.run(["globus", "ls", f"{endpoint}:/"], capture_output=True, text=True, check=True)
+        dirs = set(result.stdout.splitlines())  # Convert to a set for quicker lookup
+
+        # Split the absolute path into parts
+        path_parts = absolute_path.strip("/").split("/")
+
+        # Find the first matching directory in the list
+        for i, part in enumerate(path_parts):
+            if part+"/" in dirs:
+                # The mount point is everything up to and including this directory
+                mount_point = "/" + "/".join(path_parts[:i])
+                relative_path = absolute_path.replace(mount_point, "", 1).lstrip("/")
+                return relative_path
+        
+        print("Error: Could not determine relative path.")
+        return None
+    except subprocess.CalledProcessError as e:
+        print(f"Error retrieving directories from Globus: {e}")
+        return None
+
+def globus_transfer(source_endpoint, dest_endpoint, source_path, dest_path):
+    """
+    Transfers file using custom globus transfer function. 
+    For more info see https://github.com/GregGlickert/transfer-files/blob/main/globus_transfer.sh
+    """
+    relative_source_path = get_relative_path(source_endpoint, source_path)
+    if relative_source_path is None:
+        print("Transfer aborted: Could not determine relative source path.")
+        return
+    
+    command = f"globus transfer {source_endpoint}:{relative_source_path} {dest_endpoint}:{dest_path} --label 'bmtool slurm transfer'"
+    os.system(command)
+
+
+
 class BlockRunner:
     """
     Class to handle submitting multiple blocks sequentially.
@@ -334,6 +373,7 @@ class BlockRunner:
         Updates the JSON file with new parameters before each block run.
         """
         for i, block in enumerate(self.blocks):
+            print(block.output_base_dir)
             # Update JSON file with new parameter value
             if self.json_file_path == None and self.param_values == None:
                 source_dir = block.component_path

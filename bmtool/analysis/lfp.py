@@ -406,3 +406,64 @@ def calculate_plv_over_time(x1: np.ndarray, x2: np.ndarray, fs: float,
     return np.array(plv_over_time), np.array(times)
 
 
+def calculate_ppc1(spike_times, lfp_signal, fs, freq_range, window_size=0.5):
+    """
+    Calculate PPC1 metric between spike times and LFP signal using the vector dot product method.
+    
+    Parameters:
+    -----------
+    spike_times : array_like
+        Array of spike times in seconds
+    lfp_signal : array_like
+        Local field potential time series
+    fs : float
+        Sampling frequency of the LFP signal in Hz
+    freq_range : tuple
+        Frequency range (low, high) to filter the LFP signal in Hz
+    window_size : float, optional
+        Size of the window around each spike in seconds, default is 0.5s
+    
+    Returns:
+    --------
+    ppc1 : float
+        PPC1 value
+    phases : array
+        Phases at spike times
+    """
+    # Convert spike times to sample indices
+    spike_indices = np.round(spike_times * fs).astype(int)
+    
+    # Filter LFP in the frequency band of interest
+    nyquist = fs / 2
+    b, a = signal.butter(3, [freq_range[0] / nyquist, freq_range[1] / nyquist], btype='band')
+    filtered_lfp = signal.filtfilt(b, a, lfp_signal)
+    
+    # Get analytic signal through Hilbert transform
+    analytic_signal = signal.hilbert(filtered_lfp)
+    
+    # Extract instantaneous phase
+    instantaneous_phase = np.angle(analytic_signal)
+    
+    # Get phases at spike times
+    spike_phases = []
+    for spike_idx in spike_indices:
+        if 0 <= spike_idx < len(instantaneous_phase):
+            spike_phases.append(instantaneous_phase[spike_idx])
+    
+    spike_phases = np.array(spike_phases)
+    
+    # Calculate PPC1
+    n = len(spike_phases)
+    if n <= 1:
+        return 0, spike_phases
+    
+    # Convert phases to unit vectors in the complex plane
+    unit_vectors = np.exp(1j * spike_phases)
+    
+    # Calculate the resultant vector
+    resultant_vector = np.sum(unit_vectors)
+    
+    # PPC1 is the squared length of the resultant vector divided by n²
+    ppc1 = (np.abs(resultant_vector) ** 2) / (n ** 2)
+    
+    return ppc1, spike_phases
