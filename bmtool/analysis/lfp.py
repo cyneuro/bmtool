@@ -406,56 +406,70 @@ def calculate_plv_over_time(x1: np.ndarray, x2: np.ndarray, fs: float,
     return np.array(plv_over_time), np.array(times)
 
 
-def calculate_ppc1(spike_times, lfp_signal, fs, freq_range, window_size=0.5):
+def calculate_ppc1(spike_times: np.ndarray = None, lfp_signal: np.ndarray = None, spike_fs : float = None,
+                   lfp_fs: float = None, method: str = 'hilbert', freq_of_interest: float = None,
+                   lowcut: float = None, highcut: float = None,
+                   bandwidth: float = 2.0) -> tuple:
     """
-    Calculate PPC1 metric between spike times and LFP signal using the vector dot product method.
+    Calculate Phase-Phase Coupling (PPC1) between spike times and LFP signal. Based on https://www.sciencedirect.com/science/article/pii/S1053811910000959
     
     Parameters:
-    -----------
-    spike_times : array_like
-        Array of spike times in seconds
-    lfp_signal : array_like
-        Local field potential time series
-    fs : float
-        Sampling frequency of the LFP signal in Hz
-    freq_range : tuple
-        Frequency range (low, high) to filter the LFP signal in Hz
-    window_size : float, optional
-        Size of the window around each spike in seconds, default is 0.5s
+    - spike_times: Array of spike times 
+    - lfp_signal: Local field potential time series
+    - spike_fs: Sampling frequency in Hz of the spike times only needed if spikes times and lfp has different fs
+    - lfp_fs : Sampling frequency in Hz of the LFP
+    - method: 'wavelet' or 'hilbert' to choose the phase extraction method
+    - freq_of_interest: Desired frequency for wavelet phase extraction
+    - lowcut, highcut: Cutoff frequencies for bandpass filtering (Hilbert method)
+    - bandwidth: Bandwidth parameter for the wavelet
     
     Returns:
-    --------
-    ppc1 : float
-        PPC1 value
-    phases : array
-        Phases at spike times
+    - ppc1: Phase-Phase Coupling value
+    - spike_phases: Phases at spike times
     """
+    
+    if spike_fs == None:
+        spike_fs = lfp_fs
     # Convert spike times to sample indices
-    spike_indices = np.round(spike_times * fs).astype(int)
+    spike_times_seconds = spike_times / spike_fs
+
+    # Then convert from seconds to samples at the new sampling rate
+    spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
     
-    # Filter LFP in the frequency band of interest
-    nyquist = fs / 2
-    b, a = signal.butter(3, [freq_range[0] / nyquist, freq_range[1] / nyquist], btype='band')
-    filtered_lfp = signal.filtfilt(b, a, lfp_signal)
+    # Filter indices to ensure they're within bounds of the LFP signal
+    valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_signal)]
+    if len(valid_indices) <= 1:
+        return 0, np.array([])
     
-    # Get analytic signal through Hilbert transform
-    analytic_signal = signal.hilbert(filtered_lfp)
-    
-    # Extract instantaneous phase
-    instantaneous_phase = np.angle(analytic_signal)
+    # Extract phase using the specified method
+    if method == 'wavelet':
+        if freq_of_interest is None:
+            raise ValueError("freq_of_interest must be provided for the wavelet method.")
+        
+        # Apply CWT to extract phase at the frequency of interest
+        lfp_complex = wavelet_filter(x=lfp_signal, freq=freq_of_interest, fs=lfp_fs, bandwidth=bandwidth)
+        instantaneous_phase = np.angle(lfp_complex)
+        
+    elif method == 'hilbert':
+        if lowcut is None or highcut is None:
+            print("Lowcut and/or highcut were not defined, signal will not be filtered and will just take Hilbert transform for PPC1 calculation")
+            filtered_lfp = lfp_signal
+        else:
+            # Bandpass filter the signal
+            filtered_lfp = butter_bandpass_filter(lfp_signal, lowcut, highcut, lfp_fs)
+        
+        # Get phase using the Hilbert transform
+        analytic_signal = signal.hilbert(filtered_lfp)
+        instantaneous_phase = np.angle(analytic_signal)
+        
+    else:
+        raise ValueError("Invalid method. Choose 'wavelet' or 'hilbert'.")
     
     # Get phases at spike times
-    spike_phases = []
-    for spike_idx in spike_indices:
-        if 0 <= spike_idx < len(instantaneous_phase):
-            spike_phases.append(instantaneous_phase[spike_idx])
-    
-    spike_phases = np.array(spike_phases)
+    spike_phases = instantaneous_phase[valid_indices]
     
     # Calculate PPC1
     n = len(spike_phases)
-    if n <= 1:
-        return 0, spike_phases
     
     # Convert phases to unit vectors in the complex plane
     unit_vectors = np.exp(1j * spike_phases)

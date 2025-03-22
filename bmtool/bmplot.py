@@ -1012,6 +1012,8 @@ def plot_firing_rate_distribution(individual_stats: pd.DataFrame, groupby: Union
 
     return ax
   
+def plot_entrainment():
+    pass
     
 def plot_3d_positions(config=None, populations_list=None, group_by=None, title=None, save_file=None, subset=None):
     """
