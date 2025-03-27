@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="bmtool",
-    version='0.6.8.3',
+    version='0.6.8.4',
     author="Neural Engineering Laboratory at the University of Missouri",
     author_email="gregglickert@mail.missouri.edu",
     description="BMTool",
