@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from scipy import signal 
 import pywt
 from bmtool.bmplot import is_notebook
+import numba
+from numba import cuda
 
 
 def load_ecp_to_xarray(ecp_file: str, demean: bool = False) -> xr.DataArray:
@@ -422,10 +424,45 @@ def calculate_spike_lfp_plv(spike_times: np.ndarray = None, lfp_signal: np.ndarr
     return plv
 
 
+@numba.njit(parallel=True, fastmath=True)
+def _ppc_parallel_numba(spike_phases):
+    """Numba-optimized parallel PPC calculation"""
+    n = len(spike_phases)
+    sum_cos = 0.0
+    for i in numba.prange(n):
+        phase_i = spike_phases[i]
+        for j in range(i + 1, n):
+            sum_cos += np.cos(phase_i - spike_phases[j])
+    return (2 / (n * (n - 1))) * sum_cos
+
+
+@cuda.jit(fastmath=True)
+def _ppc_cuda_kernel(spike_phases, out):
+    i = cuda.grid(1)
+    if i < len(spike_phases):
+        local_sum = 0.0
+        for j in range(i+1, len(spike_phases)):
+            local_sum += np.cos(spike_phases[i] - spike_phases[j])
+        out[i] = local_sum
+
+
+def _ppc_gpu(spike_phases):
+    """GPU-accelerated implementation"""
+    d_phases = cuda.to_device(spike_phases)
+    d_out = cuda.device_array(len(spike_phases), dtype=np.float64)
+    
+    threads = 256
+    blocks = (len(spike_phases) + threads - 1) // threads
+    
+    _ppc_cuda_kernel[blocks, threads](d_phases, d_out)
+    total = d_out.copy_to_host().sum()
+    return (2/(len(spike_phases)*(len(spike_phases)-1))) * total
+
+
 def calculate_ppc(spike_times: np.ndarray = None, lfp_signal: np.ndarray = None, spike_fs: float = None,
                   lfp_fs: float = None, method: str = 'hilbert', freq_of_interest: float = None,
                   lowcut: float = None, highcut: float = None,
-                  bandwidth: float = 2.0) -> tuple:
+                  bandwidth: float = 2.0,ppc_method: str = 'numpy') -> tuple:
     """
     Calculate Pairwise Phase Consistency (PPC) between spike times and LFP signal.
     Based on https://www.sciencedirect.com/science/article/pii/S1053811910000959
@@ -439,12 +476,11 @@ def calculate_ppc(spike_times: np.ndarray = None, lfp_signal: np.ndarray = None,
     - freq_of_interest: Desired frequency for wavelet phase extraction
     - lowcut, highcut: Cutoff frequencies for bandpass filtering (Hilbert method)
     - bandwidth: Bandwidth parameter for the wavelet
+    - ppc_method: which algo to use for PPC calculate can be numpy, numba or gpu
     
     Returns:
     - ppc: Pairwise Phase Consistency value
-    - spike_phases: Phases at spike times
     """
-    print("Note this method will a very long time if there are a lot of spikes. If there are a lot of spikes consider using the PPC2 method if speed is an issue")
     if spike_fs is None:
         spike_fs = lfp_fs
     # Convert spike times to sample indices
@@ -511,11 +547,17 @@ def calculate_ppc(spike_times: np.ndarray = None, lfp_signal: np.ndarray = None,
     # ppc = ((2 / (n_spikes * (n_spikes - 1))) * sum_cos_diff)
     
     # same as above (i think) but with vectorized computation and memory fixes so it wont take forever to run.
-    i, j = np.triu_indices(n_spikes, k=1)
-    phase_diff = spike_phases[i] - spike_phases[j]
-    sum_cos_diff = np.sum(np.cos(phase_diff))
-    ppc = ((2 / (n_spikes * (n_spikes - 1))) * sum_cos_diff)
-    
+    if ppc_method == 'numpy':
+        i, j = np.triu_indices(n_spikes, k=1)
+        phase_diff = spike_phases[i] - spike_phases[j]
+        sum_cos_diff = np.sum(np.cos(phase_diff))
+        ppc = ((2 / (n_spikes * (n_spikes - 1))) * sum_cos_diff)
+    elif ppc_method == 'numba':
+        ppc = _ppc_parallel_numba(spike_phases)
+    elif ppc_method == 'gpu':
+        ppc = _ppc_gpu(spike_phases)
+    else:
+        raise ExceptionType("Please use a supported ppc method currently that is numpy, numba or gpu")
     return ppc
 
     
