@@ -6,13 +6,14 @@ import h5py
 import numpy as np
 import xarray as xr
 from fooof import FOOOF
-from fooof.sim.gen import gen_model
+from fooof.sim.gen import gen_model, gen_aperiodic
 import matplotlib.pyplot as plt
 from scipy import signal 
 import pywt
 from bmtool.bmplot import is_notebook
 import numba
 from numba import cuda
+import pandas as pd
 
 
 def load_ecp_to_xarray(ecp_file: str, demean: bool = False) -> xr.DataArray:
@@ -647,6 +648,196 @@ def calculate_ppc2(spike_times: np.ndarray = None, lfp_signal: np.ndarray = None
     
     return ppc2
 
-    
 
+# windowing functions 
+def windowed_xarray(da, windows, dim='time',
+                    new_coord_name='cycle', new_coord=None):
+    """Divide xarray into windows of equal size along an axis
+    da: input DataArray
+    windows: 2d-array of windows
+    dim: dimension along which to divide
+    new_coord_name: name of new dimemsion along which to concatenate windows
+    new_coord: pandas Index object of new coordinates. Defaults to integer index
+    """
+    win_da = [da.sel({dim: slice(*w)}) for w in windows]
+    n_win = min(x.coords[dim].size for x in win_da)
+    idx = {dim: slice(n_win)}
+    coords = da.coords[dim].isel(idx).coords
+    win_da = [x.isel(idx).assign_coords(coords) for x in win_da]
+    if new_coord is None:
+        new_coord = pd.Index(range(len(win_da)), name=new_coord_name)
+    win_da = xr.concat(win_da, dim=new_coord)
+    return win_da
+
+
+def group_windows(win_da, win_grp_idx={}, win_dim='cycle'):
+    """Group windows into a dictionary of DataArrays
+    win_da: input windowed DataArrays
+    win_grp_idx: dictionary of {window group id: window indices}
+    win_dim: dimension for different windows
+    Return: dictionaries of {window group id: DataArray of grouped windows}
+        win_on / win_off for windows selected / not selected by `win_grp_idx` 
+    """
+    win_on, win_off = {}, {}
+    for g, w in win_grp_idx.items():
+        win_on[g] = win_da.sel({win_dim: w})
+        win_off[g] = win_da.drop_sel({win_dim: w})
+    return win_on, win_off
+
+
+def average_group_windows(win_da, win_dim='cycle', grp_dim='unique_cycle'):
+    """Average over windows in each group and stack groups in a DataArray
+    win_da: input dictionary of {window group id: DataArray of grouped windows}
+    win_dim: dimension for different windows
+    grp_dim: dimension along which to stack average of window groups 
+    """
+    win_avg = {g: xr.concat([x.mean(dim=win_dim), x.std(dim=win_dim)],
+                            pd.Index(('mean_', 'std_'), name='stats'))
+               for g, x in win_da.items()}
+    win_avg = xr.concat(win_avg.values(), dim=pd.Index(win_avg.keys(), name=grp_dim))
+    win_avg = win_avg.to_dataset(dim='stats')
+    return win_avg
+
+# used for avg spectrogram across different trials
+def get_windowed_data(x, windows, win_grp_idx, dim='time',
+                      win_dim='cycle', win_coord=None, grp_dim='unique_cycle'):
+    """Apply functions of windowing to data
+    x: DataArray
+    windows: `windows` for `windowed_xarray`
+    win_grp_idx: `win_grp_idx` for `group_windows`
+    dim: dimension along which to divide
+    win_dim: dimension for different windows
+    win_coord: pandas Index object of `win_dim` coordinates
+    grp_dim: dimension along which to stack average of window groups.
+        If None or empty or False, do not calculate average.
+    Return: data returned by three functions,
+        `windowed_xarray`, `group_windows`, `average_group_windows`
+    """
+    x_win = windowed_xarray(x, windows, dim=dim,
+                            new_coord_name=win_dim, new_coord=win_coord)
+    x_win_onff = group_windows(x_win, win_grp_idx, win_dim=win_dim)
+    if grp_dim:
+        x_win_avg = [average_group_windows(x, win_dim=win_dim, grp_dim=grp_dim)
+                     for x in x_win_onff]
+    else:
+        x_win_avg = None
+    return x_win, x_win_onff, x_win_avg
+    
+# cone of influence in frequency for cmorxx-1.0 wavelet. need to add logic to calculate in function 
+f0 = 2 * np.pi
+CMOR_COI = 2 ** -0.5
+CMOR_FLAMBDA = 4 * np.pi / (f0 + (2 + f0 ** 2) ** 0.5)
+COI_FREQ = 1 / (CMOR_COI * CMOR_FLAMBDA)
+
+def cwt_spectrogram(x, fs, nNotes=6, nOctaves=np.inf, freq_range=(0, np.inf),
+                    bandwidth=1.0, axis=-1, detrend=False, normalize=False):
+    """Calculate spectrogram using continuous wavelet transform"""
+    x = np.asarray(x)
+    N = x.shape[axis]
+    times = np.arange(N) / fs
+    # detrend and normalize
+    if detrend:
+        x = signal.detrend(x, axis=axis, type='linear')
+    if normalize:
+        x = x / x.std()
+    # Define some parameters of our wavelet analysis. 
+    # range of scales (in time) that makes sense
+    # min = 2 (Nyquist frequency)
+    # max = np.floor(N/2)
+    nOctaves = min(nOctaves, np.log2(2 * np.floor(N / 2)))
+    scales = 2 ** np.arange(1, nOctaves, 1 / nNotes)
+    # cwt and the frequencies used. 
+    # Use the complex morelet with bw=2*bandwidth^2 and center frequency of 1.0
+    # bandwidth is sigma of the gaussian envelope
+    wavelet = 'cmor' + str(2 * bandwidth ** 2) + '-1.0'
+    frequencies = pywt.scale2frequency(wavelet, scales) * fs
+    scales = scales[(frequencies >= freq_range[0]) & (frequencies <= freq_range[1])]
+    coef, frequencies = pywt.cwt(x, scales[::-1], wavelet=wavelet, sampling_period=1 / fs, axis=axis)
+    power = np.real(coef * np.conj(coef)) # equivalent to power = np.abs(coef)**2
+    # cone of influence in terms of wavelength
+    coi = N / 2 - np.abs(np.arange(N) - (N - 1) / 2)
+    # cone of influence in terms of frequency
+    coif = COI_FREQ * fs / coi
+    return power, times, frequencies, coif
+
+
+def cwt_spectrogram_xarray(x, fs, time=None, axis=-1, downsample_fs=None,
+                           channel_coords=None, **cwt_kwargs):
+    """Calculate spectrogram using continuous wavelet transform and return an xarray.Dataset
+    x: input array
+    fs: sampling frequency (Hz)
+    axis: dimension index of time axis in x
+    downsample_fs: downsample to the frequency if specified
+    time_unit: unit of time in seconds
+    channel_coords: dictionary of {coordinate name: index} for channels
+    cwt_kwargs: keyword arguments for cwt_spectrogram()
+    """
+    x = np.asarray(x)
+    T = x.shape[axis] # number of time points
+    t = np.arange(T) / fs if time is None else np.asarray(time)
+    if downsample_fs is None or downsample_fs >= fs:
+        downsample_fs = fs
+        downsampled = x
+    else:
+        num = int(T * downsample_fs / fs)
+        downsample_fs = num / T * fs
+        downsampled, t = signal.resample(x, num=num, t=t, axis=axis)
+    downsampled = np.moveaxis(downsampled, axis, -1)
+    sxx, _, f, coif = cwt_spectrogram(downsampled, downsample_fs, **cwt_kwargs)
+    sxx = np.moveaxis(sxx, 0, -2) # shape (... , freq, time)
+    if channel_coords is None:
+        channel_coords = {f'dim_{i:d}': range(d) for i, d in enumerate(sxx.shape[:-2])}
+    sxx = xr.DataArray(sxx, coords={**channel_coords, 'frequency': f, 'time': t}).to_dataset(name='PSD')
+    sxx.update(dict(cone_of_influence_frequency=xr.DataArray(coif, coords={'time': t})))
+    return sxx
+
+
+# will probs move to bmplot later
+def plot_spectrogram(sxx_xarray, remove_aperiodic=None, log_power=False,
+                     plt_range=None, clr_freq_range=None, pad=0.03, ax=None):
+    """Plot spectrogram. Determine color limits using value in frequency band clr_freq_range"""
+    sxx = sxx_xarray.PSD.values.copy()
+    t = sxx_xarray.time.values.copy()
+    f = sxx_xarray.frequency.values.copy()
+
+    cbar_label = 'PSD' if remove_aperiodic is None else 'PSD Residual'
+    if log_power:
+        with np.errstate(divide='ignore'):
+            sxx = np.log10(sxx)
+        cbar_label += ' dB' if log_power == 'dB' else ' log(power)'
+
+    if remove_aperiodic is not None:
+        f1_idx = 0 if f[0] else 1
+        ap_fit = gen_aperiodic(f[f1_idx:], remove_aperiodic.aperiodic_params)
+        sxx[f1_idx:, :] -= (ap_fit if log_power else 10 ** ap_fit)[:, None]
+        sxx[:f1_idx, :] = 0.
+
+    if log_power == 'dB':
+        sxx *= 10
+
+    if ax is None:
+        _, ax = plt.subplots(1, 1)
+    plt_range = np.array(f[-1]) if plt_range is None else np.array(plt_range)
+    if plt_range.size == 1:
+        plt_range = [f[0 if f[0] else 1] if log_power else 0., plt_range.item()]
+    f_idx = (f >= plt_range[0]) & (f <= plt_range[1])
+    if clr_freq_range is None:
+        vmin, vmax = None, None
+    else:
+        c_idx = (f >= clr_freq_range[0]) & (f <= clr_freq_range[1])
+        vmin, vmax = sxx[c_idx, :].min(), sxx[c_idx, :].max()
+
+    f = f[f_idx]
+    pcm = ax.pcolormesh(t, f, sxx[f_idx, :], shading='gouraud', vmin=vmin, vmax=vmax)
+    if 'cone_of_influence_frequency' in sxx_xarray:
+        coif = sxx_xarray.cone_of_influence_frequency
+        ax.plot(t, coif)
+        ax.fill_between(t, coif, step='mid', alpha=0.2)
+    ax.set_xlim(t[0], t[-1])
+    #ax.set_xlim(t[0],0.2)
+    ax.set_ylim(f[0], f[-1])
+    plt.colorbar(mappable=pcm, ax=ax, label=cbar_label, pad=pad)
+    ax.set_xlabel('Time (sec)')
+    ax.set_ylabel('Frequency (Hz)')
+    return sxx
 
