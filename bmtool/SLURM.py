@@ -379,7 +379,7 @@ class BlockRunner:
                 source_dir = block.component_path
                 destination_dir = f"{source_dir}{i+1}"
                 block.component_path = destination_dir
-                shutil.copytree(source_dir, destination_dir) # create new components folder 
+                shutil.copytree(source_dir, destination_dir,dirs_exist_ok = True) # create new components folder 
                 print(f"skipping json editing for block {block.block_name}",flush=True)
             else:
                 if len(self.blocks) != len(self.param_values):
@@ -390,7 +390,7 @@ class BlockRunner:
                 destination_dir = f"{source_dir}{i+1}"
                 block.component_path = destination_dir
 
-                shutil.copytree(source_dir, destination_dir) # create new components folder
+                shutil.copytree(source_dir, destination_dir,dirs_exist_ok = True) # create new components folder
                 json_file_path = os.path.join(destination_dir,self.json_file_path)
                 
                 if self.syn_dict == None:
@@ -439,7 +439,7 @@ class BlockRunner:
                 source_dir = block.component_path
                 destination_dir = f"{source_dir}{i+1}"
                 block.component_path = destination_dir
-                shutil.copytree(source_dir, destination_dir) # create new components folder 
+                shutil.copytree(source_dir, destination_dir,dirs_exist_ok = True) # create new components folder 
                 print(f"skipping json editing for block {block.block_name}",flush=True)
             else:
                 if block.component_path == None:
@@ -450,7 +450,7 @@ class BlockRunner:
                 destination_dir = f"{source_dir}{i+1}"
                 block.component_path = destination_dir
 
-                shutil.copytree(source_dir, destination_dir) # create new components folder 
+                shutil.copytree(source_dir, destination_dir,dirs_exist_ok = True) # create new components folder 
                 json_file_path = os.path.join(destination_dir,self.json_file_path)
                 
                 if self.syn_dict == None:

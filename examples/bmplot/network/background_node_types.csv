@@ -1,2 +1,2 @@
-node_type_id potential model_type pop_name
-100 exc virtual background_nodes
+node_type_id potential pop_name model_type
+100 exc background_nodes virtual
