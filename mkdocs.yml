@@ -1,0 +1,92 @@
+site_name: BMTool Documentation
+site_url: https://cyneuro.github.io/bmtool/
+site_author: Neural Engineering Laboratory at the University of Missouri
+site_description: Documentation for BMTool - A collection of modules to make developing Neuron and BMTK models easier
+
+repo_name: cyneuro/bmtool
+repo_url: https://github.com/cyneuro/bmtool
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    primary: indigo
+    accent: indigo
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed
+  - pymdownx.arithmatex:
+      generic: true
+  - admonition
+  - footnotes
+  - attr_list
+  - md_in_html
+  - tables
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            docstring_style: numpy
+  - mkdocs-jupyter:
+      include_source: True
+      execute: false
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Modules:
+      - Single Cell: modules/singlecell.md
+      - Synapses: modules/synapses.md
+      - Connectors: modules/connectors.md
+      - BMPlot: modules/bmplot.md
+      - Analysis: modules/analysis.md
+      - SLURM: modules/slurm.md
+      - Graphs: modules/graphs.md
+  - CLI: cli.md
+  - Examples:
+      - Single Cell: 
+          - Overview: examples/single-cell.md
+          - Allen Cell Tutorial: examples/single_cell/Allen_tutorial/singleCellTutorial.ipynb
+      - Synapses: 
+          - Overview: examples/synapses.md
+          - Synaptic Tuner: examples/synapses/synaptic_tuner.ipynb
+          - Gap Junction Tuner: examples/synapses/gap_junction_tuner.ipynb
+      - Connectors: examples/connectors.md
+      - BMPlot: 
+          - Overview: examples/bmplot.md
+          - Plotting Examples: examples/bmplot/bmplot.ipynb
+      - Analysis: 
+          - Overview: examples/analysis.md
+          - Using Spikes: examples/analysis/using_spikes.ipynb
+      - SLURM: 
+          - Overview: examples/slurm.md
+          - Block Runner: examples/SLURM/using_BlockRunner.ipynb
+  - Contributing: contributing.md
+  - API Reference: 
+      - Single Cell: api/singlecell.md
+      - Synapses: api/synapses.md
+      - Connectors: api/connectors.md
+      - BMPlot: api/bmplot.md
+      - Analysis: api/analysis.md
+      - SLURM: api/slurm.md
+      - Graphs: api/graphs.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/cyneuro/bmtool 

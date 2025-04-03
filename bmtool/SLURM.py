@@ -6,6 +6,7 @@ import requests
 import shutil
 import time
 import copy
+import numpy as np
 
 
 def check_job_status(job_id):
@@ -205,12 +206,12 @@ class SimulationBlock:
         case_output_dir = os.path.join(block_output_dir, case_name)  # Create case-specific output folder
         os.makedirs(case_output_dir, exist_ok=True)
 
-        batch_script_path = os.path.join(block_output_dir, 'script.sh')
+        batch_script_path = os.path.join(block_output_dir, f'{case_name}_script.sh')
         additional_commands_str = "\n".join(self.additional_commands)
         # Conditional account linegit
         account_line = f"#SBATCH --account={self.account}\n" if self.account else ""
         env_var_component_path = f"export COMPONENT_PATH={self.component_path}" if self.component_path else ""
-        mem_per_cpu = int(int(self.mem)/int(self.ntasks))
+        mem_per_cpu = int(np.ceil(int(self.mem)/int(self.ntasks))) # do ceil cause more mem is always better then less
 
         # Write the batch script to the file
         with open(batch_script_path, 'w') as script_file:
@@ -333,6 +334,7 @@ def globus_transfer(source_endpoint, dest_endpoint, source_path, dest_path):
     """
     Transfers file using custom globus transfer function. 
     For more info see https://github.com/GregGlickert/transfer-files/blob/main/globus_transfer.sh
+    work in progress still... kinda forgot about this 
     """
     relative_source_path = get_relative_path(source_endpoint, source_path)
     if relative_source_path is None:

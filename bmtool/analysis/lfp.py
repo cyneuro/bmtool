@@ -768,7 +768,6 @@ def cwt_spectrogram_xarray(x, fs, time=None, axis=-1, downsample_fs=None,
     fs: sampling frequency (Hz)
     axis: dimension index of time axis in x
     downsample_fs: downsample to the frequency if specified
-    time_unit: unit of time in seconds
     channel_coords: dictionary of {coordinate name: index} for channels
     cwt_kwargs: keyword arguments for cwt_spectrogram()
     """
