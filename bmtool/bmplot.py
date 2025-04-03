@@ -306,6 +306,28 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
     
     
     def filter_rows(syn_info, data, source_labels, target_labels):
+        """
+        Filters out rows in a connectivity matrix that contain only NaN or zero values.
+        
+        This function is used to clean up connection matrices by removing rows that have no meaningful data,
+        which helps create more informative visualizations of network connectivity.
+        
+        Parameters:
+        -----------
+        syn_info : numpy.ndarray
+            Array containing synaptic information corresponding to the data matrix.
+        data : numpy.ndarray
+            2D matrix containing connectivity data with rows representing sources and columns representing targets.
+        source_labels : list
+            List of labels for the source populations corresponding to rows in the data matrix.
+        target_labels : list
+            List of labels for the target populations corresponding to columns in the data matrix.
+        
+        Returns:
+        --------
+        tuple
+            A tuple containing the filtered (syn_info, data, source_labels, target_labels) with invalid rows removed.
+        """
         # Identify rows with all NaN or all zeros
         valid_rows = ~np.all(np.isnan(data), axis=1) & ~np.all(data == 0, axis=1)
 
@@ -317,6 +339,30 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
         return new_syn_info, new_data, new_source_labels, target_labels
 
     def filter_rows_and_columns(syn_info, data, source_labels, target_labels):
+        """
+        Filters out both rows and columns in a connectivity matrix that contain only NaN or zero values.
+        
+        This function performs a two-step filtering process: first removing rows with no data,
+        then transposing the matrix and removing columns with no data (by treating them as rows).
+        This creates a cleaner, more informative connectivity matrix visualization.
+        
+        Parameters:
+        -----------
+        syn_info : numpy.ndarray
+            Array containing synaptic information corresponding to the data matrix.
+        data : numpy.ndarray
+            2D matrix containing connectivity data with rows representing sources and columns representing targets.
+        source_labels : list
+            List of labels for the source populations corresponding to rows in the data matrix.
+        target_labels : list
+            List of labels for the target populations corresponding to columns in the data matrix.
+        
+        Returns:
+        --------
+        tuple
+            A tuple containing the filtered (syn_info, data, source_labels, target_labels) with both
+            invalid rows and columns removed.
+        """
         # Filter rows first
         syn_info, data, source_labels, target_labels = filter_rows(syn_info, data, source_labels, target_labels)
 
@@ -366,6 +412,36 @@ def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[]
     save_file: If plot should be saved
     """
     def connection_pair_histogram(**kwargs):
+        """
+        Creates a histogram showing the distribution of connection counts between a specific source and target cell type.
+        
+        This function is designed to be used with the relation_matrix utility and will only create histograms
+        for the specified source and target cell types, ignoring all other combinations.
+        
+        Parameters:
+        -----------
+        kwargs : dict
+            Dictionary containing the following keys:
+            - edges: DataFrame containing edge information
+            - sid: Column name for source ID type in the edges DataFrame
+            - tid: Column name for target ID type in the edges DataFrame
+            - source_id: Value to filter edges by source ID type
+            - target_id: Value to filter edges by target ID type
+        
+        Global parameters used:
+        ---------------------
+        source_cell : str
+            The source cell type to plot.
+        target_cell : str
+            The target cell type to plot.
+        include_gap : bool
+            Whether to include gap junctions in the analysis. If False, gap junctions are excluded.
+        
+        Returns:
+        --------
+        None
+            Displays a histogram showing the distribution of connection counts.
+        """
         edges = kwargs["edges"] 
         source_id_type = kwargs["sid"]
         target_id_type = kwargs["tid"]
@@ -491,7 +567,43 @@ def connection_distance(config: str,sources: str,targets: str,
 
 def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids=None,no_prepend_pop=None,edge_property = None,time = None,time_compare = None,report=None,title=None,save_file=None):
     """
-    write about function here
+    Generates a matrix of histograms showing the distribution of edge properties between different populations.
+    
+    This function creates a grid of histograms where each cell in the grid represents the distribution of a 
+    specific edge property (e.g., synaptic weights, delays) between a source population (row) and 
+    target population (column).
+    
+    Parameters:
+    -----------
+    config : str
+        Path to a BMTK simulation config file.
+    sources : str
+        Comma-separated list of source network names.
+    targets : str
+        Comma-separated list of target network names.
+    sids : str, optional
+        Comma-separated list of source node identifiers to filter by.
+    tids : str, optional
+        Comma-separated list of target node identifiers to filter by.
+    no_prepend_pop : bool, optional
+        If True, population names are not prepended to node identifiers in the display.
+    edge_property : str
+        The edge property to analyze and display in the histograms (e.g., 'syn_weight', 'delay').
+    time : int, optional
+        Time point to analyze from a time series report.
+    time_compare : int, optional
+        Second time point for comparison with 'time'.
+    report : str, optional
+        Name of the report to analyze.
+    title : str, optional
+        Custom title for the plot. If None, defaults to "{edge_property} Histogram Matrix".
+    save_file : str, optional
+        Path to save the generated plot.
+    
+    Returns:
+    --------
+    None
+        Displays a matrix of histograms.
     """
     
     if not config:
@@ -655,8 +767,11 @@ def connector_percent_matrix(csv_path: str = None, exclude_strings=None, assemb_
                 filtered_string = match.group(1)
                 if 'Gap' in string:
                         filtered_string = filtered_string + "-Gap"
-                if assemb_key in string:
-                    filtered_string = filtered_string + assemb_key
+                
+                if assemb_key:
+                    if assemb_key in string:
+                        filtered_string = filtered_string + assemb_key
+
                 return filtered_string  # Return matched string
 
             return string  # If no match, return the original string
@@ -670,39 +785,40 @@ def connector_percent_matrix(csv_path: str = None, exclude_strings=None, assemb_
     df = filter_dataframe(df, 'Target', exclude_strings)
     
     #process assem rows and combine them into one prob per assem type
-    assems = df[df['Source'].str.contains(assemb_key)]
-    unique_sources = assems['Source'].unique()
+    if assemb_key:
+        assems = df[df['Source'].str.contains(assemb_key)]
+        unique_sources = assems['Source'].unique()
 
-    for source in unique_sources:
-        source_assems = assems[assems['Source'] == source]
-        unique_targets = source_assems['Target'].unique()  # Filter targets for the current source
+        for source in unique_sources:
+            source_assems = assems[assems['Source'] == source]
+            unique_targets = source_assems['Target'].unique()  # Filter targets for the current source
 
-        for target in unique_targets:
-            # Filter the assemblies with the current source and target
-            unique_assems = source_assems[source_assems['Target'] == target]
-            
-            # find the prob of a conn
-            forward_probs = []
-            for _,row in unique_assems.iterrows():
-                selected_percentage = row[selected_column]
-                selected_percentage = [float(p) for p in selected_percentage.strip('[]').split()]
-                if len(selected_percentage) == 1 or len(selected_percentage) == 2:
-                    forward_probs.append(selected_percentage[0])
-                if len(selected_percentage) == 3:
-                    forward_probs.append(selected_percentage[0])
-                    forward_probs.append(selected_percentage[1])
-                    
-            mean_probs = np.mean(forward_probs)
-            source = source.replace(assemb_key, "")
-            target = target.replace(assemb_key, "")
-            new_row = pd.DataFrame({
-                'Source': [source],
-                'Target': [target],
-                'Percent connectionivity within possible connections': [mean_probs],
-                'Percent connectionivity within all connections': [0]
-            })
+            for target in unique_targets:
+                # Filter the assemblies with the current source and target
+                unique_assems = source_assems[source_assems['Target'] == target]
+                
+                # find the prob of a conn
+                forward_probs = []
+                for _,row in unique_assems.iterrows():
+                    selected_percentage = row[selected_column]
+                    selected_percentage = [float(p) for p in selected_percentage.strip('[]').split()]
+                    if len(selected_percentage) == 1 or len(selected_percentage) == 2:
+                        forward_probs.append(selected_percentage[0])
+                    if len(selected_percentage) == 3:
+                        forward_probs.append(selected_percentage[0])
+                        forward_probs.append(selected_percentage[1])
+                        
+                mean_probs = np.mean(forward_probs)
+                source = source.replace(assemb_key, "")
+                target = target.replace(assemb_key, "")
+                new_row = pd.DataFrame({
+                    'Source': [source],
+                    'Target': [target],
+                    'Percent connectionivity within possible connections': [mean_probs],
+                    'Percent connectionivity within all connections': [0]
+                })
 
-            df = pd.concat([df, new_row], ignore_index=False)
+                df = pd.concat([df, new_row], ignore_index=False)
             
     # Prepare connection data
     connection_data = {}
@@ -1013,6 +1129,23 @@ def plot_firing_rate_distribution(individual_stats: pd.DataFrame, groupby: Union
     return ax
   
 def plot_entrainment():
+    """
+    Plots entrainment analysis for oscillatory network activity.
+    
+    This function analyzes and visualizes how well neural populations entrain to rhythmic 
+    input or how synchronized they become during oscillatory activity. It can show phase 
+    locking, coherence, or other entrainment metrics.
+    
+    Note: This is currently a placeholder function and not yet implemented.
+    
+    Parameters:
+    -----------
+    None
+    
+    Returns:
+    --------
+    None
+    """
     pass
     
 def plot_3d_positions(config=None, populations_list=None, group_by=None, title=None, save_file=None, subset=None):
@@ -1216,6 +1349,43 @@ def plot_3d_cell_rotation(config=None, populations_list=None, group_by=None, tit
         plt.show()
 
 def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,edge_property='model_template'):
+    """
+    Creates a directed graph visualization of the network connectivity using NetworkX.
+    
+    This function generates a network diagram showing the connections between different 
+    cell populations, with edge labels indicating the connection types based on the specified
+    edge property.
+    
+    Parameters:
+    -----------
+    config : str
+        Path to a BMTK simulation configuration file.
+    nodes : dict, optional
+        Dictionary of node information (if already loaded).
+    edges : dict, optional
+        Dictionary of edge information (if already loaded).
+    title : str, optional
+        Custom title for the plot. If None, defaults to "Network Graph".
+    sources : str
+        Comma-separated list of source network names.
+    targets : str
+        Comma-separated list of target network names.
+    sids : str, optional
+        Comma-separated list of source node identifiers to filter by.
+    tids : str, optional
+        Comma-separated list of target node identifiers to filter by.
+    no_prepend_pop : bool, default=False
+        If True, population names are not prepended to node identifiers in the display.
+    save_file : str, optional
+        Path to save the generated plot.
+    edge_property : str, default='model_template'
+        The edge property to use for labeling connections in the graph.
+    
+    Returns:
+    --------
+    None
+        Displays a network graph visualization.
+    """
     if not config:
         raise Exception("config not defined")
     if not sources or not targets:
@@ -1308,6 +1478,28 @@ def plot_report(config_file=None, report_file=None, report_name=None, variables=
     plt.show()
 
 def plot_report_default(config, report_name, variables, gids):
+    """
+    A simplified interface for plotting cell report variables from BMTK simulations.
+    
+    This function handles the common case of plotting specific variables for specific cells
+    from a BMTK report file, with minimal parameter requirements.
+    
+    Parameters:
+    -----------
+    config : str
+        Path to a BMTK simulation configuration file.
+    report_name : str
+        Name of the report to plot (without file extension).
+    variables : str
+        Comma-separated list of variable names to plot (e.g., 'v,i_na,i_k').
+    gids : str
+        Comma-separated list of cell IDs (gids) to plot data for.
+    
+    Returns:
+    --------
+    None
+        Displays plots of the specified variables for the specified cells.
+    """
 
     if variables:
         variables = variables.split(',')

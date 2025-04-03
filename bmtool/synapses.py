@@ -437,13 +437,22 @@ class SynapseTuner:
 
     def _response_amplitude(self):
         """
-        Calculates the amplitude of the synaptic response by analyzing the recorded synaptic current.
+        Calculates the amplitude of synaptic responses for each pulse in a train.
 
         Returns:
         --------
         amp : list
-            A list containing the peak amplitudes for each segment of the recorded synaptic current.
+            A list containing the peak amplitudes for each pulse in the recorded synaptic current.
         
+        Notes:
+        ------
+        This method:
+        1. Extracts and normalizes the synaptic current
+        2. Identifies spike times and segments the current accordingly
+        3. Calculates the peak response amplitude for each segment
+        4. Records the indices of peak amplitudes for visualization
+        
+        The amplitude values are returned in the original current units (before pA conversion).
         """
         isyn = np.array(self.rec_vectors[self.current_name].to_python())
         tspk = np.append(np.asarray(self.tspk), h.tstop)
@@ -486,25 +495,32 @@ class SynapseTuner:
         return max_amp * 1000 # scale unit
 
 
-    def _calc_ppr_induction_recovery(self,amp, normalize_by_trial=True,print_math=True):
+    def _calc_ppr_induction_recovery(self, amp, normalize_by_trial=True, print_math=True):
         """
-        Calculates induction and recovery metrics from the synaptic response amplitudes.
+        Calculates paired-pulse ratio, induction, and recovery metrics from response amplitudes.
 
         Parameters:
         -----------
         amp : array-like
-            Array containing the amplitudes of synaptic responses.
+            Array containing the amplitudes of synaptic responses to a pulse train.
         normalize_by_trial : bool, optional
             If True, normalize the amplitudes within each trial. Default is True.
+        print_math : bool, optional
+            If True, print detailed calculation steps and explanations. Default is True.
 
         Returns:
         --------
-        induction : float
-            The calculated induction value (difference between pulses 6-8 and 1st pulse).
-        recovery : float
-            The calculated recovery value (difference between pulses 9-12 and pulses 1-4).
-        maxamp : float
-            The maximum amplitude in the response.
+        tuple
+            A tuple containing:
+            - ppr: Paired-pulse ratio (2nd pulse / 1st pulse)
+            - induction: Measure of facilitation/depression during initial pulses
+            - recovery: Measure of recovery after the delay period
+            
+        Notes:
+        ------
+        - PPR > 1 indicates facilitation, PPR < 1 indicates depression
+        - Induction > 0 indicates facilitation, Induction < 0 indicates depression
+        - Recovery compares the response after delay to the initial pulses
         """
         amp = np.array(amp)
         amp = (amp * 1000) # scale up
@@ -579,7 +595,12 @@ class SynapseTuner:
             Delay period in milliseconds between the 8th and 9th pulses.
         vclamp : bool or None, optional
             Whether to use voltage clamp. If None, the current setting is used. Default is None.
-
+            
+        Notes:
+        ------
+        This method handles two different input modes:
+        - Standard train mode with 8 initial pulses followed by a delay and 4 additional pulses
+        - Continuous input mode where stimulation continues for a specified duration
         """
         if self.input_mode == False:
             self.tstop = self._set_drive_train(input_frequency, delay)
@@ -604,8 +625,24 @@ class SynapseTuner:
     
     def InteractiveTuner(self):
         """
-        Sets up interactive sliders for short-term plasticity (STP) experiments in a Jupyter Notebook.
+        Sets up interactive sliders for tuning short-term plasticity (STP) parameters in a Jupyter Notebook.
         
+        This method creates an interactive UI with sliders for:
+        - Input frequency
+        - Delay between pulse trains
+        - Duration of stimulation (for continuous input mode)
+        - Synaptic parameters (e.g., Use, tau_f, tau_d) based on the syn model
+        
+        It also provides buttons for:
+        - Running a single event simulation
+        - Running a train input simulation
+        - Toggling voltage clamp mode
+        - Switching between standard and continuous input modes
+        
+        Notes:
+        ------
+        Ideal for exploratory parameter tuning and interactive visualization of 
+        synapse behavior with different parameter values and stimulation protocols.
         """
         # Widgets setup (Sliders)
         freqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200]
@@ -706,19 +743,35 @@ class SynapseTuner:
         """
         Analyze synaptic response across different stimulation frequencies.
         
+        This method systematically tests how the synapse model responds to different 
+        stimulation frequencies, calculating key short-term plasticity (STP) metrics
+        for each frequency.
+        
         Parameters:
         -----------
         freqs : list, optional
-            List of frequencies to analyze (in Hz)
+            List of frequencies to analyze (in Hz). Default covers a wide range from 1-200 Hz.
         delay : float, optional
-            Delay between pulse trains in ms
+            Delay between pulse trains in ms. Default is 250 ms.
         plot : bool, optional
-            Whether to plot the results
+            Whether to plot the results. Default is True.
+        log_plot : bool, optional
+            Whether to use logarithmic scale for frequency axis. Default is True.
             
         Returns:
         --------
         dict
-            Dictionary containing frequency-dependent metrics
+            Dictionary containing frequency-dependent metrics with keys:
+            - 'frequencies': List of tested frequencies
+            - 'ppr': Paired-pulse ratios at each frequency
+            - 'induction': Induction values at each frequency
+            - 'recovery': Recovery values at each frequency
+            
+        Notes:
+        ------
+        This method is particularly useful for characterizing the frequency-dependent 
+        behavior of synapses, such as identifying facilitating vs. depressing regimes
+        or the frequency at which a synapse transitions between these behaviors.
         """
         results = {
             'frequencies': freqs,
@@ -748,14 +801,30 @@ class SynapseTuner:
         return results
 
 
-    def _plot_frequency_analysis(self, results,log_plot):
+    def _plot_frequency_analysis(self, results, log_plot):
         """
         Plot the frequency-dependent synaptic properties.
         
         Parameters:
         -----------
         results : dict
-            Dictionary containing frequency analysis results
+            Dictionary containing frequency analysis results with keys:
+            - 'frequencies': List of tested frequencies
+            - 'ppr': Paired-pulse ratios at each frequency
+            - 'induction': Induction values at each frequency
+            - 'recovery': Recovery values at each frequency
+        log_plot : bool
+            Whether to use logarithmic scale for frequency axis
+            
+        Notes:
+        ------
+        Creates a figure with three subplots showing:
+        1. Paired-pulse ratio vs. frequency
+        2. Induction vs. frequency
+        3. Recovery vs. frequency
+        
+        Each plot includes a horizontal reference line at y=0 or y=1 to indicate
+        the boundary between facilitation and depression.
         """
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
         
@@ -798,6 +867,20 @@ class SynapseTuner:
 
 class GapJunctionTuner:
     def __init__(self, mechanisms_dir: str, templates_dir: str, general_settings: dict, conn_type_settings: dict):
+        """
+        Initialize the GapJunctionTuner class.
+        
+        Parameters:
+        -----------
+        mechanisms_dir : str
+            Directory path containing the compiled mod files needed for NEURON mechanisms.
+        templates_dir : str
+            Directory path containing cell template files (.hoc or .py) loaded into NEURON.
+        general_settings : dict
+            General settings dictionary including parameters like simulation time step, duration, and temperature.
+        conn_type_settings : dict
+            A dictionary containing connection-specific settings for gap junctions.
+        """
         neuron.load_mechanisms(mechanisms_dir)
         h.load_file(templates_dir)
         
@@ -836,7 +919,19 @@ class GapJunctionTuner:
         pc.setup_transfer()
     
     def model(self,resistance):
-
+        """
+        Run a simulation with a specified gap junction resistance.
+        
+        Parameters:
+        -----------
+        resistance : float
+            The gap junction resistance value (in MOhm) to use for the simulation.
+            
+        Notes:
+        ------
+        This method sets up the gap junction resistance, initializes recording vectors for time
+        and membrane voltages of both cells, and runs the NEURON simulation.
+        """
         self.gap_junc_1.g = resistance
         self.gap_junc_2.g = resistance
         
@@ -856,6 +951,12 @@ class GapJunctionTuner:
  
  
     def plot_model(self):
+        """
+        Plot the voltage traces of both cells to visualize gap junction coupling.
+        
+        This method creates a plot showing the membrane potential of both cells over time,
+        highlighting the effect of gap junction coupling when a current step is applied to cell 1.
+        """
         t_range = [self.general_settings['tstart'] - 100., self.general_settings['tstart']+self.general_settings['tdur'] + 100.]
         t = np.array(self.t_vec)
         v1 = np.array(self.soma_v_1)
@@ -873,6 +974,30 @@ class GapJunctionTuner:
 
 
     def coupling_coefficient(self,t, v1, v2, t_start, t_end, dt=h.dt):
+        """
+        Calculate the coupling coefficient between two cells connected by a gap junction.
+        
+        Parameters:
+        -----------
+        t : array-like
+            Time vector.
+        v1 : array-like
+            Voltage trace of the cell receiving the current injection.
+        v2 : array-like
+            Voltage trace of the coupled cell.
+        t_start : float
+            Start time for calculating the steady-state voltage change.
+        t_end : float
+            End time for calculating the steady-state voltage change.
+        dt : float, optional
+            Time step of the simulation. Default is h.dt.
+            
+        Returns:
+        --------
+        float
+            The coupling coefficient, defined as the ratio of voltage change in cell 2 
+            to voltage change in cell 1 (ΔV₂/ΔV₁).
+        """
         t = np.asarray(t)
         v1 = np.asarray(v1)
         v2 = np.asarray(v2)
@@ -934,16 +1059,59 @@ class SynapseOptimizer:
         self.param_scales = {}
         
     def _normalize_params(self, params: np.ndarray, param_names: List[str]) -> np.ndarray:
-        """Normalize parameters to similar scales"""
+        """
+        Normalize parameters to similar scales for better optimization performance.
+        
+        Parameters:
+        -----------
+        params : np.ndarray
+            Original parameter values.
+        param_names : List[str]
+            Names of the parameters corresponding to the values.
+            
+        Returns:
+        --------
+        np.ndarray
+            Normalized parameter values.
+        """
         return np.array([params[i] / self.param_scales[name] for i, name in enumerate(param_names)])
         
     def _denormalize_params(self, normalized_params: np.ndarray, param_names: List[str]) -> np.ndarray:
-        """Convert normalized parameters back to original scale"""
+        """
+        Convert normalized parameters back to original scale.
+        
+        Parameters:
+        -----------
+        normalized_params : np.ndarray
+            Normalized parameter values.
+        param_names : List[str]
+            Names of the parameters corresponding to the normalized values.
+            
+        Returns:
+        --------
+        np.ndarray
+            Denormalized parameter values in their original scale.
+        """
         return np.array([normalized_params[i] * self.param_scales[name] for i, name in enumerate(param_names)])
         
     def _calculate_metrics(self) -> Dict[str, float]:
-        """Calculate standard metrics from the current simulation using specified frequency"""
+        """
+        Calculate standard metrics from the current simulation.
         
+        This method runs either a single event simulation, a train input simulation, 
+        or both based on configuration flags, and calculates relevant synaptic metrics.
+        
+        Returns:
+        --------
+        Dict[str, float]
+            Dictionary of calculated metrics including:
+            - induction: measure of synaptic facilitation/depression
+            - ppr: paired-pulse ratio
+            - recovery: recovery from facilitation/depression
+            - max_amplitude: maximum synaptic response amplitude
+            - rise_time: time for synaptic response to rise from 20% to 80% of peak
+            - decay_time: time constant of synaptic response decay
+        """
         # Set these to 0 for when we return the dict 
         induction = 0
         ppr = 0
@@ -973,9 +1141,23 @@ class SynapseOptimizer:
         }
         
     def _default_cost_function(self, metrics: Dict[str, float], target_metrics: Dict[str, float]) -> float:
-        """Default cost function that targets induction"""
-        return float((metrics['induction'] - target_metrics['induction']) ** 2)
+        """
+        Default cost function that minimizes the squared difference between achieved and target induction.
         
+        Parameters:
+        -----------
+        metrics : Dict[str, float]
+            Dictionary of calculated metrics from the current simulation.
+        target_metrics : Dict[str, float]
+            Dictionary of target metrics to optimize towards.
+            
+        Returns:
+        --------
+        float
+            The squared error between achieved and target induction.
+        """
+        return float((metrics['induction'] - target_metrics['induction']) ** 2)
+
     def _objective_function(self, 
                           normalized_params: np.ndarray, 
                           param_names: List[str], 
@@ -1010,7 +1192,7 @@ class SynapseOptimizer:
         self.optimization_history.append(history_entry)
         
         return error
-    
+        
     def optimize_parameters(self, target_metrics: Dict[str, float],
                             param_bounds: Dict[str, Tuple[float, float]],
                             run_single_event:bool = False, run_train_input:bool = True,
@@ -1018,20 +1200,25 @@ class SynapseOptimizer:
                             cost_function: Optional[Callable] = None,
                             method: str = 'SLSQP',init_guess='random') -> SynapseOptimizationResult:
         """
-        Optimize synaptic parameters using custom cost function
+        Optimize synaptic parameters to achieve target metrics.
         
         Parameters:
         -----------
         target_metrics : Dict[str, float]
-            Target values for synaptic metrics
+            Target values for synaptic metrics (e.g., {'induction': 0.2, 'rise_time': 0.5})
         param_bounds : Dict[str, Tuple[float, float]]
-            Bounds for each parameter to optimize
+            Bounds for each parameter to optimize (e.g., {'tau_d': (5, 50), 'Use': (0.1, 0.9)})
+        run_single_event : bool, optional
+            Whether to run single event simulations during optimization (default: False)
+        run_train_input : bool, optional
+            Whether to run train input simulations during optimization (default: True)
         train_frequency : float, optional
             Frequency of the stimulus train in Hz (default: 50)
         train_delay : float, optional
             Delay between pulse trains in ms (default: 250)
         cost_function : Optional[Callable]
-            Custom cost function for optimization
+            Custom cost function for optimization. If None, uses default cost function
+            that optimizes induction.
         method : str, optional
             Optimization method to use (default: 'SLSQP')
         init_guess : str, optional
@@ -1040,8 +1227,14 @@ class SynapseOptimizer:
         Returns:
         --------
         SynapseOptimizationResult
-            Results of the optimization
-    """
+            Results of the optimization including optimal parameters, achieved metrics,
+            target metrics, final error, and optimization path.
+            
+        Notes:
+        ------
+        This function uses scipy.optimize.minimize to find the optimal parameter values
+        that minimize the difference between achieved and target metrics.
+        """
         self.optimization_history = []
         self.train_frequency = train_frequency
         self.train_delay = train_delay
@@ -1100,7 +1293,24 @@ class SynapseOptimizer:
         )
     
     def plot_optimization_results(self, result: SynapseOptimizationResult):
-        """Plot optimization results including convergence and final traces."""
+        """
+        Plot optimization results including convergence and final traces.
+        
+        Parameters:
+        -----------
+        result : SynapseOptimizationResult
+            Results from optimization as returned by optimize_parameters()
+            
+        Notes:
+        ------
+        This method generates three plots:
+        1. Error convergence plot showing how the error decreased over iterations
+        2. Parameter convergence plots showing how each parameter changed
+        3. Final model response with the optimal parameters
+        
+        It also prints a summary of the optimization results including target vs. achieved
+        metrics and the optimal parameter values.
+        """
         # Ensure errors are properly shaped for plotting
         iterations = range(len(result.optimization_path))
         errors = np.array([float(h['error']) for h in result.optimization_path]).flatten()
@@ -1224,21 +1434,32 @@ class GapJunctionOptimizer:
                           resistance_bounds: tuple = (1e-4, 1e-2),
                           method: str = 'bounded') -> GapOptimizationResult:
         """
-        Optimize gap junction resistance to achieve target coupling coefficient
+        Optimize gap junction resistance to achieve a target coupling coefficient.
         
         Parameters:
         -----------
         target_cc : float
-            Target coupling coefficient to achieve
+            Target coupling coefficient to achieve (between 0 and 1)
         resistance_bounds : tuple, optional
-            (min, max) bounds for resistance search
+            (min, max) bounds for resistance search in MOhm. Default is (1e-4, 1e-2).
         method : str, optional
-            Optimization method to use (default: 'bounded')
+            Optimization method to use. Default is 'bounded' which works well
+            for single-parameter optimization.
             
         Returns:
         --------
         GapOptimizationResult
-            Container with optimization results
+            Container with optimization results including:
+            - optimal_resistance: The optimized resistance value
+            - achieved_cc: The coupling coefficient achieved with the optimal resistance
+            - target_cc: The target coupling coefficient
+            - error: The final error (squared difference between target and achieved)
+            - optimization_path: List of all values tried during optimization
+            
+        Notes:
+        ------
+        Uses scipy.optimize.minimize_scalar with bounded method, which is
+        appropriate for this single-parameter optimization problem.
         """
         self.optimization_history = []
         
@@ -1330,16 +1551,24 @@ class GapJunctionOptimizer:
 
     def parameter_sweep(self, resistance_range: np.ndarray) -> dict:
         """
-        Perform a parameter sweep across different resistance values
+        Perform a parameter sweep across different resistance values.
         
         Parameters:
         -----------
         resistance_range : np.ndarray
-            Array of resistance values to test
+            Array of resistance values to test.
             
         Returns:
         --------
-        dict : Results of parameter sweep including coupling coefficients
+        dict
+            Dictionary containing the results of the parameter sweep, with keys:
+            - 'resistance': List of resistance values tested
+            - 'coupling_coefficient': Corresponding coupling coefficients
+            
+        Notes:
+        ------
+        This method is useful for understanding the relationship between gap junction
+        resistance and coupling coefficient before attempting optimization.
         """
         results = {
             'resistance': [],

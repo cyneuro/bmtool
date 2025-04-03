@@ -11,6 +11,16 @@ import pandas as pd
 
 
 def load_biophys1():
+    """
+    Load the Biophys1 template from BMTK if it hasn't been loaded yet.
+    
+    This function checks if the Biophys1 object exists in NEURON's h namespace.
+    If not, it loads the necessary HOC files for Allen Cell Types Database models.
+    
+    Notes:
+    ------
+    This is primarily used for working with cell models from the Allen Cell Types Database.
+    """
     if not hasattr(h, 'Biophys1'):
         from bmtk import utils
         module_dir = os.path.dirname(os.path.abspath(utils.__file__))
@@ -20,11 +30,29 @@ def load_biophys1():
 
 
 def load_allen_database_cells(morphology, dynamic_params, model_processing='aibs_perisomatic'):
-    """Create Allen cell model
-    morphology: morphology file path
-    dynamic_params: dynamic_params file path
-    model_processing: model processing type by AllenCellType database
-    Return: a function that creates and returns a cell object 
+    """
+    Create a cell model from the Allen Cell Types Database.
+    
+    Parameters:
+    -----------
+    morphology : str
+        Path to the morphology file (SWC or ASC format).
+    dynamic_params : str
+        Path to the JSON file containing biophysical parameters.
+    model_processing : str, optional
+        Model processing type from the AllenCellType database.
+        Default is 'aibs_perisomatic'.
+    
+    Returns:
+    --------
+    callable
+        A function that, when called, creates and returns a NEURON cell object
+        with the specified morphology and biophysical properties.
+        
+    Notes:
+    ------
+    This function creates a closure that loads and returns a cell when called.
+    The cell is created using the Allen Institute's modeling framework.
     """
     from bmtk.simulator.bionet.default_setters import cell_models
     load_biophys1()
@@ -39,6 +67,34 @@ def load_allen_database_cells(morphology, dynamic_params, model_processing='aibs
 
 
 def get_target_site(cell, sec=('soma', 0), loc=0.5, site=''):
+    """
+    Get a segment and its section from a cell model using flexible section specification.
+    
+    Parameters:
+    -----------
+    cell : NEURON cell object
+        The cell object to access sections from.
+    sec : str, int, or tuple, optional
+        Section specification, which can be:
+        - str: Section name (defaults to index 0 if multiple sections)
+        - int: Index into the 'all' section list
+        - tuple: (section_name, index) for accessing indexed sections
+        Default is ('soma', 0).
+    loc : float, optional
+        Location along the section (0-1), default is 0.5 (middle of section).
+    site : str, optional
+        Name of the site for error messages (e.g., 'injection', 'recording').
+    
+    Returns:
+    --------
+    tuple
+        (segment, section) at the specified location
+        
+    Raises:
+    -------
+    ValueError
+        If the section cannot be found or accessed.
+    """
     if isinstance(sec, str):
         sec = (sec, 0)
     elif isinstance(sec, int):
@@ -64,19 +120,38 @@ class CurrentClamp(object):
     def __init__(self, template_name, post_init_function=None, record_sec='soma', record_loc=0.5, threshold=None,
                  inj_sec='soma', inj_loc=0.5, inj_amp=100., inj_delay=100., inj_dur=1000., tstop=1000.):
         """
-        template_name: str, name of the cell template located in hoc
-            or callable, a function that creates and returns a cell object
-        post_init_function: str, function of the cell to be called after the cell has been initialized
-        record_sec: tuple, (section list name, index) to access a section in a hoc template
-            If a string of section name is specified, index default to 0
-            If an index is specified, section list name default to `all`
-        record_loc: float, location within [0, 1] of a segment in a section to record from
-        threshold: Optional float, spike threshold (mV), if specified, record and count spikes times
-        inj_sec, inj_loc: current injection site, same format as record site
-        tstop: time for simulation (ms)
-        inj_delay: current injection start time (ms)
-        inj_dur: current injection duration (ms)
-        inj_amp: current injection amplitude (pA)
+        Initialize a current clamp simulation environment.
+        
+        Parameters:
+        -----------
+        template_name : str or callable
+            Either the name of the cell template located in HOC or
+            a function that creates and returns a cell object.
+        post_init_function : str, optional
+            Function of the cell to be called after initialization.
+        record_sec : str, int, or tuple, optional
+            Section to record from. Can be:
+            - str: Section name (defaults to index 0 if multiple sections)
+            - int: Index into the 'all' section list
+            - tuple: (section_name, index) for accessing indexed sections
+            Default is 'soma'.
+        record_loc : float, optional
+            Location (0-1) within section to record from. Default is 0.5.
+        threshold : float, optional
+            Spike threshold (mV). If specified, spikes are detected and counted.
+        inj_sec : str, int, or tuple, optional
+            Section for current injection. Same format as record_sec. Default is 'soma'.
+        inj_loc : float, optional
+            Location (0-1) within section for current injection. Default is 0.5.
+        inj_amp : float, optional
+            Current injection amplitude (pA). Default is 100.0.
+        inj_delay : float, optional
+            Start time for current injection (ms). Default is 100.0.
+        inj_dur : float, optional
+            Duration of current injection (ms). Default is 1000.0.
+        tstop : float, optional
+            Total simulation time (ms). Default is 1000.0.
+            Will be extended if necessary to include the full current injection.
         """
         self.create_cell = getattr(h, template_name) if isinstance(template_name, str) else template_name
         self.record_sec = record_sec
@@ -92,7 +167,7 @@ class CurrentClamp(object):
 
         # sometimes people may put a hoc object in for the template name 
         if callable(template_name):
-            self.cell = template_name
+            self.cell = template_name()
         else:    
             self.cell = self.create_cell()
         if post_init_function:
@@ -101,6 +176,18 @@ class CurrentClamp(object):
         self.setup()
 
     def setup(self):
+        """
+        Set up the simulation environment for current clamp experiments.
+        
+        This method:
+        1. Creates the current clamp stimulus at the specified injection site
+        2. Sets up voltage recording at the specified recording site
+        3. Creates vectors to store time and voltage data
+        
+        Notes:
+        ------
+        Sets self.cell_src as the current clamp object that can be accessed later.
+        """
         inj_seg, _ = get_target_site(self.cell, self.inj_sec, self.inj_loc, 'injection')
         self.cell_src = h.IClamp(inj_seg)
         self.cell_src.delay = self.inj_delay
@@ -124,6 +211,21 @@ class CurrentClamp(object):
         print(f'Recording: {rec_seg}._ref_v')
 
     def execute(self) -> Tuple[list, list]:
+        """
+        Run the current clamp simulation and return recorded data.
+        
+        This method:
+        1. Sets up the simulation duration
+        2. Initializes and runs the NEURON simulation
+        3. Converts recorded vectors to Python lists
+        
+        Returns:
+        --------
+        tuple
+            (time_vector, voltage_vector) where:
+            - time_vector: List of time points (ms)
+            - voltage_vector: List of membrane potentials (mV) at those time points
+        """
         print("Current clamp simulation running...")
         h.tstop = self.tstop
         h.stdinit()
@@ -141,11 +243,39 @@ class Passive(CurrentClamp):
     def __init__(self, template_name, inj_amp=-100., inj_delay=200., inj_dur=1000.,
                  tstop=1200., method=None, **kwargs):
         """
-        method: {'simple', 'exp2', 'exp'}, optional.
-            Method to estimate membrane time constant. Default is 'simple'
-            that find the time to reach 0.632 of change. 'exp2' fits a double
-            exponential curve to the membrane potential response. 'exp' fits
-            a single exponential curve.
+        Initialize a passive membrane property simulation environment.
+        
+        Parameters:
+        -----------
+        template_name : str or callable
+            Either the name of the cell template located in HOC or
+            a function that creates and returns a cell object.
+        inj_amp : float, optional
+            Current injection amplitude (pA). Default is -100.0 (negative to measure passive properties).
+        inj_delay : float, optional
+            Start time for current injection (ms). Default is 200.0.
+        inj_dur : float, optional
+            Duration of current injection (ms). Default is 1000.0.
+        tstop : float, optional
+            Total simulation time (ms). Default is 1200.0.
+        method : str, optional
+            Method to estimate membrane time constant:
+            - 'simple': Find the time to reach 0.632 of voltage change
+            - 'exp': Fit a single exponential curve
+            - 'exp2': Fit a double exponential curve
+            Default is None, which uses 'simple' when calculations are performed.
+        **kwargs : 
+            Additional keyword arguments to pass to the parent CurrentClamp constructor.
+            
+        Notes:
+        ------
+        This class is designed for measuring passive membrane properties including
+        input resistance and membrane time constant.
+        
+        Raises:
+        -------
+        AssertionError
+            If inj_amp is zero (must be non-zero to measure passive properties).
         """
         assert(inj_amp != 0)
         super().__init__(template_name=template_name, tstop=tstop,
@@ -155,6 +285,23 @@ class Passive(CurrentClamp):
         self.tau_methods = {'simple': self.tau_simple, 'exp2': self.tau_double_exponential, 'exp': self.tau_single_exponential}
 
     def tau_simple(self):
+        """
+        Calculate membrane time constant using the simple 0.632 criterion method.
+        
+        This method calculates the membrane time constant by finding the time it takes
+        for the membrane potential to reach 63.2% (1-1/e) of its final value after 
+        a step current injection.
+        
+        Returns:
+        --------
+        callable
+            A function that prints the calculation details when called.
+        
+        Notes:
+        ------
+        Sets the following attributes:
+        - tau: The calculated membrane time constant in ms
+        """
         v_t_const = self.cell_v_final - self.v_diff / np.e
         index_v_tau = next(x for x, val in enumerate(self.v_vec_inj) if val <= v_t_const)
         self.tau = self.t_vec[self.index_v_rest + index_v_tau] - self.v_rest_time  # ms
@@ -171,9 +318,53 @@ class Passive(CurrentClamp):
 
     @staticmethod
     def single_exponential(t, a0, a, tau):
+        """
+        Single exponential function for fitting membrane potential response.
+        
+        Parameters:
+        -----------
+        t : array-like
+            Time values
+        a0 : float
+            Offset (steady-state) value
+        a : float
+            Amplitude of the exponential component
+        tau : float
+            Time constant of the exponential decay
+            
+        Returns:
+        --------
+        array-like
+            Function values at the given time points
+        """
         return a0 + a * np.exp(-t / tau)
 
     def tau_single_exponential(self):
+        """
+        Calculate membrane time constant by fitting a single exponential curve.
+        
+        This method:
+        1. Identifies the peak response (for sag characterization)
+        2. Falls back to simple method for initial estimate
+        3. Fits a single exponential function to the membrane potential response
+        4. Sets tau to the exponential time constant
+        
+        Returns:
+        --------
+        callable
+            A function that prints the calculation details when called.
+            
+        Notes:
+        ------
+        Sets the following attributes:
+        - tau: The calculated membrane time constant in ms
+        - t_peak, v_peak: Time and voltage of peak response
+        - v_sag: Sag potential (difference between peak and steady-state)
+        - v_max_diff: Maximum potential difference from rest
+        - sag_norm: Normalized sag ratio
+        - popt: Optimized parameters from curve fitting
+        - pcov: Covariance matrix of the optimization
+        """
         index_v_peak = (np.sign(self.inj_amp) * self.v_vec_inj).argmax()
         self.t_peak = self.t_vec_inj[index_v_peak]
         self.v_peak = self.v_vec_inj[index_v_peak]
@@ -206,9 +397,57 @@ class Passive(CurrentClamp):
 
     @staticmethod
     def double_exponential(t, a0, a1, a2, tau1, tau2):
+        """
+        Double exponential function for fitting membrane potential response.
+        
+        This function is particularly useful for modeling cells with sag responses,
+        where the membrane potential shows two distinct time constants.
+        
+        Parameters:
+        -----------
+        t : array-like
+            Time values
+        a0 : float
+            Offset (steady-state) value
+        a1 : float
+            Amplitude of the first exponential component
+        a2 : float
+            Amplitude of the second exponential component
+        tau1 : float
+            Time constant of the first exponential component
+        tau2 : float
+            Time constant of the second exponential component
+            
+        Returns:
+        --------
+        array-like
+            Function values at the given time points
+        """
         return a0 + a1 * np.exp(-t / tau1) + a2 * np.exp(-t / tau2)
 
     def tau_double_exponential(self):
+        """
+        Calculate membrane time constant by fitting a double exponential curve.
+        
+        This method is useful for cells with sag responses that cannot be
+        fitted well with a single exponential.
+        
+        Returns:
+        --------
+        callable
+            A function that prints the calculation details when called.
+            
+        Notes:
+        ------
+        Sets the following attributes:
+        - tau: The calculated membrane time constant (the slower of the two time constants)
+        - t_peak, v_peak: Time and voltage of peak response
+        - v_sag: Sag potential (difference between peak and steady-state)
+        - v_max_diff: Maximum potential difference from rest
+        - sag_norm: Normalized sag ratio
+        - popt: Optimized parameters from curve fitting
+        - pcov: Covariance matrix of the optimization
+        """
         index_v_peak = (np.sign(self.inj_amp) * self.v_vec_inj).argmax()
         self.t_peak = self.t_vec_inj[index_v_peak]
         self.v_peak = self.v_vec_inj[index_v_peak]
@@ -240,16 +479,58 @@ class Passive(CurrentClamp):
         return print_calc
 
     def double_exponential_fit(self):
+        """
+        Get the double exponential fit values for plotting.
+        
+        Returns:
+        --------
+        tuple
+            (time_vector, fitted_values) where:
+            - time_vector: Time points starting from rest time
+            - fitted_values: Membrane potential values predicted by the double exponential function
+        """
         t_vec = self.v_rest_time + self.t_vec_inj
         v_fit = self.double_exponential(self.t_vec_inj, *self.popt)
         return t_vec, v_fit
     
     def single_exponential_fit(self):
+        """
+        Get the single exponential fit values for plotting.
+        
+        Returns:
+        --------
+        tuple
+            (time_vector, fitted_values) where:
+            - time_vector: Time points starting from rest time
+            - fitted_values: Membrane potential values predicted by the single exponential function
+        """
         t_vec = self.v_rest_time + self.t_vec_inj
         v_fit = self.single_exponential(self.t_vec_inj, *self.popt)
         return t_vec, v_fit
 
     def execute(self):
+        """
+        Run the simulation and calculate passive membrane properties.
+        
+        This method:
+        1. Runs the NEURON simulation
+        2. Extracts membrane potential at rest and steady-state
+        3. Calculates input resistance from the step response
+        4. Calculates membrane time constant using the specified method
+        5. Prints detailed calculations for educational purposes
+        
+        Returns:
+        --------
+        tuple
+            (time_vector, voltage_vector) from the simulation
+        
+        Notes:
+        ------
+        Sets several attributes including:
+        - v_rest: Resting membrane potential
+        - r_in: Input resistance in MOhms
+        - tau: Membrane time constant in ms
+        """
         print("Running simulation for passive properties...")
         h.tstop = self.tstop
         h.stdinit()
@@ -292,13 +573,41 @@ class FI(object):
                  i_start=0., i_stop=1050., i_increment=100., tstart=50., tdur=1000., threshold=0.,
                  record_sec='soma', record_loc=0.5, inj_sec='soma', inj_loc=0.5):
         """
-        template_name: str, name of the cell template located in hoc
-            or callable, a function that creates and returns a cell object
-        i_start: initial current injection amplitude (pA)
-        i_stop: maximum current injection amplitude (pA)
-        i_increment: amplitude increment each trial (pA)
-        tstart: current injection start time (ms)
-        tdur: current injection duration (ms)
+        Initialize a frequency-current (F-I) curve simulation environment.
+        
+        Parameters:
+        -----------
+        template_name : str or callable
+            Either the name of the cell template located in HOC or
+            a function that creates and returns a cell object.
+        post_init_function : str, optional
+            Function of the cell to be called after initialization.
+        i_start : float, optional
+            Initial current injection amplitude (pA). Default is 0.0.
+        i_stop : float, optional
+            Maximum current injection amplitude (pA). Default is 1050.0.
+        i_increment : float, optional
+            Amplitude increment between trials (pA). Default is 100.0.
+        tstart : float, optional
+            Current injection start time (ms). Default is 50.0.
+        tdur : float, optional
+            Current injection duration (ms). Default is 1000.0.
+        threshold : float, optional
+            Spike threshold (mV). Default is 0.0.
+        record_sec : str, int, or tuple, optional
+            Section to record from. Same format as in CurrentClamp. Default is 'soma'.
+        record_loc : float, optional
+            Location (0-1) within section to record from. Default is 0.5.
+        inj_sec : str, int, or tuple, optional
+            Section for current injection. Same format as record_sec. Default is 'soma'.
+        inj_loc : float, optional
+            Location (0-1) within section for current injection. Default is 0.5.
+            
+        Notes:
+        ------
+        This class creates multiple instances of the cell model, one for each
+        current amplitude to be tested, allowing all simulations to be run
+        in a single call to NEURON's run() function.
         """
         self.create_cell = getattr(h, template_name) if isinstance(template_name, str) else template_name
         self.post_init_function = post_init_function
@@ -333,6 +642,19 @@ class FI(object):
         self.setup()
 
     def setup(self):
+        """
+        Set up the simulation environment for frequency-current (F-I) analysis.
+        
+        For each current amplitude to be tested, this method:
+        1. Creates a current source at the injection site
+        2. Sets up spike detection at the recording site
+        3. Creates vectors to record spike times
+        
+        Notes:
+        ------
+        This preparation allows multiple simulations to be run with different
+        current amplitudes in a single call to h.run().
+        """
         for cell, amp in zip(self.cells, self.amps):
             inj_seg, _ = get_target_site(cell, self.inj_sec, self.inj_loc, 'injection')
             src = h.IClamp(inj_seg)
@@ -353,6 +675,21 @@ class FI(object):
         print(f'Recording: {rec_seg}._ref_v')
 
     def execute(self):
+        """
+        Run the simulation and count spikes for each current amplitude.
+        
+        This method:
+        1. Initializes and runs a single NEURON simulation that evaluates all current amplitudes
+        2. Counts spikes for each current amplitude
+        3. Prints a summary of results in tabular format
+        
+        Returns:
+        --------
+        tuple
+            (current_amplitudes, spike_counts) where:
+            - current_amplitudes: List of current injection amplitudes (nA)
+            - spike_counts: List of spike counts corresponding to each amplitude
+        """
         print("Running simulations for FI curve...")
         h.tstop = self.tstop
         h.stdinit()
@@ -376,9 +713,42 @@ class ZAP(CurrentClamp):
     def __init__(self, template_name, inj_amp=100., inj_delay=200., inj_dur=15000.,
                  tstop=15500., fstart=0., fend=15., chirp_type=None, **kwargs):
         """
-        fstart, fend: float, frequency at the start and end of the chirp current
-        chirp_type: {'linear', 'exponential'}, optional.
-            Type of chirp current, i.e. how frequency increase over time.
+        Initialize a ZAP (impedance amplitude profile) simulation environment.
+        
+        Parameters:
+        -----------
+        template_name : str or callable
+            Either the name of the cell template located in HOC or
+            a function that creates and returns a cell object.
+        inj_amp : float, optional
+            Current injection amplitude (pA). Default is 100.0.
+        inj_delay : float, optional
+            Start time for current injection (ms). Default is 200.0.
+        inj_dur : float, optional
+            Duration of current injection (ms). Default is 15000.0.
+        tstop : float, optional
+            Total simulation time (ms). Default is 15500.0.
+        fstart : float, optional
+            Starting frequency of the chirp current (Hz). Default is 0.0.
+        fend : float, optional
+            Ending frequency of the chirp current (Hz). Default is 15.0.
+        chirp_type : str, optional
+            Type of chirp current determining how frequency increases over time:
+            - 'linear': Linear increase in frequency (default if None)
+            - 'exponential': Exponential increase in frequency
+        **kwargs : 
+            Additional keyword arguments to pass to the parent CurrentClamp constructor.
+            
+        Notes:
+        ------
+        This class is designed for measuring the frequency-dependent impedance profile
+        of a neuron using a chirp current that sweeps through frequencies.
+        
+        Raises:
+        -------
+        AssertionError
+            - If inj_amp is zero
+            - If chirp_type is 'exponential' and either fstart or fend is <= 0
         """
         assert(inj_amp != 0)
         super().__init__(template_name=template_name, tstop=tstop,
@@ -392,13 +762,67 @@ class ZAP(CurrentClamp):
             assert(fstart > 0 and fend > 0)
 
     def linear_chirp(self, t, f0, f1):
+        """
+        Generate a chirp current with linearly increasing frequency.
+        
+        Parameters:
+        -----------
+        t : ndarray
+            Time vector (ms)
+        f0 : float
+            Start frequency (kHz)
+        f1 : float
+            End frequency (kHz)
+            
+        Returns:
+        --------
+        ndarray
+            Current values with amplitude self.inj_amp and frequency 
+            increasing linearly from f0 to f1 Hz over time t
+        """
         return self.inj_amp * np.sin(np.pi * (2 * f0 + (f1 - f0) / t[-1] * t) * t)
 
     def exponential_chirp(self, t, f0, f1):
+        """
+        Generate a chirp current with exponentially increasing frequency.
+        
+        Parameters:
+        -----------
+        t : ndarray
+            Time vector (ms)
+        f0 : float
+            Start frequency (kHz), must be > 0
+        f1 : float
+            End frequency (kHz), must be > 0
+            
+        Returns:
+        --------
+        ndarray
+            Current values with amplitude self.inj_amp and frequency 
+            increasing exponentially from f0 to f1 Hz over time t
+        
+        Notes:
+        ------
+        For exponential chirp, both f0 and f1 must be positive.
+        """
         L = np.log(f1 / f0) / t[-1]
         return self.inj_amp * np.sin(np.pi * 2 * f0 / L * (np.exp(L * t) - 1))
 
     def zap_current(self):
+        """
+        Create a frequency-modulated (chirp) current for probing impedance.
+        
+        This method:
+        1. Sets up time vectors for the simulation and current injection
+        2. Creates a chirp current based on the specified parameters (linear or exponential)
+        3. Prepares the current vector for NEURON playback
+        
+        Notes:
+        ------
+        The chirp current increases in frequency from fstart to fend Hz over the duration
+        of the injection. This allows frequency-dependent impedance to be measured in
+        a single simulation.
+        """
         self.dt = dt = h.dt
         self.index_v_rest = int(self.inj_delay / dt)
         self.index_v_final = int(self.inj_stop / dt)
@@ -417,6 +841,28 @@ class ZAP(CurrentClamp):
         self.zap_vec.play(self.cell_src._ref_amp, dt)
 
     def get_impedance(self, smooth=1):
+        """
+        Calculate and extract the frequency-dependent impedance profile.
+        
+        This method:
+        1. Filters the impedance to the frequency range of interest
+        2. Optionally applies smoothing to reduce noise
+        3. Identifies the resonant frequency (peak impedance)
+        
+        Parameters:
+        -----------
+        smooth : int, optional
+            Window size for smoothing the impedance. Default is 1 (no smoothing).
+            
+        Returns:
+        --------
+        tuple
+            (frequencies, impedance_values) in the range of interest
+            
+        Notes:
+        ------
+        Sets self.peak_freq to the resonant frequency (frequency of maximum impedance).
+        """
         f_idx = (self.freq > min(self.fstart, self.fend)) & (self.freq < max(self.fstart, self.fend))
         impedance = self.impedance
         if smooth > 1:
@@ -427,6 +873,27 @@ class ZAP(CurrentClamp):
         return freq, impedance
 
     def execute(self) -> Tuple[list, list]:
+        """
+        Run the ZAP simulation and calculate the impedance profile.
+        
+        This method:
+        1. Sets up the chirp current
+        2. Runs the NEURON simulation
+        3. Calculates the impedance using FFT
+        4. Prints a summary of the frequency range and analysis method
+        
+        Returns:
+        --------
+        tuple
+            (time_vector, voltage_vector) from the simulation
+            
+        Notes:
+        ------
+        Sets several attributes including:
+        - Z: Complex impedance values (from FFT)
+        - freq: Frequency values for the impedance profile
+        - impedance: Absolute impedance values
+        """
         print("ZAP current simulation running...")
         self.zap_current()
         h.tstop = self.tstop
