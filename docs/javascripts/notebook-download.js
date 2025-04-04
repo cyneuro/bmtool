@@ -10,111 +10,52 @@ document.addEventListener('DOMContentLoaded', function() {
     // Extract information from the path
     const pathSegments = currentPath.split('/').filter(segment => segment.length > 0);
     
-    // Get the repository name - could be 'bmtool' or missing in local development
-    const repoName = 'bmtool';
-    
     // Find the notebook name and category from the path
     let notebookName = '';
     let category = '';
-    let nestedDir = '';
     
     // Check if we're in a notebook view
     if (pathSegments.includes('examples')) {
       const examplesIndex = pathSegments.indexOf('examples');
       if (examplesIndex < pathSegments.length - 1) {
         category = pathSegments[examplesIndex + 1];
-        
-        // Handle nested directories by joining all path segments after category
-        const remainingSegments = pathSegments.slice(examplesIndex + 2);
-        if (remainingSegments.length > 0) {
-          notebookName = remainingSegments[remainingSegments.length - 1];
-          
-          // If there are segments between category and notebook, they form a nested directory
-          if (remainingSegments.length > 1) {
-            nestedDir = remainingSegments.slice(0, -1).join('/') + '/';
-          }
+        if (examplesIndex + 2 < pathSegments.length) {
+          notebookName = pathSegments[examplesIndex + 2];
         }
       }
     }
     
-    // Create paths for direct download or GitHub viewing
-    const folderPath = `docs/examples/notebooks/${category}/${nestedDir}${notebookName}`.replace(/\.ipynb$/, '');
-    const repoUrl = `https://github.com/cyneuro/bmtool/tree/master/${folderPath}`;
-    
-    // Use GitHub's raw content URL for direct file download
-    const rawUrl = `https://raw.githubusercontent.com/cyneuro/bmtool/master/docs/examples/notebooks/${category}/${nestedDir}${notebookName}.ipynb`;
+    // Create the GitHub raw content URL with the correct path format
+    const rawUrl = `https://raw.githubusercontent.com/cyneuro/bmtool/refs/heads/master/docs/examples/notebooks/${category}/${notebookName}.ipynb`;
     
     // Create the download button only if we have a valid notebook name
     if (notebookName) {
       const downloadButton = document.createElement('button');
       downloadButton.className = 'notebook-download-button';
-      downloadButton.textContent = 'Download Files';
-      downloadButton.title = `Download files for ${notebookName}`;
+      downloadButton.textContent = 'Download Notebook';
+      downloadButton.title = `Download ${notebookName}.ipynb`;
       
-      // Add click event to handle both options
-      downloadButton.addEventListener('click', function(event) {
-        // Open a small menu with options
-        const menu = document.createElement('div');
-        menu.className = 'download-menu';
-        menu.style.position = 'absolute';
-        menu.style.top = (event.target.offsetTop + event.target.offsetHeight) + 'px';
-        menu.style.right = '15px';
-        menu.style.backgroundColor = '#fff';
-        menu.style.border = '1px solid #ddd';
-        menu.style.borderRadius = '4px';
-        menu.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
-        menu.style.zIndex = '100';
-        
-        // Option 1: View on GitHub
-        const viewOption = document.createElement('a');
-        viewOption.textContent = 'View on GitHub';
-        viewOption.href = repoUrl;
-        viewOption.target = '_blank';
-        viewOption.style.display = 'block';
-        viewOption.style.padding = '10px 15px';
-        viewOption.style.textDecoration = 'none';
-        viewOption.style.color = '#24292e';
-        viewOption.style.borderBottom = '1px solid #eee';
-        viewOption.addEventListener('mouseenter', function() {
-          this.style.backgroundColor = '#f6f8fa';
-        });
-        viewOption.addEventListener('mouseleave', function() {
-          this.style.backgroundColor = 'transparent';
-        });
-        
-        // Option 2: Download Notebook
-        const downloadOption = document.createElement('a');
-        downloadOption.textContent = 'Download Notebook';
-        downloadOption.href = rawUrl;
-        downloadOption.download = `${notebookName}.ipynb`;
-        downloadOption.style.display = 'block';
-        downloadOption.style.padding = '10px 15px';
-        downloadOption.style.textDecoration = 'none';
-        downloadOption.style.color = '#24292e';
-        downloadOption.addEventListener('mouseenter', function() {
-          this.style.backgroundColor = '#f6f8fa';
-        });
-        downloadOption.addEventListener('mouseleave', function() {
-          this.style.backgroundColor = 'transparent';
-        });
-        
-        // Add options to menu
-        menu.appendChild(viewOption);
-        menu.appendChild(downloadOption);
-        
-        // Add menu to document
-        document.body.appendChild(menu);
-        
-        // Close menu when clicking outside
-        document.addEventListener('click', function closeMenu(e) {
-          if (e.target !== downloadButton && !menu.contains(e.target)) {
-            document.body.removeChild(menu);
-            document.removeEventListener('click', closeMenu);
-          }
-        });
-        
-        // Prevent the event from propagating
-        event.stopPropagation();
+      // Add click event to handle the download
+      downloadButton.addEventListener('click', function() {
+        // Use fetch to get the raw file content
+        fetch(rawUrl)
+          .then(response => response.blob())
+          .then(blob => {
+            // Create a temporary anchor element
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = `${notebookName}.ipynb`;
+            link.style.display = 'none';
+            
+            // Append to the document, click and remove
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          })
+          .catch(error => {
+            console.error('Error downloading notebook:', error);
+            alert('Error downloading notebook. Please try again later or contact maintainers.');
+          });
       });
       
       // Get the main content area and insert button
