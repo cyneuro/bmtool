@@ -15,12 +15,13 @@
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
   transition: all 0.2s ease;
   z-index: 10;
+  border: 1px solid rgba(255,255,255,0.2);
 }
 
 .notebook-download-button:hover {
   background-color: #303f9f;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+  transform: translateY(-2px);
 }
 
 .notebook-download-button:before {
