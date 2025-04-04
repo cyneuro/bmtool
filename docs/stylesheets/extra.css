@@ -1,5 +1,5 @@
 /* ===== DOWNLOAD BUTTON STYLING ===== */
-/* Controls the appearance of the download/GitHub button for notebooks */
+/* Controls the appearance of the download button for notebooks */
 .notebook-download-button {
   display: inline-block;
   position: absolute;

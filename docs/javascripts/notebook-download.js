@@ -13,20 +13,29 @@ document.addEventListener('DOMContentLoaded', function() {
     // Find the notebook name and category from the path
     let notebookName = '';
     let category = '';
+    let nestedDir = '';
     
     // Check if we're in a notebook view
     if (pathSegments.includes('examples')) {
       const examplesIndex = pathSegments.indexOf('examples');
       if (examplesIndex < pathSegments.length - 1) {
         category = pathSegments[examplesIndex + 1];
-        if (examplesIndex + 2 < pathSegments.length) {
-          notebookName = pathSegments[examplesIndex + 2];
+        
+        // Handle nested directories by joining all path segments after category
+        const remainingSegments = pathSegments.slice(examplesIndex + 2);
+        if (remainingSegments.length > 0) {
+          notebookName = remainingSegments[remainingSegments.length - 1];
+          
+          // If there are segments between category and notebook, they form a nested directory
+          if (remainingSegments.length > 1) {
+            nestedDir = remainingSegments.slice(0, -1).join('/') + '/';
+          }
         }
       }
     }
     
-    // Create the GitHub raw content URL with the correct path format
-    const rawUrl = `https://raw.githubusercontent.com/cyneuro/bmtool/refs/heads/master/docs/examples/notebooks/${category}/${notebookName}.ipynb`;
+    // Use GitHub's raw content URL for direct file download
+    const rawUrl = `https://raw.githubusercontent.com/cyneuro/bmtool/master/docs/examples/notebooks/${category}/${nestedDir}${notebookName}.ipynb`;
     
     // Create the download button only if we have a valid notebook name
     if (notebookName) {
@@ -37,25 +46,13 @@ document.addEventListener('DOMContentLoaded', function() {
       
       // Add click event to handle the download
       downloadButton.addEventListener('click', function() {
-        // Use fetch to get the raw file content
-        fetch(rawUrl)
-          .then(response => response.blob())
-          .then(blob => {
-            // Create a temporary anchor element
-            const link = document.createElement('a');
-            link.href = window.URL.createObjectURL(blob);
-            link.download = `${notebookName}.ipynb`;
-            link.style.display = 'none';
-            
-            // Append to the document, click and remove
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          })
-          .catch(error => {
-            console.error('Error downloading notebook:', error);
-            alert('Error downloading notebook. Please try again later or contact maintainers.');
-          });
+        // Create a link to download the notebook
+        const link = document.createElement('a');
+        link.href = rawUrl;
+        link.download = `${notebookName}.ipynb`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       });
       
       // Get the main content area and insert button
