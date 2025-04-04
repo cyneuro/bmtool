@@ -1,0 +1,98 @@
+/* Custom styles for Jupyter notebook rendering */
+
+/* Style the auto-generated table of contents in Jupyter notebooks */
+.jp-RenderedHTMLCommon .toc {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 20px;
+    background-color: #f8f9fa;
+    max-width: 90%;
+    font-size: 0.9em;
+}
+
+.jp-RenderedHTMLCommon .toc-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #3f51b5;
+}
+
+.jp-RenderedHTMLCommon .toc-item {
+    margin: 0.2em 0;
+    line-height: 1.2;
+}
+
+.jp-RenderedHTMLCommon .toc-item a {
+    color: #3f51b5;
+    text-decoration: none;
+}
+
+.jp-RenderedHTMLCommon .toc-item a:hover {
+    text-decoration: underline;
+}
+
+/* Improve spacing for nested items */
+.jp-RenderedHTMLCommon .toc > ul {
+    padding-left: 15px;
+    margin: 0;
+}
+
+/* Make Jupyter notebook styling consistent with site */
+.jupyter-wrapper {
+    padding: 0.5em;
+}
+
+.jp-OutputArea-output pre {
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    padding: 0.5em;
+}
+
+/* Improve code cell styling */
+.jp-CodeCell {
+    border-radius: 4px;
+    margin-bottom: 1em;
+}
+
+/* Add separation between cells */
+.jp-Cell {
+    margin-bottom: 1.5em;
+}
+
+/* Custom styles for Jupyter notebook TOC */
+.toc {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  background-color: #f8f9fa;
+  margin-bottom: 20px;
+  max-width: 300px;
+}
+
+.toc-title {
+  font-weight: bold;
+  margin-bottom: 8px;
+  font-size: 1.1em;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 5px;
+}
+
+.toc-item {
+  margin: 0;
+  padding: 2px 0;
+  line-height: 1.3;
+}
+
+.toc-item-child {
+  margin-left: 15px;
+}
+
+.toc a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+.toc a:hover {
+  text-decoration: underline;
+  color: #0056b3;
+} 

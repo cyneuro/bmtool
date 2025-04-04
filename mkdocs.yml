@@ -20,6 +20,10 @@ theme:
     - content.tabs.link
   icon:
     repo: fontawesome/brands/github
+  toc:
+    permalink: true
+    slugify: !!python/name:pymdownx.slugs.uslugify
+    toc_depth: 3
 
 markdown_extensions:
   - pymdownx.highlight
@@ -45,6 +49,8 @@ plugins:
   - mkdocs-jupyter:
       include_source: True
       execute: false
+      ignore_h1_titles: True
+      show_input: True
 
 nav:
   - Home: index.md
@@ -90,3 +96,6 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/cyneuro/bmtool 
+
+extra_css:
+  - stylesheets/extra.css 
