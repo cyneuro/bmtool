@@ -48,10 +48,12 @@ plugins:
             docstring_style: numpy
   - mkdocs-jupyter:
       include_source: True
-      remove_input_prompt: true
       execute: false
       ignore_h1_titles: True
       show_input: True
+      theme: light
+      kernel_name: python3
+      allow_errors: false
 
 nav:
   - Home: index.md

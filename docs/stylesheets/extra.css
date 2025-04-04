@@ -1,4 +1,3 @@
-
 /* Download button for notebooks */
 .notebook-download-button {
   display: inline-block;
@@ -42,4 +41,73 @@
 /* hides the In[] section of notebooks which look bad */
 .jp-InputPrompt, .jp-OutputPrompt {
   display: none !important;
+}
+
+/* Make Jupyter notebooks take up more space */
+/* Reduce navigation width */
+.md-sidebar--primary {
+  width: 180px;
+}
+
+@media screen and (min-width: 1220px) {
+  .md-sidebar--primary {
+    width: 180px;
+  }
+  
+  .md-grid {
+    max-width: initial;
+    margin-left: 180px;
+    margin-right: 180px;
+  }
+}
+
+/* Reduce TOC width */
+.md-sidebar--secondary {
+  width: 180px;
+}
+
+/* Expand main content */
+.md-content {
+  max-width: none;
+}
+
+/* Make code cells wider */
+.jp-Cell {
+  max-width: 100%;
+}
+
+.jupyter-wrapper .highlight {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Jupyter specific width adjustments */
+.jp-OutputArea-output img {
+  max-width: 100% !important;
+}
+
+.md-typeset .admonition {
+  max-width: 100%;
+}
+
+/* Additional responsive adjustments for wider screens */
+@media screen and (min-width: 1800px) {
+  .md-sidebar--primary {
+    width: 200px;
+  }
+  
+  .md-sidebar--secondary {
+    width: 200px;
+  }
+  
+  .md-content__inner {
+    padding: 10px 24px 24px;
+    margin: 0 auto;
+  }
+  
+  .jupyter-wrapper {
+    margin: 0 -24px;
+    padding: 0 24px;
+    width: calc(100% + 48px);
+  }
 }
