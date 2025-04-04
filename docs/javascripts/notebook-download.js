@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Create the GitHub raw content URL with the correct path format
-    const rawUrl = `https://raw.githubusercontent.com/cyneuro/bmtool/refs/heads/master/docs/examples/${category}/${notebookName}.ipynb`;
+    const rawUrl = `https://raw.githubusercontent.com/cyneuro/bmtool/refs/heads/master/docs/examples/notebooks/${category}/${notebookName}.ipynb`;
     
     // Create the download button only if we have a valid notebook name
     if (notebookName) {

@@ -1,3 +1,4 @@
+
 /* Download button for notebooks */
 .notebook-download-button {
   display: inline-block;
@@ -35,4 +36,10 @@
 .md-content__inner {
   position: relative;
   padding-top: 55px !important;
+
+}
+
+/* hides the In[] section of notebooks which look bad */
+.jp-InputPrompt, .jp-OutputPrompt {
+  display: none !important;
 }

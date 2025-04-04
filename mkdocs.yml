@@ -48,6 +48,7 @@ plugins:
             docstring_style: numpy
   - mkdocs-jupyter:
       include_source: True
+      remove_input_prompt: true
       execute: false
       ignore_h1_titles: True
       show_input: True
@@ -67,21 +68,21 @@ nav:
   - Examples:
       - Single Cell: 
           - Overview: examples/single-cell.md
-          - Allen Cell Tutorial: examples/single_cell/Allen_tutorial/singleCellTutorial.ipynb
+          - Allen Cell Tutorial: examples/notebooks/single_cell/Allen_tutorial/singleCellTutorial.ipynb
       - Synapses: 
           - Overview: examples/synapses.md
-          - Synaptic Tuner: examples/synapses/synaptic_tuner.ipynb
-          - Gap Junction Tuner: examples/synapses/gap_junction_tuner.ipynb
+          - Synaptic Tuner: examples/notebooks/synapses/synaptic_tuner.ipynb
+          - Gap Junction Tuner: examples/notebooks/synapses/gap_junction_tuner.ipynb
       - Connectors: examples/connectors.md
       - BMPlot: 
           - Overview: examples/bmplot.md
-          - Plotting Examples: examples/bmplot/bmplot.ipynb
+          - Plotting Examples: examples/notebooks/bmplot/bmplot.ipynb
       - Analysis: 
           - Overview: examples/analysis.md
-          - Using Spikes: examples/analysis/using_spikes.ipynb
+          - Using Spikes: examples/notebooks/analysis/using_spikes.ipynb
       - SLURM: 
           - Overview: examples/slurm.md
-          - Block Runner: examples/SLURM/using_BlockRunner.ipynb
+          - Block Runner: examples/notebooks/SLURM/using_BlockRunner.ipynb
   - Contributing: contributing.md
   - API Reference: 
       - Single Cell: api/singlecell.md

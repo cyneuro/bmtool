@@ -1148,14 +1148,14 @@ def plot_entrainment():
     """
     pass
     
-def plot_3d_positions(config=None, populations_list=None, group_by=None, title=None, save_file=None, subset=None):
+def plot_3d_positions(config=None, sources=None, sid=None, title=None, save_file=None, subset=None):
     """
     Plots a 3D graph of all cells with x, y, z location.
     
     Parameters:
     - config: A BMTK simulation config 
-    - populations_list: Which network(s) to plot 
-    - group_by: How to name cell groups
+    - sources: Which network(s) to plot 
+    - sid: How to name cell groups
     - title: Plot title
     - save_file: If plot should be saved
     - subset: Take every Nth row. This will make plotting large network graphs easier to see.
@@ -1164,11 +1164,11 @@ def plot_3d_positions(config=None, populations_list=None, group_by=None, title=N
     if not config:
         raise Exception("config not defined")
     
-    if populations_list is None:
-        populations_list = "all"
+    if sources is None:
+        sources = "all"
     
     # Set group keys (e.g., node types)
-    group_keys = group_by
+    group_keys = sid
     if title is None:
         title = "3D positions"
 
@@ -1176,10 +1176,10 @@ def plot_3d_positions(config=None, populations_list=None, group_by=None, title=N
     nodes = util.load_nodes_from_config(config)
     
     # Get the list of populations to plot
-    if 'all' in populations_list:
+    if 'all' in sources:
         populations = list(nodes)
     else:
-        populations = populations_list.split(",")
+        populations = sources.split(",")
     
     # Split group_by into list 
     group_keys = group_keys.split(",")
@@ -1247,25 +1247,25 @@ def plot_3d_positions(config=None, populations_list=None, group_by=None, title=N
 
     return ax
 
-def plot_3d_cell_rotation(config=None, populations_list=None, group_by=None, title=None, save_file=None, quiver_length=None, arrow_length_ratio=None, group=None, subset=None):
+def plot_3d_cell_rotation(config=None, sources=None, sids=None, title=None, save_file=None, quiver_length=None, arrow_length_ratio=None, group=None, subset=None):
     from scipy.spatial.transform import Rotation as R
     if not config:
         raise Exception("config not defined")
 
-    if populations_list is None:
-        populations_list = ["all"]
+    if sources is None:
+        sources = ["all"]
 
-    group_keys = group_by.split(",") if group_by else []
+    group_keys = sids.split(",") if sids else []
 
     if title is None:
         title = "Cell rotations"
 
     nodes = util.load_nodes_from_config(config)
 
-    if 'all' in populations_list:
+    if 'all' in sources:
         populations = list(nodes)
     else:
-        populations = populations_list
+        populations = sources
 
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')
