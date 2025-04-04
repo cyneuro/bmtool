@@ -6,7 +6,7 @@
   top: 15px;          /* Distance from top of page */
   right: 15px;        /* Distance from right edge */
   padding: 8px 15px;
-  background-color: #4CAF50;
+  background-color: #2196F3; /* Blue color */
   color: white;
   text-align: center;
   border-radius: 4px;
@@ -23,7 +23,7 @@
 
 /* Hover effect for the download button */
 .notebook-download-button:hover {
-  background-color: #6A1B9A; /* Darker purple for hover state */
+  background-color: #1976D2; /* Darker blue for hover state */
   box-shadow: 0 3px 6px rgba(0,0,0,0.3);
   transform: translateY(-2px);
 }
