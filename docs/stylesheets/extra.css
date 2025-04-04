@@ -23,7 +23,7 @@
 
 /* Hover effect for the download button */
 .notebook-download-button:hover {
-  background-color: #303f9f;
+  background-color: #6A1B9A; /* Darker purple for hover state */
   box-shadow: 0 3px 6px rgba(0,0,0,0.3);
   transform: translateY(-2px);
 }
@@ -38,8 +38,7 @@
 .md-content__inner {
   position: relative;
   padding-top: 55px !important;
-  margin: 0 auto;           /* Centers content */
-  padding: 10px 24px 24px;  /* Padding around content */
+  margin: 0 auto;        /* Centers content */
 }
 
 /* ===== JUPYTER NOTEBOOK STYLING ===== */
@@ -52,22 +51,18 @@
 /* Global grid layout - controls overall page structure */
 .md-grid {
   max-width: initial;    /* Removes default max width constraint */
-  margin-left: 200px;    /* Space reserved for left sidebar */
-  margin-right: 240px;   /* Space reserved for TOC */
 }
 
 /* ===== SIDEBAR NAVIGATION STYLING ===== */
 /* Controls the left sidebar width and position */
 .md-sidebar--primary {
-  width: 180px;          /* Width of the left navigation sidebar */
-  margin-left: -120px;    /* Negative margin pushes it further left */
+  width: 220px;          /* Width of the left navigation sidebar */
 }
 
 /* ===== TOC SIDEBAR STYLING ===== */
 /* Controls the right TOC sidebar width and position */
 .md-sidebar--secondary {
-  width: 260px;          /* Width of the TOC sidebar */
-  margin-right: -120px;   /* Negative margin pushes it further right */
+  width: 300px;          /* Width of the TOC sidebar */
 }
 
 /* ===== TOC CONTENT CONTAINER ===== */
