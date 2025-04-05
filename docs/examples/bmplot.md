@@ -8,7 +8,7 @@ For a comprehensive guide with visualizations, check out our Jupyter notebook tu
 
 ### Plotting Examples
 
-The [BMPlot Tutorial](bmplot/bmplot.ipynb) demonstrates the various plotting functions available in BMTool. In this notebook, you'll learn:
+The [BMPlot Tutorial](notebooks/bmplot/bmplot.ipynb) demonstrates the various plotting functions available in BMTool. In this notebook, you'll learn:
 
 - How to create connection matrices to visualize network connectivity
 - How to plot cell positions in 3D space

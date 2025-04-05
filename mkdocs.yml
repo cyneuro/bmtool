@@ -70,18 +70,23 @@ nav:
   - Examples:
       - Single Cell: 
           - Overview: examples/single-cell.md
-          - Allen Cell Tutorial: examples/notebooks/single_cell/Allen_tutorial/singleCellTutorial.ipynb
+          - Allen Database Tutorial: examples/notebooks/single_cell/Allen_tutorial/singleCellTutorial.ipynb
+          - Neuron Hoc Tutorial: examples/notebooks/single_cell/Neuron_hoc/Single-Cell-Tuning.ipynb
       - Synapses: 
           - Overview: examples/synapses.md
-          - Synaptic Tuner: examples/notebooks/synapses/synaptic_tuner.ipynb
+          - Chemical Synapse Tuner: examples/notebooks/synapses/synaptic_tuner.ipynb
           - Gap Junction Tuner: examples/notebooks/synapses/gap_junction_tuner.ipynb
-      - Connectors: examples/connectors.md
+      - Connectors: 
+          - Overview: examples/connectors.md
+          - Connectors Tutorial: examples/notebooks/connectors/connectors_tutorial.ipynb
       - BMPlot: 
           - Overview: examples/bmplot.md
-          - Plotting Examples: examples/notebooks/bmplot/bmplot.ipynb
+          - BMPlot Tutorial: examples/notebooks/bmplot/bmplot.ipynb
       - Analysis: 
           - Overview: examples/analysis.md
-          - Using Spikes: examples/notebooks/analysis/using_spikes.ipynb
+          - Spikes Module: examples/notebooks/analysis/spiking/using_spikes.ipynb
+          - Plot Spectrogram: examples/notebooks/analysis/spectrogram/spectrogram_with_bmtool.ipynb
+          - Phase Locking: examples/notebooks/analysis/phase_locking_value/spike_phase_entrainment.ipynb
       - SLURM: 
           - Overview: examples/slurm.md
           - Block Runner: examples/notebooks/SLURM/using_BlockRunner.ipynb
@@ -105,3 +110,5 @@ extra_css:
 
 extra_javascript:
   - javascripts/notebook-download.js 
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js

@@ -8,7 +8,7 @@ For a comprehensive guide with detailed examples, check out our Jupyter notebook
 
 ### Using Spikes
 
-The [Using Spikes](analysis/using_spikes.ipynb) tutorial demonstrates how to work with spike data from simulations. In this notebook, you'll learn:
+The [Using Spikes](notebooks/analysis/using_spikes.ipynb) tutorial demonstrates how to work with spike data from simulations. In this notebook, you'll learn:
 
 - How to load and filter spike data from simulation output
 - How to create raster plots and other visualizations
