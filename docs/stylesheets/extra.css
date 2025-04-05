@@ -2,9 +2,6 @@
 /* Controls the appearance of the download button for notebooks */
 .notebook-download-button {
   display: inline-block;
-  position: absolute;
-  top: 15px;          /* Distance from top of page */
-  right: 15px;        /* Distance from right edge */
   padding: 8px 15px;
   background-color: #46d11b; /* Green color */
   color: white;
@@ -19,6 +16,17 @@
   border: 1px solid rgba(255,255,255,0.2);
   cursor: pointer;
   font-family: inherit;
+  margin-right: 10px;  /* Add margin between buttons */
+}
+
+/* Container for the download buttons */
+.notebook-button-container {
+  position: absolute;
+  top: 15px;          /* Distance from top of page */
+  right: 15px;        /* Distance from right edge */
+  display: flex;
+  flex-direction: row;
+  z-index: 10;
 }
 
 /* Hover effect for the download button */
