@@ -17,7 +17,21 @@ report_name = 'conn.csv'
 
 # Utility Functions
 def num_prop(ratio, N):
-    """Calculate numbers of total N in proportion to ratio"""
+    """
+    Calculate numbers of total N in proportion to ratio.
+    
+    Parameters:
+    -----------
+    ratio : array-like
+        Proportions to distribute N across.
+    N : int
+        Total number to distribute.
+        
+    Returns:
+    --------
+    numpy.ndarray
+        Array of integers that sum to N, proportionally distributed according to ratio.
+    """
     ratio = np.asarray(ratio)
     p = np.cumsum(np.insert(ratio.ravel(), 0, 0))  # cumulative proportion
     return np.diff(np.round(N / p[-1] * p).astype(int)).reshape(ratio.shape)
@@ -25,9 +39,20 @@ def num_prop(ratio, N):
 
 def decision(prob, size=None):
     """
-    Make single random decision based on input probability.
-    prob: scalar input
-    Return bool array if size specified, otherwise scalar
+    Make random decision(s) based on input probability.
+    
+    Parameters:
+    -----------
+    prob : float
+        Probability threshold between 0 and 1.
+    size : int or tuple, optional
+        Size of the output array. If None, a single decision is returned.
+        
+    Returns:
+    --------
+    bool or numpy.ndarray
+        Boolean result(s) of the random decision(s). True if the random number
+        is less than prob, False otherwise.
     """
     return rng.random(size) < prob
 
@@ -35,8 +60,17 @@ def decision(prob, size=None):
 def decisions(prob):
     """
     Make multiple random decisions based on input probabilities.
-    prob: iterable
-    Return bool array of the same shape
+    
+    Parameters:
+    -----------
+    prob : array-like
+        Array of probability thresholds between 0 and 1.
+        
+    Returns:
+    --------
+    numpy.ndarray
+        Boolean array with the same shape as prob, containing results of 
+        the random decisions.
     """
     prob = np.asarray(prob)
     return rng.random(prob.shape) < prob
@@ -130,26 +164,36 @@ def gaussian(x, mean=0., stdev=1., pmax=NORM_COEF):
 
 class GaussianDropoff(DistantDependentProbability):
     """
-    Object for calculating connection probability following a Gaussian function
-    of the distance between cells, using spherical or cylindrical distance.
-
+    Connection probability class that follows a Gaussian function of distance.
+    
+    This class calculates connection probabilities using a Gaussian function
+    of the distance between cells, with options for spherical or cylindrical metrics.
+    
     Parameters:
-        mean, stdev: Parameters for the Gaussian function.
-        min_dist, max_dist: Distance range for any possible connection,
-            the support of the Gaussian function.
-        pmax: The maximum value of the Gaussian function at its mean parameter.
-        ptotal: Overall probability within distance range. If specified, ignore
-            input pmax, and calculate pmax. See calc_pmax_from_ptotal() method.
-        ptotal_dist_range: Distance range for calculating pmax when ptotal is
-        specified. If not specified, set to range (min_dist, max_dist).
-        dist_type: 'spherical' or 'cylindrical' for distance metric.
-            Used when ptotal is specified.
-
-    Returns:
-        A callable object. When called with a single distance input,
-        returns the probability value.
-
-    TODO: Accept convergence and cell density information for calculating pmax.
+    -----------
+    mean : float, optional
+        Mean parameter of the Gaussian function, typically 0 for peak at origin.
+    stdev : float, optional
+        Standard deviation parameter controlling the width of the Gaussian.
+    min_dist : float, optional
+        Minimum distance for connections. Below this distance, probability is zero.
+    max_dist : float, optional
+        Maximum distance for connections. Above this distance, probability is zero.
+    pmax : float, optional
+        Maximum probability value at the peak of the Gaussian function.
+    ptotal : float, optional
+        Overall connection probability within the specified distance range.
+        If provided, pmax is calculated to achieve this overall probability.
+    ptotal_dist_range : tuple, optional
+        Distance range (min_dist, max_dist) for calculating pmax when ptotal is provided.
+    dist_type : str, optional
+        Distance metric to use, either 'spherical' (default) or 'cylindrical'.
+        
+    Notes:
+    ------
+    When ptotal is specified, the maximum probability (pmax) is calculated to achieve
+    the desired overall connection probability within the specified distance range,
+    assuming homogeneous cell density.
     """
 
     def __init__(self, mean=0., stdev=1., min_dist=0., max_dist=np.inf,

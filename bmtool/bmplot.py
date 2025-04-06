@@ -35,7 +35,17 @@ python -m bmtool.plot
 
 def is_notebook() -> bool:
     """
-    Used to tell if inside jupyter notebook or not. This is used to tell if we should use plt.show or not
+    Detect if code is running in a Jupyter notebook environment.
+    
+    Returns:
+    --------
+    bool
+        True if running in a Jupyter notebook, False otherwise.
+        
+    Notes:
+    ------
+    This is used to determine whether to call plt.show() explicitly or
+    rely on Jupyter's automatic display functionality.
     """
     try:
         shell = get_ipython().__class__.__name__
@@ -48,18 +58,42 @@ def is_notebook() -> bool:
     except NameError:
         return False      # Probably standard Python interpreter
 
-def total_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None,no_prepend_pop=False,save_file=None,synaptic_info='0',include_gap=True):
+def total_connection_matrix(config=None, title=None, sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False, save_file=None, synaptic_info='0', include_gap=True):
     """
-    Generates connection plot displaying total connection or other stats
-    config: A BMTK simulation config 
-    sources: network name(s) to plot
-    targets: network name(s) to plot
-    sids: source node identifier 
-    tids: target node identifier
-    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
-    save_file: If plot should be saved
-    synaptic_info: '0' for total connections, '1' for mean and stdev connections, '2' for all synapse .mod files used, '3' for all synapse .json files used
-    include_gap: Determines if connectivity shown should include gap junctions + chemical synapses. False will only include chemical
+    Generate a plot displaying total connections or other synaptic statistics.
+    
+    Parameters:
+    -----------
+    config : str
+        Path to a BMTK simulation config file.
+    title : str, optional
+        Title for the plot. If None, a default title will be used.
+    sources : str
+        Comma-separated string of network names to use as sources.
+    targets : str
+        Comma-separated string of network names to use as targets.
+    sids : str, optional
+        Comma-separated string of source node identifiers to filter.
+    tids : str, optional
+        Comma-separated string of target node identifiers to filter.
+    no_prepend_pop : bool, optional
+        If True, don't display population name before sid or tid in the plot.
+    save_file : str, optional
+        Path to save the plot. If None, plot is not saved.
+    synaptic_info : str, optional
+        Type of information to display:
+        - '0': Total connections (default)
+        - '1': Mean and standard deviation of connections
+        - '2': All synapse .mod files used
+        - '3': All synapse .json files used
+    include_gap : bool, optional
+        If True, include gap junctions and chemical synapses in the analysis.
+        If False, only include chemical synapses.
+        
+    Returns:
+    --------
+    None
+        The function generates and displays a plot.
     """
     if not config:
         raise Exception("config not defined")
@@ -596,7 +630,7 @@ def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids
     report : str, optional
         Name of the report to analyze.
     title : str, optional
-        Custom title for the plot. If None, defaults to "{edge_property} Histogram Matrix".
+        Custom title for the plot.
     save_file : str, optional
         Path to save the generated plot.
     

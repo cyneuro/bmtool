@@ -4,12 +4,24 @@ import bmtool.util.util as u
 import pandas as pd
 
 
-def generate_graph(config,source,target):
+def generate_graph(config, source, target):
     """
-    returns a graph object
-    config: A BMTK simulation config 
-    source: network name 
-    target: network name
+    Generate a NetworkX graph from BMTK network configuration.
+    
+    Parameters:
+    -----------
+    config : str
+        Path to a BMTK simulation config file.
+    source : str
+        Network name for source nodes.
+    target : str
+        Network name for target nodes.
+        
+    Returns:
+    --------
+    nx.DiGraph
+        A directed graph representing the network with nodes containing 
+        position and population information.
     """
     nodes,edges = u.load_nodes_edges_from_config(config)
     nodes_source = nodes[source]
@@ -131,11 +143,24 @@ def generate_graph(config,source,target):
 
 def export_node_connections_to_csv(Graph, filename):
     """
-    Generates a CSV file with node type and all outgoing connections that node has.
+    Generate a CSV file with node type and all incoming connections that node has.
     
     Parameters:
-    Graph: a DiGraph object (directed graph)
-    filename: A string for the name of output, must end in .csv
+    -----------
+    Graph : nx.DiGraph
+        A directed graph object from NetworkX.
+    filename : str
+        Path and filename for the output CSV file (must end in .csv).
+        
+    Returns:
+    --------
+    None
+        The function saves the results to the specified CSV file.
+        
+    Notes:
+    ------
+    The resulting CSV file will have the node label as the first column,
+    followed by columns for each type of incoming connection.
     """
     # Create an empty dictionary to store the connections for each node
     node_connections = {}
