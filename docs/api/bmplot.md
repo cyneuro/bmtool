@@ -1,65 +1,116 @@
 # BMPlot API Reference
 
-This page provides API reference documentation for the BMPlot module.
+This page provides API reference documentation for the BMPlot module which contains functions for plotting and visualizing BMTK network models and simulation results.
 
-<!-- These sections will be uncommented once docstrings are added to the code
-::: bmtool.bmplot
+## Core Plotting Functions
 
-## Connection Matrices
+::: bmtool.bmplot.is_notebook
+    options:
+      show_root_heading: true
+      heading_level: 3
 
 ::: bmtool.bmplot.total_connection_matrix
-::: bmtool.bmplot.percent_connection_matrix
-::: bmtool.bmplot.connector_percent_matrix
-::: bmtool.bmplot.convergence_connection_matrix
-::: bmtool.bmplot.divergence_connection_matrix
-::: bmtool.bmplot.gap_junction_matrix
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-## Spatial Analysis
+::: bmtool.bmplot.percent_connection_matrix
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.probability_connection_matrix
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.convergence_connection_matrix
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.divergence_connection_matrix
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.gap_junction_matrix
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.connection_histogram
+    options:
+      show_root_heading: true
+      heading_level: 3
 
 ::: bmtool.bmplot.connection_distance
-::: bmtool.bmplot.connection_histogram
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.edge_histogram_matrix
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.plot_connection_info
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.connector_percent_matrix
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+## Spike and Activity Visualization
+
+::: bmtool.bmplot.raster
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.plot_firing_rate_pop_stats
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.plot_firing_rate_distribution
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.bmplot.plot_entrainment
+    options:
+      show_root_heading: true
+      heading_level: 3
 
 ## 3D Visualization
 
 ::: bmtool.bmplot.plot_3d_positions
-::: bmtool.bmplot.plot_3d_cell_rotation
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-## Network Graph
+::: bmtool.bmplot.plot_3d_cell_rotation
+    options:
+      show_root_heading: true
+      heading_level: 3
 
 ::: bmtool.bmplot.plot_network_graph
--->
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-The BMPlot module provides visualization tools for BMTK networks to analyze and visualize connectivity patterns and cell distributions.
+## Report Visualization
 
-## Key Components
+::: bmtool.bmplot.plot_report
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-### Connection Matrices
-
-Functions for visualizing network connectivity:
-
-- `total_connection_matrix`: Show total number of connections between populations
-- `percent_connection_matrix`: Show percentage of connected pairs between populations
-- `connector_percent_matrix`: Connectivity percentages from connector outputs
-- `convergence_connection_matrix`: Average number of inputs per cell
-- `divergence_connection_matrix`: Average number of outputs per cell
-- `gap_junction_matrix`: Specific matrices for gap junction connectivity
-
-### Spatial Analysis
-
-Functions for analyzing spatial aspects of connectivity:
-
-- `connection_distance`: Analyze connections with respect to distance
-- `connection_histogram`: Distribution of connections across populations
-
-### 3D Visualization
-
-Functions for visualizing network architecture:
-
-- `plot_3d_positions`: Show cell positions in 3D space
-- `plot_3d_cell_rotation`: Show cell orientations in 3D space
-
-### Network Graph
-
-Functions for network visualization:
-
-- `plot_network_graph`: Create interactive network graph visualizations 
+::: bmtool.bmplot.plot_report_default
+    options:
+      show_root_heading: true
+      heading_level: 3 

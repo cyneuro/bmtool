@@ -1,74 +1,77 @@
 # SLURM API Reference
 
-This page provides API reference documentation for the SLURM module.
+This page provides API reference documentation for the SLURM module, which contains functions and classes for managing batch simulations on SLURM-based HPC clusters.
 
-<!-- These sections will be uncommented once docstrings are added to the code
-::: bmtool.SLURM
+## Utility Functions
+
+::: bmtool.SLURM.check_job_status
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.SLURM.submit_job
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.SLURM.send_teams_message
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+## Parameter Sweep Classes
+
+::: bmtool.SLURM.seedSweep
+    options:
+      show_root_heading: true
+      heading_level: 3
+      members:
+        - __init__
+        - edit_json
+        - change_json_file_path
+
+::: bmtool.SLURM.multiSeedSweep
+    options:
+      show_root_heading: true
+      heading_level: 3
+      members:
+        - __init__
+        - edit_all_jsons
+
+## Simulation Block Management
+
+::: bmtool.SLURM.SimulationBlock
+    options:
+      show_root_heading: true
+      heading_level: 3
+      members:
+        - __init__
+        - create_batch_script
+        - submit_block
+        - check_block_status
+        - check_block_completed
+        - check_block_running
+        - check_block_submited
+
+## File Transfer
+
+::: bmtool.SLURM.get_relative_path
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.SLURM.globus_transfer
+    options:
+      show_root_heading: true
+      heading_level: 3
 
 ## BlockRunner
 
 ::: bmtool.SLURM.BlockRunner
-
-## ParameterSweep
-
-::: bmtool.SLURM.ParameterSweep
-
-## SLURMRunner
-
-::: bmtool.SLURM.SLURMRunner
-
-## JobArray
-
-::: bmtool.SLURM.JobArray
-
-## SweepAnalyzer
-
-::: bmtool.SLURM.SweepAnalyzer
--->
-
-The SLURM module provides utilities for running BMTK simulations on SLURM-based high-performance computing clusters.
-
-## Key Components
-
-### BlockRunner
-
-The `BlockRunner` class manages simulation workflows:
-
-- Break large simulations into smaller blocks
-- Submit jobs to SLURM
-- Monitor job progress
-- Collect and combine results
-
-### ParameterSweep
-
-The `ParameterSweep` class enables parameter exploration:
-
-- Define parameter ranges to explore
-- Generate configuration files
-- Submit sweep jobs to SLURM
-- Organize results by parameter values
-
-### SLURMRunner
-
-The `SLURMRunner` class provides direct job submission capabilities:
-
-- Configure SLURM job parameters
-- Submit single jobs to SLURM
-- Load environment modules
-- Specify resource requirements
-
-### JobArray
-
-The `JobArray` class creates and manages SLURM job arrays:
-
-- Submit multiple related jobs as an array
-- Share resources efficiently
-- Monitor all jobs in the array
-
-### SweepAnalyzer
-
-The `SweepAnalyzer` class processes parameter sweep results:
-
-- Summarize results across parameter combinations
-- Generate plots showing parameter effects
-- Identify optimal parameter values 
+    options:
+      show_root_heading: true
+      heading_level: 3
+      members:
+        - __init__
+        - submit_blocks_sequentially
+        - submit_blocks_parallel 

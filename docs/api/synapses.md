@@ -1,37 +1,78 @@
 # Synapses API Reference
 
-This page provides API reference documentation for the Synapses module.
+This page provides API reference documentation for the Synapses module, which contains tools for creating, tuning and optimizing synaptic connections in NEURON models.
 
-<!-- These sections will be uncommented once docstrings are added to the code
-::: bmtool.synapses
+## Synapse Tuning
 
-## SynapticTuner
+::: bmtool.synapses.SynapseTuner
+    options:
+      show_root_heading: true
+      heading_level: 3
+      members:
+        - __init__
+        - _update_spec_syn_param
+        - _set_up_cell
+        - _set_up_synapse
+        - _set_up_recorders
+        - SingleEvent
+        - _get_syn_prop
+        - _set_syn_prop
+        - _simulate_model
+        - InteractiveTuner
+        - stp_frequency_response
 
-::: bmtool.synapses.SynapticTuner
-
-## GapJunctionTuner
+## Gap Junction Tuning
 
 ::: bmtool.synapses.GapJunctionTuner
--->
+    options:
+      show_root_heading: true
+      heading_level: 3
+      members:
+        - __init__
+        - model
+        - plot_model
+        - coupling_coefficient
+        - InteractiveTuner
 
-The Synapses module provides tools for configuring and tuning synaptic connections in NEURON models.
+## Optimization Results
 
-## Key Components
+::: bmtool.synapses.SynapseOptimizationResult
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-### SynapticTuner
+## Synapse Optimization
 
-The `SynapticTuner` class provides an interactive interface for tuning chemical synapse parameters:
+::: bmtool.synapses.SynapseOptimizer
+    options:
+      show_root_heading: true
+      heading_level: 3
+      members:
+        - __init__
+        - _normalize_params
+        - _denormalize_params
+        - _calculate_metrics
+        - _default_cost_function
+        - _objective_function
+        - optimize_parameters
+        - plot_optimization_results
 
-- Interactive sliders for parameter adjustment
-- Real-time visualization of synaptic responses
-- Support for various synapse mechanisms
-- Parameter export for network models
+## Gap Junction Optimization Results
 
-### GapJunctionTuner
+::: bmtool.synapses.GapOptimizationResult
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-The `GapJunctionTuner` class assists with electrical synapse tuning:
+## Gap Junction Optimization
 
-- Interactive adjustment of gap junction properties
-- Measurement of coupling coefficients
-- Optimization tools for target coupling values
-- Visualization of coupled cell behavior 
+::: bmtool.synapses.GapJunctionOptimizer
+    options:
+      show_root_heading: true
+      heading_level: 3
+      members:
+        - __init__
+        - _objective_function
+        - optimize_resistance
+        - plot_optimization_results
+        - parameter_sweep 

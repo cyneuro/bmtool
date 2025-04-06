@@ -2,47 +2,107 @@
 
 This page provides API reference documentation for the Analysis module.
 
-<!-- These sections will be uncommented once docstrings are added to the code
-::: bmtool.analysis
+The Analysis module provides tools for processing and analyzing simulation results from BMTK models, including spike data and LFP/ECP data.
 
 ## Spikes
 
-::: bmtool.analysis.Spikes
+The `spikes` module provides functions for loading and analyzing spike data from simulations.
 
-## Reports
+::: bmtool.analysis.spikes.load_spikes_to_df
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-::: bmtool.analysis.Reports
+::: bmtool.analysis.spikes.compute_firing_rate_stats
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-## Analysis Functions
+::: bmtool.analysis.spikes._pop_spike_rate
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-::: bmtool.analysis.oscillation_power
--->
+::: bmtool.analysis.spikes.get_population_spike_rate
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-The Analysis module provides tools for processing and analyzing simulation results from BMTK models, including spike data and other output reports.
+## LFP/ECP Analysis
 
-## Key Components
+The `lfp` module provides tools for analyzing local field potentials (LFP) and extracellular potentials (ECP).
 
-### Spikes
+::: bmtool.analysis.lfp.load_ecp_to_xarray
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-The `Spikes` class provides functions for loading and analyzing spike data from simulations:
+::: bmtool.analysis.lfp.ecp_to_lfp
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-- Load spike data from HDF5 files
-- Filter spikes by population, time window, or node IDs
-- Calculate basic statistics like firing rates and ISIs
-- Create raster plots and other visualizations
+::: bmtool.analysis.lfp.slice_time_series
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-### Reports
+::: bmtool.analysis.lfp.fit_fooof
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-The `Reports` class allows you to work with continuous data reports:
+::: bmtool.analysis.lfp.generate_resd_from_fooof
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-- Load report data from HDF5 files
-- Extract specific time ranges or nodes
-- Calculate population statistics
-- Visualize membrane potentials and other continuous variables
+::: bmtool.analysis.lfp.calculate_SNR
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-### Analysis Functions
+::: bmtool.analysis.lfp.wavelet_filter
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-The module includes various helper functions for advanced analysis:
+::: bmtool.analysis.lfp.butter_bandpass_filter
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-- `oscillation_power`: Analyze frequency components of network activity
-- Synchrony measures and correlation tools 
+::: bmtool.analysis.lfp.calculate_signal_signal_plv
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.lfp.calculate_spike_lfp_plv
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.lfp.calculate_ppc
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.lfp.calculate_ppc2
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.lfp.cwt_spectrogram
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.lfp.cwt_spectrogram_xarray
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.lfp.plot_spectrogram
+    options:
+      show_root_heading: true
+      heading_level: 3 

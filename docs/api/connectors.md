@@ -1,59 +1,153 @@
 # Connectors API Reference
 
-This page provides API reference documentation for the Connectors module.
+This page provides API reference documentation for the Connectors module, which contains classes and functions for creating complex connectivity patterns in BMTK networks.
 
-<!-- These sections will be uncommented once docstrings are added to the code
-::: bmtool.connectors
+## Utility Functions
 
-## UnidirectionConnector
+::: bmtool.connectors.num_prop
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-::: bmtool.connectors.UnidirectionConnector
+::: bmtool.connectors.decision
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-## ReciprocalConnector
+::: bmtool.connectors.decisions
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.euclid_dist
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.spherical_dist
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.cylindrical_dist_z
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+## Probability Functions
+
+::: bmtool.connectors.ProbabilityFunction
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.DistantDependentProbability
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.UniformInRange
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.gaussian
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.GaussianDropoff
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.NormalizedReciprocalRate
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+## Connector Base Classes
+
+::: bmtool.connectors.AbstractConnector
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.is_same_pop
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.Timer
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.pr_2_rho
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.rho_2_pr
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+## Connector Implementations
 
 ::: bmtool.connectors.ReciprocalConnector
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-## CorrelatedGapJunction
+::: bmtool.connectors.UnidirectionConnector
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.connectors.GapJunction
+    options:
+      show_root_heading: true
+      heading_level: 3
 
 ::: bmtool.connectors.CorrelatedGapJunction
-
-## OneToOneSequentialConnector
+    options:
+      show_root_heading: true
+      heading_level: 3
 
 ::: bmtool.connectors.OneToOneSequentialConnector
--->
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-The Connectors module provides helper functions and classes to work with BMTK's NetworkBuilder for building complex network connectivity patterns.
+## Synapse Helper Functions
 
-## Key Components
+::: bmtool.connectors.syn_const_delay
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-### UnidirectionConnector
+::: bmtool.connectors.syn_dist_delay_feng
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-The `UnidirectionConnector` class builds unidirectional connections:
+::: bmtool.connectors.syn_section_PN
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-- Create connections with specified probability
-- Set number of synapses per connection
-- Apply to connections within or between populations
+::: bmtool.connectors.syn_const_delay_feng_section_PN
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-### ReciprocalConnector
+::: bmtool.connectors.syn_dist_delay_feng_section_PN
+    options:
+      show_root_heading: true
+      heading_level: 3
 
-The `ReciprocalConnector` class creates reciprocal connections:
-
-- Set base and reciprocal connection probabilities
-- Control synapse counts for each direction
-- Estimate reciprocal connectivity parameters from target statistics
-
-### CorrelatedGapJunction
-
-The `CorrelatedGapJunction` class creates gap junction connections:
-
-- Create gap junctions correlated with chemical synapses
-- Control connection probabilities based on chemical synapse status
-- Different probabilities for non-connected, unidirectionally connected, and reciprocally connected pairs
-
-### OneToOneSequentialConnector
-
-The `OneToOneSequentialConnector` class creates one-to-one mappings:
-
-- Connect elements sequentially between populations
-- Useful for input-to-network connections
-- Handle populations with different sizes 
+::: bmtool.connectors.syn_uniform_delay_section
+    options:
+      show_root_heading: true
+      heading_level: 3 
