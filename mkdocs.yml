@@ -78,7 +78,7 @@ nav:
           - Gap Junction Tuner: examples/notebooks/synapses/gap_junction_tuner.ipynb
       - Connectors: 
           - Overview: examples/connectors.md
-          - Connectors Tutorial: examples/notebooks/connectors/connectors_tutorial.ipynb
+          - Connectors Tutorial: examples/notebooks/connectors/connectors.ipynb
       - BMPlot: 
           - Overview: examples/bmplot.md
           - BMPlot Tutorial: examples/notebooks/bmplot/bmplot.ipynb

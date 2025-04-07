@@ -1,8 +1,0 @@
-{
-  "biophysical_nodes": {
-    "model_type": "biophysical"
-  },
-  "point_nodes": {
-    "model_type": "point_process"
-  }
-}
