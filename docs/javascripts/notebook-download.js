@@ -29,6 +29,16 @@ document.addEventListener('DOMContentLoaded', function () {
     
     console.log(`Debug - Notebook Path: ${notebookPath}, Filename: ${notebookFileName}`);
     
+    // Check for special cases where notebooks are in subdirectories named after the notebook
+    // For example: notebooks/synapses/synaptic_tuner/synaptic_tuner.ipynb
+    if (notebookPath) {
+      const pathParts = notebookPath.split('/');
+      // If the last part of the path matches the filename, handle it specially
+      if (pathParts.length > 1 && pathParts[pathParts.length - 1] === notebookFileName) {
+        console.log(`Detected nested directory structure: ${notebookPath}/${notebookFileName}`);
+      }
+    }
+    
     // If we have both path and filename, we can create download buttons
     if (notebookPath && notebookFileName) {
       // GitHub raw URLs for the notebook file and folder

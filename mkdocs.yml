@@ -74,8 +74,8 @@ nav:
           - Neuron Hoc Tutorial: examples/notebooks/single_cell/Neuron_hoc/Single-Cell-Tuning.ipynb
       - Synapses: 
           - Overview: examples/synapses.md
-          - Chemical Synapse Tuner: examples/notebooks/synapses/synaptic_tuner.ipynb
-          - Gap Junction Tuner: examples/notebooks/synapses/gap_junction_tuner.ipynb
+          - Chemical Synapse Tuner: examples/notebooks/synapses/synaptic_tuner/synaptic_tuner.ipynb
+          - Gap Junction Tuner: examples/notebooks/synapses/gap_junction_tuner/gap_junction_tuner.ipynb
       - Connectors: 
           - Overview: examples/connectors.md
           - Connectors Tutorial: examples/notebooks/connectors/connectors.ipynb

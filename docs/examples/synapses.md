@@ -9,14 +9,14 @@ The Synapses module provides tools for creating and tuning chemical and electric
 - Visualization of synaptic responses
 - Parameter fitting to match experimental data
 
-The [Synaptic Tuner](notebooks/synapses/synaptic_tuner.ipynb) tutorial demonstrates how to use BMTool to interactively tune chemical synapses. In this notebook, you'll learn:
+The [Synaptic Tuner](notebooks/synapses/synaptic_tuner/synaptic_tuner.ipynb) tutorial demonstrates how to use BMTool to interactively tune chemical synapses. In this notebook, you'll learn:
 
 - How to set up and configure chemical synapses
 - How to adjust synapse parameters and observe responses
 - How to fit synaptic parameters to target response profiles
 - How to implement the tuned synapses in your models
 
-The [Gap Junction Tuner](notebooks/synapses/gap_junction_tuner.ipynb) tutorial shows how to configure and optimize electrical synapses. This notebook covers:
+The [Gap Junction Tuner](notebooks/synapses/gap_junction_tuner/gap_junction_tuner.ipynb) tutorial shows how to configure and optimize electrical synapses. This notebook covers:
 
 - Setting up gap junctions in NEURON models
 - Adjusting gap junction conductance
