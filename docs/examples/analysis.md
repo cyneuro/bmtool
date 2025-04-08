@@ -21,19 +21,6 @@ The [Using Spikes](notebooks/analysis/spiking/using_spikes.ipynb) tutorial demon
 - [Plot Spectrogram](notebooks/analysis/spectrogram/spectrogram_with_bmtool.ipynb): Learn to create and visualize spectrograms from LFP/ECP data
 - [Phase Locking](notebooks/analysis/phase_locking_value/spike_phase_entrainment.ipynb): Analyze the relationship between spike times and oscillatory phase
 
-## Jupyter Notebook Tutorial
-
-For a comprehensive guide with detailed examples, check out our Jupyter notebook tutorial:
-
-### Using Spikes
-
-The [Using Spikes](notebooks/analysis/using_spikes.ipynb) tutorial demonstrates how to work with spike data from simulations. In this notebook, you'll learn:
-
-- How to load and filter spike data from simulation output
-- How to create raster plots and other visualizations
-- How to calculate basic statistics like firing rates
-- How to analyze population-level activity patterns
-
 ## Basic API Usage
 
 Here are some basic examples of how to use the Analysis module in your code:
@@ -41,46 +28,49 @@ Here are some basic examples of how to use the Analysis module in your code:
 ### Spike Analysis
 
 ```python
-from bmtool.analysis import Spikes
+from bmtool.analysis.spikes import load_spikes_to_df, compute_firing_rate_stats
+import pandas as pd
 import matplotlib.pyplot as plt
 
 # Load spike data from a simulation
-spikes = Spikes(data_file='output/spikes.h5')
+spikes_df = load_spikes_to_df(
+    spike_file='output/spikes.h5',
+    network_name='network',
+    config='config.json'  # Optional, for cell type labeling
+)
 
 # Get basic spike statistics
-total_spikes = spikes.count()
-print(f"Total number of spikes: {total_spikes}")
+pop_stats, individual_stats = compute_firing_rate_stats(
+    df=spikes_df,
+    groupby='pop_name',
+    start_time=500,
+    stop_time=1500
+)
 
-# Get spikes for a specific population
-pop_spikes = spikes.filter(population='excitatory')
-print(f"Spikes in excitatory population: {pop_spikes.count()}")
-
-# Calculate firing rates
-mean_rate = spikes.mean_firing_rate(time_window=(500, 1500))
-print(f"Mean firing rate: {mean_rate} Hz")
+print("Population firing rate statistics:")
+print(pop_stats)
 ```
 
 ### Raster Plots
 
 ```python
-from bmtool.analysis import Spikes
+from bmtool.analysis.spikes import load_spikes_to_df
+from bmtool.bmplot import raster
 import matplotlib.pyplot as plt
 
 # Load spike data
-spikes = Spikes(data_file='output/spikes.h5')
+spikes_df = load_spikes_to_df(
+    spike_file='output/spikes.h5',
+    network_name='network'
+)
 
 # Create a basic raster plot
-spikes.raster_plot()
-plt.show()
-
-# Create a raster plot with specific populations
-spikes.raster_plot(
-    populations=['excitatory', 'inhibitory'],
-    colors=['blue', 'red'],
-    time_window=(500, 1500),
-    title='Network Activity',
-    xlabel='Time (ms)',
-    ylabel='Node ID'
+fig, ax = plt.subplots(figsize=(10, 6))
+raster(
+    spikes_df=spikes_df,
+    groupby='pop_name',
+    time_range=(0, 2000),
+    ax=ax
 )
 plt.show()
 ```
@@ -88,25 +78,31 @@ plt.show()
 ### Population Statistics
 
 ```python
-from bmtool.analysis import Spikes
+from bmtool.analysis.spikes import load_spikes_to_df, get_population_spike_rate
 import matplotlib.pyplot as plt
 
 # Load spike data
-spikes = Spikes(data_file='output/spikes.h5')
-
-# Calculate population firing rate over time
-population_rate = spikes.population_rate(
-    bin_size=10,  # 10ms bins
-    time_window=(0, 2000)
+spikes_df = load_spikes_to_df(
+    spike_file='output/spikes.h5',
+    network_name='network'
 )
 
-# Plot population rate
-plt.figure(figsize=(10, 6))
-plt.plot(population_rate.times, population_rate.rates)
+# Calculate population firing rates over time
+population_rates = get_population_spike_rate(
+    spikes=spikes_df,
+    fs=400.0,  # Sampling frequency in Hz
+    t_start=0,
+    t_stop=2000
+)
+
+# Plot population rates
+for pop_name, rates in population_rates.items():
+    plt.plot(rates, label=pop_name)
 plt.xlabel('Time (ms)')
 plt.ylabel('Firing Rate (Hz)')
-plt.title('Population Firing Rate')
+plt.title('Population Firing Rates')
+plt.legend()
 plt.show()
 ```
 
-For more advanced examples and detailed usage, please refer to the Jupyter notebook tutorial above. 
+For more advanced examples and detailed usage, please refer to the Jupyter notebook tutorials above. 

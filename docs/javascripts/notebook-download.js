@@ -10,39 +10,33 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Extract information from the path
     const pathSegments = currentPath.split('/').filter(segment => segment.length > 0);
-
-    let notebookCategory = '';
-    let notebookName = '';
-
-    // Look for 'notebooks' in the path
+    
+    // Find the notebook file name (it's the last segment before any hash or query params)
+    let notebookFileName = pathSegments[pathSegments.length - 1];
+    if (notebookFileName.includes('.')) {
+      notebookFileName = notebookFileName.split('.')[0]; // Remove file extension if present
+    }
+    
+    // Look for 'notebooks' in the path to determine the category path
+    let notebookPath = '';
     if (pathSegments.includes('notebooks')) {
       const notebooksIndex = pathSegments.indexOf('notebooks');
-
-      if (notebooksIndex + 1 < pathSegments.length) {
-        notebookCategory = pathSegments[notebooksIndex + 1];
-        notebookName = notebookCategory;
-
-        if (notebooksIndex + 2 < pathSegments.length) {
-          const subFolder = pathSegments[notebooksIndex + 2];
-
-          if (subFolder !== notebookCategory) {
-            notebookCategory = `${notebookCategory}/${subFolder}`;
-            notebookName = subFolder;
-          }
-
-          if (
-            notebooksIndex + 3 < pathSegments.length &&
-            notebookCategory.includes('Allen_tutorial')
-          ) {
-            notebookName = pathSegments[notebooksIndex + 3];
-          }
-        }
-      }
+      
+      // Extract all path segments after 'notebooks' up to the filename
+      const categorySegments = pathSegments.slice(notebooksIndex + 1, pathSegments.length - 1);
+      notebookPath = categorySegments.join('/');
     }
-
-    if (notebookCategory && notebookName) {
-      const sourceUrl = `https://raw.githubusercontent.com/cyneuro/bmtool/master/docs/examples/notebooks/${notebookCategory}/${notebookName}.ipynb`;
-      const folderUrl = `https://github.com/cyneuro/bmtool/tree/master/docs/examples/notebooks/${notebookCategory}`;
+    
+    console.log(`Debug - Notebook Path: ${notebookPath}, Filename: ${notebookFileName}`);
+    
+    // If we have both path and filename, we can create download buttons
+    if (notebookPath && notebookFileName) {
+      // GitHub raw URLs for the notebook file and folder
+      const sourceUrl = `https://raw.githubusercontent.com/cyneuro/bmtool/master/docs/examples/notebooks/${notebookPath}/${notebookFileName}.ipynb`;
+      const folderUrl = `https://github.com/cyneuro/bmtool/tree/master/docs/examples/notebooks/${notebookPath}`;
+      
+      console.log(`Debug - Source URL: ${sourceUrl}`);
+      console.log(`Debug - Folder URL: ${folderUrl}`);
 
       // Create a container for the buttons
       const buttonContainer = document.createElement('div');
@@ -52,11 +46,12 @@ document.addEventListener('DOMContentLoaded', function () {
       const downloadButton = document.createElement('button');
       downloadButton.className = 'notebook-download-button';
       downloadButton.textContent = 'Download Notebook';
-      downloadButton.title = `Download ${notebookName}.ipynb`;
-      downloadButton.setAttribute('aria-label', `Download ${notebookName}.ipynb`);
+      downloadButton.title = `Download ${notebookFileName}.ipynb`;
+      downloadButton.setAttribute('aria-label', `Download ${notebookFileName}.ipynb`);
       downloadButton.style.backgroundColor = '#2196F3'; // Blue color for notebook button
 
       downloadButton.addEventListener('click', function () {
+        console.log(`Attempting to download from: ${sourceUrl}`);
         fetch(sourceUrl)
           .then(response => {
             if (!response.ok) {
@@ -68,7 +63,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const blobUrl = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = blobUrl;
-            link.download = `${notebookName}.ipynb`;
+            link.download = `${notebookFileName}.ipynb`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -76,7 +71,7 @@ document.addEventListener('DOMContentLoaded', function () {
           })
           .catch(error => {
             console.error('Error downloading notebook:', error);
-            alert('Error downloading notebook. Please check console for details.');
+            alert(`Error downloading notebook from ${sourceUrl}. Please check console for details.`);
           });
       });
 
@@ -84,8 +79,8 @@ document.addEventListener('DOMContentLoaded', function () {
       const folderButton = document.createElement('button');
       folderButton.className = 'notebook-download-button';
       folderButton.textContent = 'Download Folder';
-      folderButton.title = `Download folder: ${notebookCategory}`;
-      folderButton.setAttribute('aria-label', `Download folder: ${notebookCategory}`);
+      folderButton.title = `Download folder: ${notebookPath}`;
+      folderButton.setAttribute('aria-label', `Download folder: ${notebookPath}`);
       folderButton.style.backgroundColor = '#4CAF50'; // Green color for folder button
 
       const folderDownloadUrl = `https://download-directory.github.io/?url=${encodeURIComponent(folderUrl)}`;

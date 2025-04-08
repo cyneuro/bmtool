@@ -16,19 +16,6 @@ The [Block Runner Tutorial](notebooks/SLURM/using_BlockRunner.ipynb) demonstrate
 - How to parallelize parameter sweeps
 - How to collect and analyze results from distributed simulations
 
-## Jupyter Notebook Tutorial
-
-For a comprehensive guide with detailed examples, check out our Jupyter notebook tutorial:
-
-### Block Runner
-
-The [Block Runner Tutorial](SLURM/using_BlockRunner.ipynb) demonstrates how to manage simulations on SLURM clusters. In this notebook, you'll learn:
-
-- How to set up and configure simulations for cluster execution
-- How to divide large simulations into manageable blocks
-- How to submit and monitor jobs on SLURM
-- How to perform parameter sweeps for model tuning
-
 ## Basic API Usage
 
 Here are some basic examples of how to use the SLURM module in your code:
