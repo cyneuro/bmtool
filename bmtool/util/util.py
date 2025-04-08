@@ -45,7 +45,7 @@ class CellVarsFile(object):
         
         import h5py
         self._h5_handle = h5py.File(filename, 'r')
-        self._h5_root = self._h5_handle[params['h5_root']] if 'h5_root' in params else self._h5_handle['/']
+        self._h5_root = self._h5_handle[params['h5_root']] if 'h5_root' in params else self._h5_handle['/report/cortex']
         self._var_data = {}
         self._var_units = {}
 
@@ -53,6 +53,7 @@ class CellVarsFile(object):
 
         # Look for variabl and mapping groups
         for var_name in self._h5_root.keys():
+            print(self._h5_root.keys())
             hf_grp = self._h5_root[var_name]
 
             if var_name == 'data':
@@ -81,7 +82,7 @@ class CellVarsFile(object):
         if self._mapping is None:
             raise Exception('could not find /mapping group')
         else:
-            gids_ds = self._mapping['gids']
+            gids_ds = self._mapping['node_ids']
             index_pointer_ds = self._mapping['index_pointer']
             for indx, gid in enumerate(gids_ds):
                 self._gid2data_table[gid] = (index_pointer_ds[indx], index_pointer_ds[indx+1])  # slice(index_pointer_ds[indx], index_pointer_ds[indx+1])
@@ -139,6 +140,7 @@ class CellVarsFile(object):
         return self._mapping['element_pos'][bounds[0]:bounds[1]]
 
     def data(self, gid, var_name=VAR_UNKNOWN,time_window=None, compartments='origin'):
+        print(self.variables)
         if var_name not in self.variables:
             raise Exception('Unknown variable {}'.format(var_name))
 
