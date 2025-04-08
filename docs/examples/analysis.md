@@ -1,6 +1,25 @@
-# Analysis Examples
+# Analysis Tutorials
 
-This page provides examples of how to use the Analysis module for processing and analyzing simulation results.
+The Analysis module provides tools for processing and analyzing simulation results from BMTK models, including spike data and other output reports.
+
+## Features
+
+- Load and analyze spike data from simulations
+- Calculate population statistics and metrics
+- Analyze LFP/ECP data with spectrograms and phase locking
+- Visualize results with various plotting functions
+
+The [Using Spikes](notebooks/analysis/spiking/using_spikes.ipynb) tutorial demonstrates how to work with spike data from simulations. In this notebook, you'll learn:
+
+- How to load spike data from BMTK simulations
+- How to calculate firing rate statistics
+- How to visualize spike patterns using raster plots
+- How to compute population metrics
+
+## Other Tutorials
+
+- [Plot Spectrogram](notebooks/analysis/spectrogram/spectrogram_with_bmtool.ipynb): Learn to create and visualize spectrograms from LFP/ECP data
+- [Phase Locking](notebooks/analysis/phase_locking_value/spike_phase_entrainment.ipynb): Analyze the relationship between spike times and oscillatory phase
 
 ## Jupyter Notebook Tutorial
 

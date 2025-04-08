@@ -1,28 +1,27 @@
-# Synapses Examples
+# Synapses Tutorials
 
-This page provides examples of how to use the Synapses module.
+The Synapses module provides tools for creating and tuning chemical and electrical synapses in NEURON and BMTK models.
 
-## Jupyter Notebook Tutorials
+## Features
 
-For interactive examples with full context and explanations, check out our Jupyter notebook tutorials:
+- Interactive tuning of synapse parameters
+- Support for both chemical and electrical (gap junction) synapses
+- Visualization of synaptic responses
+- Parameter fitting to match experimental data
 
-### Synaptic Tuner
+The [Synaptic Tuner](notebooks/synapses/synaptic_tuner.ipynb) tutorial demonstrates how to use BMTool to interactively tune chemical synapses. In this notebook, you'll learn:
 
-The [Synaptic Tuner](synapses/synaptic_tuner.ipynb) tutorial demonstrates how to use BMTool to interactively tune chemical synapses. In this notebook, you'll learn:
+- How to set up and configure chemical synapses
+- How to adjust synapse parameters and observe responses
+- How to fit synaptic parameters to target response profiles
+- How to implement the tuned synapses in your models
 
-- How to set up a synaptic connection between two cells
-- How to use interactive sliders to adjust synapse parameters
-- How to visualize the effects of parameter changes in real-time
-- How to export optimized parameters for use in network models
+The [Gap Junction Tuner](notebooks/synapses/gap_junction_tuner.ipynb) tutorial shows how to configure and optimize electrical synapses. This notebook covers:
 
-### Gap Junction Tuner
-
-The [Gap Junction Tuner](synapses/gap_junction_tuner.ipynb) tutorial shows how to configure and optimize electrical synapses. This notebook covers:
-
-- How to create gap junction connections between cells
-- How to measure coupling coefficients
-- How to automatically find optimal resistance values
-- How to visualize the behavior of coupled cells
+- Setting up gap junctions in NEURON models
+- Adjusting gap junction conductance
+- Visualizing current flow through gap junctions
+- Implementing gap junctions in network models
 
 ## Basic API Usage
 

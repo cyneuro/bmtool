@@ -1,116 +1,118 @@
 # Graphs Module
 
-The Graphs module provides tools for analyzing network connectivity as graph structures using the NetworkX library. It allows you to convert BMTK networks into graph representations for analysis and visualization.
+The Graphs module provides functions for analyzing BMTK network connectivity as graph structures using the NetworkX library. It allows you to convert BMTK networks into graph representations for analysis and visualization.
 
 ## Features
 
 - **Graph Generation**: Convert BMTK network connectivity to NetworkX graphs
-- **Interactive Visualization**: Create interactive plots of network graphs
-- **Connectivity Analysis**: Analyze network topology and connection patterns
-- **Data Export**: Export connection data for further analysis
+- **Data Export**: Export connection data for further analysis with other tools
 
 ## Generate Graph
 
 Convert a BMTK network into a NetworkX graph for analysis:
 
 ```python
-from bmtool import graphs
 import networkx as nx
+from bmtool.graphs import generate_graph
 
-# Generate a graph from a BMTK model
-graph = graphs.generate_graph(config='config.json', source='LA', target='LA')
+# Generate a graph from a BMTK network model
+graph = generate_graph(config='config.json', source='LA', target='LA')
 
 # Get basic graph statistics
 print("Number of nodes:", graph.number_of_nodes())
 print("Number of edges:", graph.number_of_edges())
-print("Node labels:", set(nx.get_node_attributes(graph, 'label').values()))
+
+# Examine node attributes
+node_attrs = graph.nodes(data=True)
+print("Sample node:", list(node_attrs)[0])
+
+# Examine edge attributes
+edge_attrs = graph.edges(data=True)
+print("Sample edge:", list(edge_attrs)[0])
 ```
 
-## Plot Graph
+## Export Node Connections
 
-Create an interactive visualization of a network graph:
-
-```python
-from bmtool import graphs
-
-# Generate a graph from a BMTK model
-graph = graphs.generate_graph(config='config.json', source='LA', target='LA')
-
-# Create an interactive plot
-graphs.plot_graph(graph)
-```
-
-This generates an interactive visualization showing nodes, edges, and the number of connections between different cell types.
-
-## Generate Connection Table
-
-Create a CSV file containing detailed connection information for each cell:
+Export connection data to CSV format for analysis in other tools:
 
 ```python
-from bmtool import graphs
+from bmtool.graphs import generate_graph, export_node_connections_to_csv
 import pandas as pd
 
-# Generate a graph from a BMTK model
-graph = graphs.generate_graph(config='config.json', source='LA', target='LA')
+# Generate a graph from a BMTK network model
+graph = generate_graph(config='config.json', source='LA', target='LA')
 
 # Export connection data to CSV
-graphs.export_node_connections_to_csv(graph, 'node_connections.csv')
+export_node_connections_to_csv(graph, 'node_connections.csv')
 
 # Load and view the connection data
 df = pd.read_csv('node_connections.csv')
-df.head()
+print(df.head())
 ```
 
-The resulting CSV file contains information about each cell and the number of connections it receives from different cell types.
+## Advanced Analysis with NetworkX
 
-## Advanced Graph Analysis
-
-Perform advanced graph analysis using NetworkX functions:
+Use NetworkX's built-in functions for graph analysis:
 
 ```python
-from bmtool import graphs
 import networkx as nx
 import matplotlib.pyplot as plt
+from bmtool.graphs import generate_graph
 
-# Generate a graph from a BMTK model
-graph = graphs.generate_graph(config='config.json', source='LA', target='LA')
+# Generate a graph from a BMTK network model
+graph = generate_graph(config='config.json', source='LA', target='LA')
 
 # Calculate node degree distribution
 degrees = [d for n, d in graph.degree()]
+plt.figure(figsize=(8, 6))
 plt.hist(degrees, bins=20)
 plt.xlabel('Degree')
 plt.ylabel('Count')
 plt.title('Node Degree Distribution')
 plt.show()
 
-# Calculate clustering coefficient
-clustering = nx.average_clustering(graph)
-print(f"Average clustering coefficient: {clustering}")
+# Find connected components
+if nx.is_directed(graph):
+    components = list(nx.weakly_connected_components(graph))
+else:
+    components = list(nx.connected_components(graph))
+print(f"Number of connected components: {len(components)}")
+print(f"Size of largest component: {len(max(components, key=len))}")
 
-# Find strongly connected components
-components = list(nx.strongly_connected_components(graph))
-print(f"Number of strongly connected components: {len(components)}")
+# Calculate centrality measures
+centrality = nx.degree_centrality(graph)
+sorted_centrality = sorted(centrality.items(), key=lambda x: x[1], reverse=True)
+print("Top 5 nodes by degree centrality:")
+for node, cent in sorted_centrality[:5]:
+    print(f"Node {node}: {cent:.4f}")
 ```
 
-## Custom Graph Properties
+## Working with NetworkX Attributes
 
-Add custom properties to graph nodes and edges:
+Access and manipulate node and edge attributes:
 
 ```python
-from bmtool import graphs
+import networkx as nx
+from bmtool.graphs import generate_graph
 
-# Generate a graph from a BMTK model
-graph = graphs.generate_graph(config='config.json', source='LA', target='LA')
+# Generate a graph from a BMTK network model
+graph = generate_graph(config='config.json', source='LA', target='LA')
 
-# Add custom node properties
-for node in graph.nodes():
-    cell_type = graph.nodes[node].get('label', '')
-    if cell_type == 'PNc':
-        graph.nodes[node]['is_principal'] = True
-    else:
-        graph.nodes[node]['is_principal'] = False
+# Get all unique node labels (e.g., cell types)
+node_labels = set(nx.get_node_attributes(graph, 'label').values())
+print("Node labels:", node_labels)
 
-# Filter nodes by property
-principal_cells = [n for n, d in graph.nodes(data=True) if d.get('is_principal', False)]
-print(f"Number of principal cells: {len(principal_cells)}")
+# Count nodes by label
+label_counts = {}
+for node, attrs in graph.nodes(data=True):
+    label = attrs.get('label', 'unknown')
+    label_counts[label] = label_counts.get(label, 0) + 1
+print("Nodes per label:", label_counts)
+
+# Find all edges with a specific property
+edge_types = {}
+for u, v, attrs in graph.edges(data=True):
+    edge_type = attrs.get('edge_type', 'unknown')
+    edge_types[edge_type] = edge_types.get(edge_type, 0) + 1
+print("Edge types:", edge_types)
 ``` 

@@ -110,7 +110,7 @@ For more detailed examples with rich output and visualizations, check out our Ju
 
 ### Allen Cell Model Tutorial
 
-The [Allen Cell Tutorial](single_cell/Allen_tutorial/singleCellTutorial.ipynb) demonstrates how to use BMTool with Allen Institute cell models. In this tutorial, you'll learn:
+The [Allen Cell Tutorial](notebooks/single_cell/Allen_tutorial/singleCellTutorial.ipynb) demonstrates how to use BMTool with Allen Institute cell models. In this tutorial, you'll learn:
 
 - How to load Allen Institute cell models from SWC and JSON files
 - How to analyze and characterize the cell's electrophysiological properties

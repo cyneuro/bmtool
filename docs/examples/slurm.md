@@ -1,6 +1,20 @@
-# SLURM Examples
+# SLURM Tutorials
 
-This page provides examples of how to use the SLURM module for running simulations on high-performance computing clusters.
+The SLURM module provides tools for managing and running simulations on SLURM-based high-performance computing clusters.
+
+## Features
+
+- Automate simulation job submission to SLURM clusters
+- Manage simulation parameters and configurations
+- Track simulation status and results
+- Parallelize parameter sweeps and batch runs
+
+The [Block Runner Tutorial](notebooks/SLURM/using_BlockRunner.ipynb) demonstrates how to manage simulations on SLURM clusters. In this notebook, you'll learn:
+
+- How to set up simulation configurations for SLURM
+- How to submit and monitor jobs
+- How to parallelize parameter sweeps
+- How to collect and analyze results from distributed simulations
 
 ## Jupyter Notebook Tutorial
 
