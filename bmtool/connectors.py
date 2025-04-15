@@ -1424,8 +1424,8 @@ class CorrelatedGapJunction(GapJunction):
     """
 
     def __init__(self, p_non=1., p_uni=1., p_rec=1., p_arg=None,
-                 connector=None, verbose=True):
-        super().__init__(p=p_non, p_arg=p_arg, verbose=verbose)
+                 connector=None, verbose=True,save_report=True,report_name=None):
+        super().__init__(p=p_non, p_arg=p_arg, verbose=verbose,save_report=save_report,report_name=None)
         self.vars['p_non'] = self.vars.pop('p')
         self.vars['p_uni'] = p_uni
         self.vars['p_rec'] = p_rec
