@@ -7,6 +7,7 @@ import pandas as pd
 from bmtool.util.util import load_nodes_from_config
 from typing import Dict, Optional,Tuple, Union, List
 import numpy as np
+from scipy.stats import mannwhitneyu
 import os
 
 
@@ -252,3 +253,55 @@ def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: 
 
     return spike_rate
 
+
+def compare_firing_over_times(spike_df,group_by, time_window_1, time_window_2):
+    """
+    Compares the firing rates of a population during two different time windows
+    time_window_1 and time_window_2 should be a list of [start, stop] in milliseconds
+    Returns firing rates and results of a Mann-Whitney U test (non-parametric)
+    """
+    # Filter spikes for the population of interest
+    for pop_name in spike_df[group_by].unique():
+        print(f"Population: {pop_name}")
+        pop_spikes = spike_df[spike_df[group_by] == pop_name]
+        
+        # Filter by time windows
+        pop_spikes_1 = pop_spikes[(pop_spikes['timestamps'] >= time_window_1[0]) & (pop_spikes['timestamps'] <= time_window_1[1])]
+        pop_spikes_2 = pop_spikes[(pop_spikes['timestamps'] >= time_window_2[0]) & (pop_spikes['timestamps'] <= time_window_2[1])]
+        
+        # Get unique neuron IDs
+        unique_neurons = pop_spikes['node_ids'].unique()
+        
+        # Calculate firing rates per neuron for each time window in Hz
+        neuron_rates_1 = []
+        neuron_rates_2 = []
+        
+        for neuron in unique_neurons:
+            # Count spikes for this neuron in each window
+            n_spikes_1 = len(pop_spikes_1[pop_spikes_1['node_ids'] == neuron])
+            n_spikes_2 = len(pop_spikes_2[pop_spikes_2['node_ids'] == neuron])
+            
+            # Calculate firing rate in Hz (convert ms to seconds by dividing by 1000)
+            rate_1 = n_spikes_1 / ((time_window_1[1] - time_window_1[0]) / 1000)
+            rate_2 = n_spikes_2 / ((time_window_2[1] - time_window_2[0]) / 1000)
+            
+            neuron_rates_1.append(rate_1)
+            neuron_rates_2.append(rate_2)
+        
+        # Calculate average firing rates
+        avg_firing_rate_1 = np.mean(neuron_rates_1) if neuron_rates_1 else 0
+        avg_firing_rate_2 = np.mean(neuron_rates_2) if neuron_rates_2 else 0
+        
+        # Perform Mann-Whitney U test
+        # Handle the case when one or both arrays are empty
+        if len(neuron_rates_1) > 0 and len(neuron_rates_2) > 0:
+            u_stat, p_val = mannwhitneyu(neuron_rates_1, neuron_rates_2, alternative='two-sided')
+        else:
+            u_stat, p_val = np.nan, np.nan
+
+        print(f"    Average firing rate in window 1: {avg_firing_rate_1:.2f} Hz")
+        print(f"    Average firing rate in window 2: {avg_firing_rate_2:.2f} Hz")
+        print(f"    U-statistic: {u_stat:.2f}")
+        print(f"    p-value: {p_val}")
+        print(f"    Significant difference (p<0.05): {'Yes' if p_val < 0.05 else 'No'}")
+    return

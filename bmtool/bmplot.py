@@ -23,8 +23,9 @@ import sys
 import re
 from typing import Optional, Dict, Union, List
 
-from .util.util import CellVarsFile,load_nodes_from_config #, missing_units
+from .util.util import CellVarsFile,load_nodes_from_config,load_templates_from_config #, missing_units
 from bmtk.analyzer.utils import listify
+from neuron import h
 
 use_description = """
 
@@ -681,6 +682,99 @@ def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids
     fig.text(0.5, 0.04, 'Target', ha='center')
     fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
     plt.draw()
+
+def plot_synapse_location_histograms(config, target_model, source=None, target=None):
+    """
+    generates a histogram of the positions of the synapses on a cell broken down by section
+    config: a BMTK config
+    target_model: the name of the model_template used when building the BMTK node
+    source: The source BMTK network 
+    target: The target BMTK network
+    """
+    # Load mechanisms and template
+
+    util.load_templates_from_config(config)
+
+    # Load node and edge data
+    nodes, edges = util.load_nodes_edges_from_config(config)
+    nodes = nodes[source]
+    edges = edges[f'{source}_to_{target}']
+
+    # Map target_node_id to model_template
+    edges['target_model_template'] = edges['target_node_id'].map(nodes['model_template'])
+
+    # Map source_node_id to pop_name
+    edges['source_pop_name'] = edges['source_node_id'].map(nodes['pop_name'])
+
+    edges = edges[edges['target_model_template'] == target_model]
+
+    # Create the cell model from target model
+    cell = getattr(h, target_model.split(':')[1])()
+ 
+    # Create a mapping from section index to section name
+    section_id_to_name = {}
+    for idx, sec in enumerate(cell.all):
+        section_id_to_name[idx] = sec.name()
+
+    # Add a new column with section names based on afferent_section_id
+    edges['afferent_section_name'] = edges['afferent_section_id'].map(section_id_to_name)
+
+    # Get unique sections and source populations
+    unique_pops = edges['source_pop_name'].unique()
+
+    # Filter to only include sections with data
+    section_counts = edges['afferent_section_name'].value_counts()
+    sections_with_data = section_counts[section_counts > 0].index.tolist()
+
+
+    # Create a figure with subplots for each section
+    plt.figure(figsize=(8,12))
+
+    # Color map for source populations
+    color_map = plt.cm.tab10(np.linspace(0, 1, len(unique_pops)))
+    pop_colors = {pop: color for pop, color in zip(unique_pops, color_map)}
+
+    # Create a histogram for each section
+    for i, section in enumerate(sections_with_data):
+        ax = plt.subplot(len(sections_with_data), 1, i+1)
+        
+        # Get data for this section
+        section_data = edges[edges['afferent_section_name'] == section]
+        
+        # Group by source population
+        for pop_name, pop_group in section_data.groupby('source_pop_name'):
+            if len(pop_group) > 0:
+                ax.hist(pop_group['afferent_section_pos'], bins=15, alpha=0.7, 
+                    label=pop_name, color=pop_colors[pop_name])
+        
+        # Set title and labels
+        ax.set_title(f"{section}", fontsize=10)
+        ax.set_xlabel('Section Position', fontsize=8)
+        ax.set_ylabel('Frequency', fontsize=8)
+        ax.tick_params(labelsize=7)
+        ax.grid(True, alpha=0.3)
+        
+        # Only add legend to the first plot
+        if i == 0:
+            ax.legend(fontsize=8)
+
+    plt.tight_layout()
+    plt.suptitle('Connection Distribution by Cell Section and Source Population', fontsize=16, y=1.02)
+    if is_notebook:
+        plt.show()
+    else:
+        pass
+
+    # Create a summary table
+    print("Summary of connections by section and source population:")
+    pivot_table = edges.pivot_table(
+        values='afferent_section_id', 
+        index='afferent_section_name',
+        columns='source_pop_name',
+        aggfunc='count',
+        fill_value=0
+    )
+    print(pivot_table)
 
 def plot_connection_info(text, num, source_labels, target_labels, title, syn_info='0', save_file=None, return_dict=None):
     """

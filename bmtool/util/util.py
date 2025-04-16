@@ -6,6 +6,8 @@ import numpy as np
 from numpy import genfromtxt
 import h5py
 import pandas as pd
+import neuron
+from neuron import h
 
 #from bmtk.utils.io.cell_vars import CellVarsFile
 #from bmtk.analyzer.cell_vars import _get_cell_report
@@ -391,6 +393,32 @@ def load_edges_from_paths(edge_paths):#network_dir='network'):
         print("Python: bmplot.connection_matrix(config='yourconfig.json')")
     
     return edges_dict
+
+def load_mechanisms_from_config(config=None):
+    """
+    loads neuron mechanisms from BMTK config
+    """
+    if config is None:
+        config = 'simulation_config.json'
+    config = load_config(config)
+    return neuron.load_mechanisms(config['components']['mechanisms_dir'])
+
+def load_templates_from_config(config=None):
+    if config is None:
+        config = 'simulation_config.json'
+    config = load_config(config)
+    load_mechanisms_from_config(config)
+    return load_templates_from_paths(config['components']['templates_dir'])
+
+def load_templates_from_paths(template_paths):
+    # load all the files in the templates dir
+    for item in os.listdir(template_paths):
+        item_path = os.path.join(template_paths, item)
+        if os.path.isfile(item_path):
+            print(f"loading {item_path}")
+            h.load_file(item_path)
+
+    
 
 def cell_positions_by_id(config=None, nodes=None, populations=[], popids=[], prepend_pop=True):
     """
