@@ -72,25 +72,6 @@ The `lfp` module provides tools for analyzing local field potentials (LFP) and e
       show_root_heading: true
       heading_level: 3
 
-::: bmtool.analysis.lfp.calculate_signal_signal_plv
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.calculate_spike_lfp_plv
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.calculate_ppc
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.calculate_ppc2
-    options:
-      show_root_heading: true
-      heading_level: 3
 
 ::: bmtool.analysis.lfp.cwt_spectrogram
     options:
@@ -106,3 +87,26 @@ The `lfp` module provides tools for analyzing local field potentials (LFP) and e
     options:
       show_root_heading: true
       heading_level: 3 
+
+## Entrainment Analysis
+
+The `entrainment` module provides tools for analyzing the entrainment of spikes and lfp
+::: bmtool.analysis.entrainment.calculate_signal_signal_plv
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.entrainment.calculate_spike_lfp_plv
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.entrainment.calculate_ppc
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.entrainment.calculate_ppc2
+    options:
+      show_root_heading: true
+      heading_level: 3
