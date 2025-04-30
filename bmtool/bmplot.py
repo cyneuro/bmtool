@@ -683,6 +683,62 @@ def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids
     fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
     plt.draw()
 
+def distance_delay_plot(simulation_config: str,source: str,target: str,
+    group_by: str,sid: str,tid: str) -> None:
+    """
+    Plots the relationship between the distance and delay of connections between nodes in a neural network simulation.
+
+    This function loads the node and edge data from a simulation configuration file, filters nodes by population or group,
+    identifies connections (edges) between source and target node populations, calculates the Euclidean distance between
+    connected nodes, and plots the delay as a function of distance.
+
+    Args:
+        simulation_config (str): Path to the simulation config file
+        source (str): The name of the source population in the edge data.
+        target (str): The name of the target population in the edge data.
+        group_by (str): Column name to group nodes by (e.g., population name).
+        sid (str): Identifier for the source group (e.g., 'PN').
+        tid (str): Identifier for the target group (e.g., 'PN').
+
+    Returns:
+        None: The function creates and displays a scatter plot of distance vs delay.
+    """
+    nodes, edges = util.load_nodes_edges_from_config(simulation_config)
+    nodes = nodes[target]
+    #node id is index of nodes df
+    node_id_source = nodes[nodes[group_by] == sid].index
+    node_id_target = nodes[nodes[group_by] == tid].index
+
+    edges = edges[f'{source}_to_{target}']
+    edges = edges[edges['source_node_id'].isin(node_id_source) & edges['target_node_id'].isin(node_id_target)]
+
+    stuff_to_plot = []
+    for index, row in edges.iterrows():
+        try:
+            source_node = row['source_node_id']
+            target_node = row['target_node_id']
+            
+            source_pos = nodes.loc[[source_node], ['pos_x', 'pos_y', 'pos_z']]
+            target_pos = nodes.loc[[target_node], ['pos_x', 'pos_y', 'pos_z']]
+            
+            distance = np.linalg.norm(source_pos.values - target_pos.values)
+
+            delay = row['delay']  # This line may raise KeyError
+            stuff_to_plot.append([distance, delay])
+
+        except KeyError as e:
+            print(f"KeyError: Missing key {e} in either edge properties or node positions.")
+        except IndexError as e:
+            print(f"IndexError: Node ID {source_node} or {target_node} not found in nodes.")
+        except Exception as e:
+            print(f"Unexpected error at edge index {index}: {e}")
+
+    plt.scatter([x[0] for x in stuff_to_plot], [x[1] for x in stuff_to_plot])
+    plt.xlabel('Distance')
+    plt.ylabel('Delay')
+    plt.title(f'Distance vs Delay for edge between {sid} and {tid}')
+    plt.show()
+
 def plot_synapse_location_histograms(config, target_model, source=None, target=None):
     """
     generates a histogram of the positions of the synapses on a cell broken down by section
