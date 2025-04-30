@@ -4,7 +4,7 @@ import xarray as xr
 import pandas as pd
 from ..util.util import load_nodes_from_config
 
-def load_synapse_report(h5_file_path, config_path):
+def load_synapse_report(h5_file_path, config_path, network):
     """
     Load and process a synapse report from a bmtk simulation into an xarray.
     
@@ -23,7 +23,7 @@ def load_synapse_report(h5_file_path, config_path):
     # Load the h5 file
     with h5py.File(h5_file_path, 'r') as file:
         # Get the report data
-        report = file['report']['cortex']
+        report = file['report'][network]
         mapping = report['mapping']
         
         # Get the data - shape is (n_timesteps, n_synapses)
@@ -47,10 +47,10 @@ def load_synapse_report(h5_file_path, config_path):
         
     # Load node information
     nodes = load_nodes_from_config(config_path)
-    cortex_nodes = nodes['cortex']
+    nodes = nodes[network]
     
     # Create a mapping from node IDs to population names
-    node_to_pop = dict(zip(cortex_nodes.index, cortex_nodes['pop_name']))
+    node_to_pop = dict(zip(nodes.index, nodes['pop_name']))
     
     # Get the number of synapses
     n_synapses = data.shape[1]
