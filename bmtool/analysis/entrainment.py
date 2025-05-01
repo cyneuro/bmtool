@@ -12,6 +12,8 @@ from .lfp import wavelet_filter,butter_bandpass_filter
 from typing import Dict, List
 from tqdm.notebook import tqdm
 import scipy.stats as stats
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 def calculate_signal_signal_plv(x1: np.ndarray, x2: np.ndarray, fs: float, freq_of_interest: float = None, 
