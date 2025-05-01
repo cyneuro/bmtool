@@ -11,6 +11,7 @@ import xarray as xr
 from .lfp import wavelet_filter,butter_bandpass_filter
 from typing import Dict, List
 from tqdm.notebook import tqdm
+import scipy.stats as stats
 
 
 def calculate_signal_signal_plv(x1: np.ndarray, x2: np.ndarray, fs: float, freq_of_interest: float = None, 
@@ -425,5 +426,113 @@ def calculate_ppc_per_cell(spike_df: pd.DataFrame, lfp_signal: np.ndarray,
 
     return ppc_dict
 
+
+def calculate_spike_rate_power_correlation(spike_rate, lfp, fs, pop_names, freq_range=(10, 100), freq_step=5):
+    """
+    Calculate correlation between population spike rates and LFP power across frequencies
+    using wavelet filtering. This function assumes the fs of the spike_rate and lfp are the same.
+    
+    Parameters:
+    -----------
+    spike_rate : DataFrame
+        Pre-calculated population spike rates at the same fs as lfp
+    lfp : np.array
+        LFP data
+    fs : float
+        Sampling frequency
+    pop_names : list
+        List of population names to analyze
+    freq_range : tuple
+        Min and max frequency to analyze
+    freq_step : float
+        Step size for frequency analysis
+    
+    Returns:
+    --------
+    correlation_results : dict
+        Dictionary with correlation results for each population and frequency
+    frequencies : array
+        Array of frequencies analyzed
+    """
+    
+    # Define frequency bands to analyze
+    frequencies = np.arange(freq_range[0], freq_range[1] + 1, freq_step)
+    
+    # Dictionary to store results
+    correlation_results = {pop: {} for pop in pop_names}
+    
+    # Calculate power at each frequency band using wavelet filter
+    power_by_freq = {}
+    for freq in frequencies:
+        # Use the wavelet_filter function from bmlfp
+        filtered_signal = wavelet_filter(lfp, freq, fs)
+        # Calculate power (magnitude squared of complex wavelet transform)
+        power = np.abs(filtered_signal)**2
+        power_by_freq[freq] = power
+    
+    # Calculate correlation for each population
+    for pop in pop_names:
+        # Extract spike rate for this population
+        pop_rate = spike_rate[pop]
+        
+        # Calculate correlation with power at each frequency
+        for freq in frequencies:
+            # Make sure the lengths match
+            if len(pop_rate) != len(power_by_freq[freq]):
+                raise Exception(f"Mismatched lengths for {pop} at {freq} Hz len(pop_rate): {len(pop_rate)}, len(power_by_freq): {len(power_by_freq[freq])}")
+            # use spearman for non-parametric correlation
+            corr, p_val = stats.spearmanr(pop_rate, power_by_freq[freq])
+            correlation_results[pop][freq] = {'correlation': corr, 'p_value': p_val}
+    
+    return correlation_results, frequencies
+
+
+def plot_spike_power_correlation(correlation_results, frequencies, pop_names):
+    """
+    Plot the correlation between population spike rates and LFP power.
+    
+    Parameters:
+    -----------
+    correlation_results : dict
+        Dictionary with correlation results for calculate_spike_rate_power_correlation
+    frequencies : array
+        Array of frequencies analyzed
+    pop_names : list
+        List of population names
+    """
+    sns.set_style("whitegrid")
+    plt.figure(figsize=(10, 6))
+    
+    for pop in pop_names:
+        # Extract correlation values for each frequency
+        corr_values = []
+        valid_freqs = []
+        
+        for freq in frequencies:
+            if freq in correlation_results[pop]:
+                corr_values.append(correlation_results[pop][freq]['correlation'])
+                valid_freqs.append(freq)
+        
+        # Plot correlation line
+        plt.plot(valid_freqs, corr_values, marker='o', label=pop, 
+                linewidth=2, markersize=6)
+    
+    plt.xlabel('Frequency (Hz)', fontsize=12)
+    plt.ylabel('Spike Rate-Power Correlation', fontsize=12)
+    plt.title('Spike rate LFP power correlation during stimulus', fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=12)
+    plt.xticks(frequencies[::2])  # Display every other frequency on x-axis
+    
+    # Add horizontal line at zero for reference
+    plt.axhline(y=0, color='gray', linestyle='-', alpha=0.5)
+    
+    # Set y-axis limits to make zero visible
+    y_min, y_max = plt.ylim()
+    plt.ylim(min(y_min, -0.1), max(y_max, 0.1))
+    
+    plt.tight_layout()
+    
+    plt.show()
 
 
