@@ -82,11 +82,6 @@ The `lfp` module provides tools for analyzing local field potentials (LFP) and e
       show_root_heading: true
       heading_level: 3
 
-::: bmtool.analysis.lfp.plot_spectrogram
-    options:
-      show_root_heading: true
-      heading_level: 3 
-
 ## Entrainment Analysis
 
 The `entrainment` module provides tools for analyzing the entrainment of spikes and lfp
