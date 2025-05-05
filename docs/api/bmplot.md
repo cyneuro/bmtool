@@ -74,11 +74,6 @@ This page provides API reference documentation for the BMPlot module which conta
       show_root_heading: true
       heading_level: 3
 
-::: bmtool.bmplot.connections.plot_network_graph
-    options:
-      show_root_heading: true
-      heading_level: 3
-
 ## Spikes Module
 
 ::: bmtool.bmplot.spikes.raster
