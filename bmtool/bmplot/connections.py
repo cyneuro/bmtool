@@ -2,18 +2,12 @@
 Want to be able to take multiple plot names in and plot them all at the same time, to save time
 https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-plots-so-that-the-computation-can-continue
 """
-from .util import util
-import argparse,os,sys
-
+from ..util import util
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
-import matplotlib.gridspec as gridspec
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.axes import Axes
-import seaborn as sns
 from IPython import get_ipython
 from IPython.display import display, HTML
 import statistics
@@ -21,9 +15,8 @@ import pandas as pd
 import os
 import sys
 import re
-from typing import Optional, Dict, Union, List
 
-from .util.util import CellVarsFile,load_nodes_from_config,load_templates_from_config #, missing_units
+from ..util.util import CellVarsFile,load_nodes_from_config,load_templates_from_config #, missing_units
 from bmtk.analyzer.utils import listify
 from neuron import h
 
@@ -58,6 +51,7 @@ def is_notebook() -> bool:
             return False  # Other type (?)
     except NameError:
         return False      # Probably standard Python interpreter
+
 
 def total_connection_matrix(config=None, title=None, sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False, save_file=None, synaptic_info='0', include_gap=True):
     """
@@ -122,7 +116,8 @@ def total_connection_matrix(config=None, title=None, sources=None, targets=None,
         title = "All Synapse .json Files Used"
     plot_connection_info(text,num,source_labels,target_labels,title, syn_info=synaptic_info, save_file=save_file)
     return
-    
+
+
 def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,method = 'total',include_gap=True):
     """
     Generates a plot showing the percent connectivity of a network
@@ -158,6 +153,7 @@ def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sourc
 
     plot_connection_info(text,num,source_labels,target_labels,title, save_file=save_file)
     return
+
 
 def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, 
                             no_prepend_pop=False,save_file=None, dist_X=True,dist_Y=True,dist_Z=True,bins=8,line_plot=False,verbose=False,include_gap=True):
@@ -235,6 +231,7 @@ def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,s
 
     return
 
+
 def convergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean+std',include_gap=True,return_dict=None):
     """
     Generates connection plot displaying convergence data
@@ -252,6 +249,7 @@ def convergence_connection_matrix(config=None,title=None,sources=None, targets=N
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     return divergence_connection_matrix(config,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method,include_gap=include_gap,return_dict=return_dict)
+
 
 def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean+std',include_gap=True,return_dict=None):
     """
@@ -308,6 +306,7 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
     else:
         plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
         return
+
 
 def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=None,tids=None, no_prepend_pop=False,save_file=None,method='convergence'):
     """
@@ -431,7 +430,8 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
             title+=' Percent Connectivity'
     plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
     return
-    
+
+
 def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],no_prepend_pop=True,synaptic_info='0',
                       source_cell = None,target_cell = None,include_gap=True):
     """
@@ -520,6 +520,7 @@ def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[]
         tids = []
     util.relation_matrix(config,nodes,edges,sources,targets,sids,tids,not no_prepend_pop,relation_func=connection_pair_histogram,synaptic_info=synaptic_info)
 
+
 def connection_distance(config: str,sources: str,targets: str,
                         source_cell_id: int,target_id_type: str,ignore_z:bool=False) -> None:
     """
@@ -599,6 +600,7 @@ def connection_distance(config: str,sources: str,targets: str,
     plt.title(f"Distance from Source Node to Each Target Node")
     plt.grid(True)
     plt.show()
+
 
 def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids=None,no_prepend_pop=None,edge_property = None,time = None,time_compare = None,report=None,title=None,save_file=None):
     """
@@ -683,6 +685,7 @@ def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids
     fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
     plt.draw()
 
+
 def distance_delay_plot(simulation_config: str,source: str,target: str,
     group_by: str,sid: str,tid: str) -> None:
     """
@@ -738,6 +741,7 @@ def distance_delay_plot(simulation_config: str,source: str,target: str,
     plt.ylabel('Delay')
     plt.title(f'Distance vs Delay for edge between {sid} and {tid}')
     plt.show()
+
 
 def plot_synapse_location_histograms(config, target_model, source=None, target=None):
     """
@@ -832,6 +836,7 @@ def plot_synapse_location_histograms(config, target_model, source=None, target=N
     )
     print(pivot_table)
 
+
 def plot_connection_info(text, num, source_labels, target_labels, title, syn_info='0', save_file=None, return_dict=None):
     """
     Function to plot connection information as a heatmap, including handling missing source and target values.
@@ -908,6 +913,7 @@ def plot_connection_info(text, num, source_labels, target_labels, title, syn_inf
         return graph_dict
     else:
         return
+
 
 def connector_percent_matrix(csv_path: str = None, exclude_strings=None, assemb_key=None, title: str = 'Percent connection matrix', pop_order=None) -> None:
     """
@@ -1063,275 +1069,7 @@ def connector_percent_matrix(csv_path: str = None, exclude_strings=None, assemb_
     plt.tight_layout()
     plt.show()
 
-def raster(spikes_df: Optional[pd.DataFrame] = None, config: Optional[str] = None, network_name: Optional[str] = None, groupby:Optional[str] = 'pop_name',
-           ax: Optional[Axes] = None,tstart: Optional[float] = None,tstop: Optional[float] = None,
-           color_map: Optional[Dict[str, str]] = None) -> Axes:
-    """
-    Plots a raster plot of neural spikes, with different colors for each population.
-    
-    Parameters:
-    ----------
-    spikes_df : pd.DataFrame, optional
-        DataFrame containing spike data with columns 'timestamps', 'node_ids', and optional 'pop_name'.
-    config : str, optional
-        Path to the configuration file used to load node data.
-    network_name : str, optional
-        Specific network name to select from the configuration; if not provided, uses the first network.
-    ax : matplotlib.axes.Axes, optional
-        Axes on which to plot the raster; if None, a new figure and axes are created.
-    tstart : float, optional
-        Start time for filtering spikes; only spikes with timestamps greater than `tstart` will be plotted.
-    tstop : float, optional
-        Stop time for filtering spikes; only spikes with timestamps less than `tstop` will be plotted.
-    color_map : dict, optional
-        Dictionary specifying colors for each population. Keys should be population names, and values should be color values.
-    
-    Returns:
-    -------
-    matplotlib.axes.Axes
-        Axes with the raster plot.
-    
-    Notes:
-    -----
-    - If `config` is provided, the function merges population names from the node data with `spikes_df`.
-    - Each unique population from groupby in `spikes_df` will be represented by a different color if `color_map` is not specified.
-    - If `color_map` is provided, it should contain colors for all unique `pop_name` values in `spikes_df`.
-    """
-    # Initialize axes if none provided
-    if ax is None:
-        _, ax = plt.subplots(1, 1)
 
-    # Filter spikes by time range if specified
-    if tstart is not None:
-        spikes_df = spikes_df[spikes_df['timestamps'] > tstart]
-    if tstop is not None:
-        spikes_df = spikes_df[spikes_df['timestamps'] < tstop]
-
-    # Load and merge node population data if config is provided
-    if config:
-        nodes = load_nodes_from_config(config)
-        if network_name:
-            nodes = nodes.get(network_name, {})
-        else:
-            nodes = list(nodes.values())[0] if nodes else {}
-            print("Grabbing first network; specify a network name to ensure correct node population is selected.")
-        
-        # Find common columns, but exclude the join key from the list
-        common_columns = spikes_df.columns.intersection(nodes.columns).tolist()
-        common_columns = [col for col in common_columns if col != 'node_ids']  # Remove our join key from the common list
-
-        # Drop all intersecting columns except the join key column from df2
-        spikes_df = spikes_df.drop(columns=common_columns)
-        # merge nodes and spikes df
-        spikes_df = spikes_df.merge(nodes[groupby], left_on='node_ids', right_index=True, how='left')
-
-
-    # Get unique population names
-    unique_pop_names = spikes_df[groupby].unique()
-    
-    # Generate colors if no color_map is provided
-    if color_map is None:
-        cmap = plt.get_cmap('tab10')  # Default colormap
-        color_map = {pop_name: cmap(i / len(unique_pop_names)) for i, pop_name in enumerate(unique_pop_names)}
-    else:
-        # Ensure color_map contains all population names
-        missing_colors = [pop for pop in unique_pop_names if pop not in color_map]
-        if missing_colors:
-            raise ValueError(f"color_map is missing colors for populations: {missing_colors}")
-    
-    # Plot each population with its specified or generated color
-    for pop_name, group in spikes_df.groupby(groupby):
-        ax.scatter(group['timestamps'], group['node_ids'], label=pop_name, color=color_map[pop_name], s=0.5)
-
-    # Label axes
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Node ID")
-    ax.legend(title="Population", loc='upper right', framealpha=0.9, markerfirst=False)
-    
-    return ax
-    
-# uses df from bmtool.analysis.spikes compute_firing_rate_stats
-def plot_firing_rate_pop_stats(firing_stats: pd.DataFrame, groupby: Union[str, List[str]], ax: Optional[Axes] = None, 
-                               color_map: Optional[Dict[str, str]] = None) -> Axes:
-    """
-    Plots a bar graph of mean firing rates with error bars (standard deviation).
-
-    Parameters:
-    ----------
-    firing_stats : pd.DataFrame
-        Dataframe containing 'firing_rate_mean' and 'firing_rate_std'.
-    groupby : str or list of str
-        Column(s) used for grouping.
-    ax : matplotlib.axes.Axes, optional
-        Axes on which to plot the bar chart; if None, a new figure and axes are created.
-    color_map : dict, optional
-        Dictionary specifying colors for each group. Keys should be group names, and values should be color values.
-
-    Returns:
-    -------
-    matplotlib.axes.Axes
-        Axes with the bar plot.
-    """
-    # Ensure groupby is a list for consistent handling
-    if isinstance(groupby, str):
-        groupby = [groupby]
-
-    # Create a categorical column for grouping
-    firing_stats["group"] = firing_stats[groupby].astype(str).agg("_".join, axis=1)
-
-    # Get unique group names
-    unique_groups = firing_stats["group"].unique()
-
-    # Generate colors if no color_map is provided
-    if color_map is None:
-        cmap = plt.get_cmap('viridis')
-        color_map = {group: cmap(i / len(unique_groups)) for i, group in enumerate(unique_groups)}
-    else:
-        # Ensure color_map contains all groups
-        missing_colors = [group for group in unique_groups if group not in color_map]
-        if missing_colors:
-            raise ValueError(f"color_map is missing colors for groups: {missing_colors}")
-
-    # Create new figure and axes if ax is not provided
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-    # Sort data for consistent plotting
-    firing_stats = firing_stats.sort_values(by="group")
-
-    # Extract values for plotting
-    x_labels = firing_stats["group"]
-    means = firing_stats["firing_rate_mean"]
-    std_devs = firing_stats["firing_rate_std"]
-
-    # Get colors for each group
-    colors = [color_map[group] for group in x_labels]
-
-    # Create bar plot
-    bars = ax.bar(x_labels, means, yerr=std_devs, capsize=5, color=colors, edgecolor="black")
-
-    # Add error bars manually with caps
-    _, caps, _ = ax.errorbar(
-        x=np.arange(len(x_labels)), 
-        y=means, 
-        yerr=std_devs, 
-        fmt='none', 
-        capsize=5, 
-        capthick=2, 
-        color="black"
-    )
-
-    # Formatting
-    ax.set_xticks(np.arange(len(x_labels)))
-    ax.set_xticklabels(x_labels, rotation=45, ha="right")
-    ax.set_xlabel("Population Group")
-    ax.set_ylabel("Mean Firing Rate (spikes/s)")
-    ax.set_title("Firing Rate Statistics by Population")
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-
-    return ax
-
-# uses df from bmtool.analysis.spikes compute_firing_rate_stats
-def plot_firing_rate_distribution(individual_stats: pd.DataFrame, groupby: Union[str, list], ax: Optional[Axes] = None, 
-                                  color_map: Optional[Dict[str, str]] = None, 
-                                  plot_type: Union[str, list] = "box", swarm_alpha: float = 0.6) -> Axes:
-    """
-    Plots a distribution of individual firing rates using one or more plot types
-    (box plot, violin plot, or swarm plot), overlaying them on top of each other.
-
-    Parameters:
-    ----------
-    individual_stats : pd.DataFrame
-        Dataframe containing individual firing rates and corresponding group labels.
-    groupby : str or list of str
-        Column(s) used for grouping.
-    ax : matplotlib.axes.Axes, optional
-        Axes on which to plot the graph; if None, a new figure and axes are created.
-    color_map : dict, optional
-        Dictionary specifying colors for each group. Keys should be group names, and values should be color values.
-    plot_type : str or list of str, optional
-        List of plot types to generate. Options: "box", "violin", "swarm". Default is "box".
-    swarm_alpha : float, optional
-        Transparency of swarm plot points. Default is 0.6.
-
-    Returns:
-    -------
-    matplotlib.axes.Axes
-        Axes with the selected plot type(s) overlayed.
-    """
-    # Ensure groupby is a list for consistent handling
-    if isinstance(groupby, str):
-        groupby = [groupby]
-
-    # Create a categorical column for grouping
-    individual_stats["group"] = individual_stats[groupby].astype(str).agg("_".join, axis=1)
-
-    # Validate plot_type (it can be a list or a single type)
-    if isinstance(plot_type, str):
-        plot_type = [plot_type]
-    
-    for pt in plot_type:
-        if pt not in ["box", "violin", "swarm"]:
-            raise ValueError("plot_type must be one of: 'box', 'violin', 'swarm'.")
-
-    # Get unique groups for coloring
-    unique_groups = individual_stats["group"].unique()
-
-    # Generate colors if no color_map is provided
-    if color_map is None:
-        cmap = plt.get_cmap('viridis')
-        color_map = {group: cmap(i / len(unique_groups)) for i, group in enumerate(unique_groups)}
-    
-    # Ensure color_map contains all groups
-    missing_colors = [group for group in unique_groups if group not in color_map]
-    if missing_colors:
-        raise ValueError(f"color_map is missing colors for groups: {missing_colors}")
-
-    # Create new figure and axes if ax is not provided
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-    # Sort data for consistent plotting
-    individual_stats = individual_stats.sort_values(by="group")
-
-    # Loop over each plot type and overlay them
-    for pt in plot_type:
-        if pt == "box":
-            sns.boxplot(data=individual_stats, x="group", y="firing_rate", ax=ax, palette=color_map, width=0.5)
-        elif pt == "violin":
-            sns.violinplot(data=individual_stats, x="group", y="firing_rate", ax=ax, palette=color_map, inner="quartile", alpha=0.4)
-        elif pt == "swarm":
-            sns.swarmplot(data=individual_stats, x="group", y="firing_rate", ax=ax, palette=color_map, alpha=swarm_alpha)
-
-    # Formatting
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-    ax.set_xlabel("Population Group")
-    ax.set_ylabel("Firing Rate (spikes/s)")
-    ax.set_title("Firing Rate Distribution for individual cells")
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-
-    return ax
-  
-def plot_entrainment():
-    """
-    Plots entrainment analysis for oscillatory network activity.
-    
-    This function analyzes and visualizes how well neural populations entrain to rhythmic 
-    input or how synchronized they become during oscillatory activity. It can show phase 
-    locking, coherence, or other entrainment metrics.
-    
-    Note: This is currently a placeholder function and not yet implemented.
-    
-    Parameters:
-    -----------
-    None
-    
-    Returns:
-    --------
-    None
-    """
-    pass
-    
 def plot_3d_positions(config=None, sources=None, sid=None, title=None, save_file=None, subset=None):
     """
     Plots a 3D graph of all cells with x, y, z location.
@@ -1430,6 +1168,7 @@ def plot_3d_positions(config=None, sources=None, sid=None, title=None, save_file
         plt.show()
 
     return ax
+
 
 def plot_3d_cell_rotation(config=None, sources=None, sids=None, title=None, save_file=None, quiver_length=None, arrow_length_ratio=None, group=None, subset=None):
     from scipy.spatial.transform import Rotation as R
@@ -1531,168 +1270,3 @@ def plot_3d_cell_rotation(config=None, sources=None, sids=None, title=None, save
     notebook = is_notebook
     if notebook == False:
         plt.show()
-
-def plot_network_graph(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,edge_property='model_template'):
-    """
-    Creates a directed graph visualization of the network connectivity using NetworkX.
-    
-    This function generates a network diagram showing the connections between different 
-    cell populations, with edge labels indicating the connection types based on the specified
-    edge property.
-    
-    Parameters:
-    -----------
-    config : str
-        Path to a BMTK simulation configuration file.
-    nodes : dict, optional
-        Dictionary of node information (if already loaded).
-    edges : dict, optional
-        Dictionary of edge information (if already loaded).
-    title : str, optional
-        Custom title for the plot. If None, defaults to "Network Graph".
-    sources : str
-        Comma-separated list of source network names.
-    targets : str
-        Comma-separated list of target network names.
-    sids : str, optional
-        Comma-separated list of source node identifiers to filter by.
-    tids : str, optional
-        Comma-separated list of target node identifiers to filter by.
-    no_prepend_pop : bool, default=False
-        If True, population names are not prepended to node identifiers in the display.
-    save_file : str, optional
-        Path to save the generated plot.
-    edge_property : str, default='model_template'
-        The edge property to use for labeling connections in the graph.
-    
-    Returns:
-    --------
-    None
-        Displays a network graph visualization.
-    """
-    if not config:
-        raise Exception("config not defined")
-    if not sources or not targets:
-        raise Exception("Sources or targets not defined")
-    sources = sources.split(",")
-    targets = targets.split(",")
-    if sids:
-        sids = sids.split(",")
-    else:
-        sids = []
-    if tids:
-        tids = tids.split(",")
-    else:
-        tids = []
-    throw_away, data, source_labels, target_labels = util.connection_graph_edge_types(config=config,nodes=None,edges=None,sources=sources,targets=targets,sids=sids,tids=tids,prepend_pop=not no_prepend_pop,edge_property=edge_property)
-
-    if title == None or title=="":
-        title = "Network Graph"
-    
-    import networkx as nx
-
-    net_graph = nx.MultiDiGraph() #or G = nx.MultiDiGraph()
-    
-    edges = []
-    edge_labels = {}
-    for node in list(set(source_labels+target_labels)):
-        net_graph.add_node(node)
-
-    for s, source in enumerate(source_labels):
-        for t, target in enumerate(target_labels):
-            relationship = data[s][t]
-            for i, relation in enumerate(relationship):
-                edge_labels[(source,target)]=relation
-                edges.append([source,target])
-
-    net_graph.add_edges_from(edges)
-    #pos = nx.spring_layout(net_graph,k=0.50,iterations=20)
-    pos = nx.shell_layout(net_graph)
-    plt.figure()
-    nx.draw(net_graph,pos,edge_color='black', width=1,linewidths=1,\
-        node_size=500,node_color='white',arrowstyle='->',alpha=0.9,\
-        labels={node:node for node in net_graph.nodes()})
-
-    nx.draw_networkx_edge_labels(net_graph,pos,edge_labels=edge_labels,font_color='red')
-    plt.show()
-
-    return
-
-def plot_report(config_file=None, report_file=None, report_name=None, variables=None, gids=None):
-    if report_file is None:
-        report_name, report_file = _get_cell_report(config_file, report_name)
-
-    var_report = CellVarsFile(report_file)
-    variables = listify(variables) if variables is not None else var_report.variables
-    gids = listify(gids) if gids is not None else var_report.gids
-    time_steps = var_report.time_trace
-
-    def __units_str(var):
-        units = var_report.units(var)
-        if units == CellVarsFile.UNITS_UNKNOWN:
-            units = missing_units.get(var, '')
-        return '({})'.format(units) if units else ''
-
-    n_plots = len(variables)
-    if n_plots > 1:
-        # If more than one variale to plot do so in different subplots
-        f, axarr = plt.subplots(n_plots, 1)
-        for i, var in enumerate(variables):
-            for gid in gids:
-                axarr[i].plot(time_steps, var_report.data(gid=gid, var_name=var), label='gid {}'.format(gid))
-
-            axarr[i].legend()
-            axarr[i].set_ylabel('{} {}'.format(var, __units_str(var)))
-            if i < n_plots - 1:
-                axarr[i].set_xticklabels([])
-
-        axarr[i].set_xlabel('time (ms)')
-
-    elif n_plots == 1:
-        # For plotting a single variable
-        plt.figure()
-        for gid in gids:
-            plt.plot(time_steps, var_report.data(gid=gid, var_name=variables[0]), label='gid {}'.format(gid))
-        plt.ylabel('{} {}'.format(variables[0], __units_str(variables[0])))
-        plt.xlabel('time (ms)')
-        plt.legend()
-    else:
-        return
-
-    plt.show()
-
-def plot_report_default(config, report_name, variables, gids):
-    """
-    A simplified interface for plotting cell report variables from BMTK simulations.
-    
-    This function handles the common case of plotting specific variables for specific cells
-    from a BMTK report file, with minimal parameter requirements.
-    
-    Parameters:
-    -----------
-    config : str
-        Path to a BMTK simulation configuration file.
-    report_name : str
-        Name of the report to plot (without file extension).
-    variables : str
-        Comma-separated list of variable names to plot (e.g., 'v,i_na,i_k').
-    gids : str
-        Comma-separated list of cell IDs (gids) to plot data for.
-    
-    Returns:
-    --------
-    None
-        Displays plots of the specified variables for the specified cells.
-    """
-
-    if variables:
-        variables = variables.split(',')
-    if gids:
-        gids = [int(i) for i in gids.split(',')]    
-
-    if report_name:
-         cfg = util.load_config(config)
-         report_file = os.path.join(cfg['output']['output_dir'],report_name+'.h5')
-    plot_report(config_file=config, report_file=report_file, report_name=report_name, variables=variables, gids=gids);
-    
-    return
