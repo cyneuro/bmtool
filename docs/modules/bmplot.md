@@ -14,14 +14,12 @@ The BMPlot module provides visualization tools for BMTK networks, allowing you t
 
 ### Total Connection Matrix
 
-Generate a table showing the total number of connections between neuron populations:
-
 ```python
-import bmtool.bmplot as bmplot
+import bmtool.bmplot.connections as connections
 
 # Default - all connections
-bmplot.total_connection_matrix(
-    config='config.json',
+connections.total_connection_matrix(
+    config='config.json', 
     title='Total Connection Matrix',
     sources=None,  # Use all sources (default)
     targets=None,  # Use all targets (default)
@@ -29,7 +27,7 @@ bmplot.total_connection_matrix(
 )
 
 # Specific source/target populations
-bmplot.total_connection_matrix(
+connections.total_connection_matrix(
     config='config.json', 
     sources='LA',
     targets='LA'
@@ -42,19 +40,19 @@ Generate a matrix showing the percent connectivity between neuron populations:
 
 ```python
 # Default - all connections
-bmplot.percent_connection_matrix(
+connections.percent_connection_matrix(
     config='config.json',
     method='total'  # Default method
 )
 
 # Only unidirectional connections
-bmplot.percent_connection_matrix(
+connections.percent_connection_matrix(
     config='config.json', 
     method='unidirectional'
 )
 
 # Only bidirectional connections
-bmplot.percent_connection_matrix(
+connections.percent_connection_matrix(
     config='config.json', 
     method='bidirectional'
 )
@@ -66,25 +64,25 @@ Generate a matrix showing the convergence of connections between neuron populati
 
 ```python
 # Mean convergence (default)
-bmplot.convergence_connection_matrix(
+connections.convergence_connection_matrix(
     config='config.json',
     method='mean+std'  # Default method
 )
 
 # Maximum convergence
-bmplot.convergence_connection_matrix(
+connections.convergence_connection_matrix(
     config='config.json', 
     method='max'
 )
 
 # Minimum convergence
-bmplot.convergence_connection_matrix(
+connections.convergence_connection_matrix(
     config='config.json', 
     method='min'
 )
 
 # Standard deviation of convergence
-bmplot.convergence_connection_matrix(
+connections.convergence_connection_matrix(
     config='config.json', 
     method='std'
 )
@@ -96,25 +94,25 @@ Generate a matrix showing the divergence of connections between neuron populatio
 
 ```python
 # Mean divergence (default)
-bmplot.divergence_connection_matrix(
+connections.divergence_connection_matrix(
     config='config.json',
     method='mean+std'  # Default method
 )
 
 # Maximum divergence
-bmplot.divergence_connection_matrix(
+connections.divergence_connection_matrix(
     config='config.json', 
     method='max'
 )
 
 # Minimum divergence
-bmplot.divergence_connection_matrix(
+connections.divergence_connection_matrix(
     config='config.json', 
     method='min'
 )
 
 # Standard deviation of divergence
-bmplot.divergence_connection_matrix(
+connections.divergence_connection_matrix(
     config='config.json', 
     method='std'
 )
@@ -125,17 +123,7 @@ bmplot.divergence_connection_matrix(
 Generate a matrix specifically for gap junctions:
 
 ```python
-# Convergence analysis (default)
-bmplot.gap_junction_matrix(
-    config='config.json', 
-    method='convergence'
-)
-
-# Percent connections
-bmplot.gap_junction_matrix(
-    config='config.json', 
-    method='percent'
-)
+connections.gap_junction_matrix(config='config.json', method='percent')
 ```
 
 ### Connector Percent Matrix
@@ -143,27 +131,29 @@ bmplot.gap_junction_matrix(
 Generate a percentage connectivity matrix from a CSV file produced by BMTool connectors:
 
 ```python
-bmplot.connector_percent_matrix(
+import bmtool.bmplot.connections as connections
+
+connections.connector_percent_matrix(
     csv_path='connections.csv',
     title='Percent Connection Matrix',
     exclude_strings=None  # Optional strings to exclude
 )
 ```
 
-## Spatial Analysis
-
 ### Connection Distance
 
 Generate a 3D plot with source and target cell locations and connection distance analysis:
 
 ```python
-bmplot.connection_distance(
+import bmtool.bmplot.connections as connections
+
+connections.connection_distance(
     config='config.json',
     sources='PopA',
     targets='PopB',
-    title='Connection Distance Analysis',
-    save_file=None,  # Optional file to save plot
-    num_bins=50      # Number of histogram bins
+    source_cell_id=1,  # Node ID of source cell
+    target_id_type='PopB',  # Target population to analyze
+    ignore_z=False  # Whether to ignore z-axis in distance calculations
 )
 ```
 
@@ -172,142 +162,151 @@ bmplot.connection_distance(
 Generate a histogram showing the distribution of connections:
 
 ```python
-bmplot.connection_histogram(
+import bmtool.bmplot.connections as connections
+
+connections.connection_histogram(
     config='config.json',
     sources='PopA',
     targets='PopB',
-    title='Connection Distribution',
-    num_bins=50,
-    xmax=None,  # Optional maximum x value
-    ymax=None   # Optional maximum y value
+    source_cell='PopA',  # Source cell type
+    target_cell='PopB'   # Target cell type
 )
 ```
 
 ## 3D Visualization
 
-### Plot 3D Positions
+### 3D Cell Positions
 
 Generate a plot of cell positions in 3D space:
 
 ```python
-bmplot.plot_3d_positions(
+import bmtool.bmplot.connections as connections
+
+connections.plot_3d_positions(
     config='config.json',
     sources=['PopA', 'PopB'],
     title='3D Cell Positions',
-    save_file=None,  # Optional file to save plot
-    subset=None      # Optional subset of cells to plot
+    save_file=None  # Optional path to save the figure
 )
 ```
 
-### Plot 3D Cell Rotation
+### 3D Cell Orientation
 
 Generate a plot showing cell locations and orientation in 3D space:
 
 ```python
-bmplot.plot_3d_cell_rotation(
+import bmtool.bmplot.connections as connections
+
+connections.plot_3d_cell_rotation(
     config='config.json',
     sources=['PopA'],
     title='3D Cell Orientation',
-    quiver_length=20,  # Length of orientation arrows
-    arrow_length_ratio=0.3,
-    subset=100  # Plot only a subset of cells for clarity
+    save_file=None  # Optional path to save the figure
 )
 ```
 
 ## Network Visualization
 
-### Plot Network Graph
+### Network Graph
 
 Plot a network connection diagram:
 
 ```python
-bmplot.plot_network_graph(
+import bmtool.bmplot.connections as connections
+
+connections.plot_network_graph(
     config='config.json',
     sources='LA',
     targets='LA', 
-    sids='pop_name',
     tids='pop_name',
-    no_prepend_pop=True,
-    title='Network Graph',
-    edge_property='model_template'
+    sids='pop_name',
+    no_prepend_pop=True  # Whether to prepend population name to node labels
 )
 ```
 
-## Spike Data Visualization
+## Spike Analysis
 
 ### Raster Plot
 
-Create a raster plot from spike data:
+Generate a raster plot of spike times:
 
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
-from bmtool.bmplot import raster
+from bmtool.bmplot.spikes import raster
 
 # Load spike data
 spikes_df = pd.read_csv('spikes.csv')
 
-# Create figure and axes
-fig, ax = plt.subplots(figsize=(12, 8))
-
-# Generate raster plot
+# Create raster plot
 raster(
     spikes_df=spikes_df,
-    groupby='pop_name',
-    time_range=(0, 2000),
-    ax=ax,
-    markersize=2,
-    marker='o'
+    config='config.json',  # Optional, to load node population data
+    network_name='network',  # Optional, specific network to use
+    groupby='pop_name'  # Column to group spikes by
 )
 
 plt.show()
 ```
 
-### Firing Rate Plots
+### Firing Rate Statistics
 
-Plot population firing rate statistics:
+Plot firing rate statistics for different populations:
 
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
-from bmtool.bmplot import plot_firing_rate_pop_stats, plot_firing_rate_distribution
+from bmtool.bmplot.spikes import plot_firing_rate_pop_stats, plot_firing_rate_distribution
 
 # Assuming you already have firing rate statistics dataframes
 # from bmtool.analysis.spikes.compute_firing_rate_stats()
 
-# Plot population firing rate statistics
-fig, ax = plt.subplots(figsize=(10, 6))
+# Plot mean firing rates with error bars
 plot_firing_rate_pop_stats(
-    firing_stats=pop_stats,
-    groupby='pop_name',
-    ax=ax,
-    sort_by_mean=True,
-    bar_width=0.7
+    firing_stats=firing_stats_df,
+    groupby='pop_name'
 )
-plt.show()
 
-# Plot firing rate distributions
-fig, ax = plt.subplots(figsize=(10, 6))
+# Plot distribution of individual firing rates
 plot_firing_rate_distribution(
-    individual_stats=individual_stats,
+    individual_stats=individual_stats_df,
     groupby='pop_name',
-    ax=ax,
-    log_scale=False,
-    num_bins=30
+    plot_type=['box', 'swarm']  # Can use 'box', 'violin', 'swarm' or combinations
 )
+
 plt.show()
 ```
 
-## Report Visualization
+## Entrainment Analysis
 
-Plot data from simulation reports:
+### Spike-Power Correlation
+
+Plot the correlation between population spike rates and LFP power:
 
 ```python
-bmplot.plot_report(
-    config_file='config.json',
-    report_file='report.h5',
-    report_name='membrane_potential',
-    variables=['v'],
-    gids=[1, 2, 3, 4, 5]
+import bmtool.bmplot.entrainment as entrainment
+
+# Assuming you have correlation results from bmtool.analysis.entrainment
+entrainment.plot_spike_power_correlation(
+    correlation_results=correlation_results,
+    frequencies=frequencies,
+    pop_names=pop_names
 )
-``` 
+```
+
+## LFP Analysis
+
+### Spectrogram
+
+Plot a spectrogram from LFP data:
+
+```python
+import bmtool.bmplot.lfp as lfp
+
+# Assuming you have an xarray dataset with spectrogram data
+lfp.plot_spectrogram(
+    sxx_xarray=spectrogram_data,
+    remove_aperiodic=None,  # Optional aperiodic component to remove
+    log_power=True,  # Whether to use log scale for power
+    plt_range=[0, 100]  # Frequency range to plot
+)

@@ -8,7 +8,6 @@ import numpy as np
 
 
 
-
 def raster(spikes_df: Optional[pd.DataFrame] = None, config: Optional[str] = None, network_name: Optional[str] = None, groupby:Optional[str] = 'pop_name',
            ax: Optional[Axes] = None,tstart: Optional[float] = None,tstop: Optional[float] = None,
            color_map: Optional[Dict[str, str]] = None) -> Axes:

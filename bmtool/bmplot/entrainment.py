@@ -1,5 +1,6 @@
 
-
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def plot_spike_power_correlation(correlation_results, frequencies, pop_names):
     """

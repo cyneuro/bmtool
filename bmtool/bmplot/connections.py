@@ -3,17 +3,11 @@ Want to be able to take multiple plot names in and plot them all at the same tim
 https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-plots-so-that-the-computation-can-continue
 """
 from ..util import util
-import argparse,os,sys
-
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
-import matplotlib.gridspec as gridspec
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.axes import Axes
-import seaborn as sns
 from IPython import get_ipython
 from IPython.display import display, HTML
 import statistics
@@ -21,7 +15,6 @@ import pandas as pd
 import os
 import sys
 import re
-from typing import Optional, Dict, Union, List
 
 from ..util.util import CellVarsFile,load_nodes_from_config,load_templates_from_config #, missing_units
 from bmtk.analyzer.utils import listify
@@ -58,6 +51,7 @@ def is_notebook() -> bool:
             return False  # Other type (?)
     except NameError:
         return False      # Probably standard Python interpreter
+
 
 def total_connection_matrix(config=None, title=None, sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False, save_file=None, synaptic_info='0', include_gap=True):
     """
@@ -122,7 +116,8 @@ def total_connection_matrix(config=None, title=None, sources=None, targets=None,
         title = "All Synapse .json Files Used"
     plot_connection_info(text,num,source_labels,target_labels,title, syn_info=synaptic_info, save_file=save_file)
     return
-    
+
+
 def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,method = 'total',include_gap=True):
     """
     Generates a plot showing the percent connectivity of a network
@@ -158,6 +153,7 @@ def percent_connection_matrix(config=None,nodes=None,edges=None,title=None,sourc
 
     plot_connection_info(text,num,source_labels,target_labels,title, save_file=save_file)
     return
+
 
 def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,sources=None, targets=None, sids=None, tids=None, 
                             no_prepend_pop=False,save_file=None, dist_X=True,dist_Y=True,dist_Z=True,bins=8,line_plot=False,verbose=False,include_gap=True):
@@ -235,6 +231,7 @@ def probability_connection_matrix(config=None,nodes=None,edges=None,title=None,s
 
     return
 
+
 def convergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=True,method='mean+std',include_gap=True,return_dict=None):
     """
     Generates connection plot displaying convergence data
@@ -252,6 +249,7 @@ def convergence_connection_matrix(config=None,title=None,sources=None, targets=N
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
     return divergence_connection_matrix(config,title ,sources, targets, sids, tids, no_prepend_pop, save_file ,convergence, method,include_gap=include_gap,return_dict=return_dict)
+
 
 def divergence_connection_matrix(config=None,title=None,sources=None, targets=None, sids=None, tids=None, no_prepend_pop=False,save_file=None,convergence=False,method='mean+std',include_gap=True,return_dict=None):
     """
@@ -308,6 +306,7 @@ def divergence_connection_matrix(config=None,title=None,sources=None, targets=No
     else:
         plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
         return
+
 
 def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=None,tids=None, no_prepend_pop=False,save_file=None,method='convergence'):
     """
@@ -431,7 +430,8 @@ def gap_junction_matrix(config=None,title=None,sources=None, targets=None, sids=
             title+=' Percent Connectivity'
     plot_connection_info(syn_info,data,source_labels,target_labels,title, save_file=save_file)
     return
-    
+
+
 def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[],sids=[],tids=[],no_prepend_pop=True,synaptic_info='0',
                       source_cell = None,target_cell = None,include_gap=True):
     """
@@ -520,6 +520,7 @@ def connection_histogram(config=None,nodes=None,edges=None,sources=[],targets=[]
         tids = []
     util.relation_matrix(config,nodes,edges,sources,targets,sids,tids,not no_prepend_pop,relation_func=connection_pair_histogram,synaptic_info=synaptic_info)
 
+
 def connection_distance(config: str,sources: str,targets: str,
                         source_cell_id: int,target_id_type: str,ignore_z:bool=False) -> None:
     """
@@ -599,6 +600,7 @@ def connection_distance(config: str,sources: str,targets: str,
     plt.title(f"Distance from Source Node to Each Target Node")
     plt.grid(True)
     plt.show()
+
 
 def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids=None,no_prepend_pop=None,edge_property = None,time = None,time_compare = None,report=None,title=None,save_file=None):
     """
@@ -683,6 +685,7 @@ def edge_histogram_matrix(config=None,sources = None,targets=None,sids=None,tids
     fig.text(0.04, 0.5, 'Source', va='center', rotation='vertical')
     plt.draw()
 
+
 def distance_delay_plot(simulation_config: str,source: str,target: str,
     group_by: str,sid: str,tid: str) -> None:
     """
@@ -738,6 +741,7 @@ def distance_delay_plot(simulation_config: str,source: str,target: str,
     plt.ylabel('Delay')
     plt.title(f'Distance vs Delay for edge between {sid} and {tid}')
     plt.show()
+
 
 def plot_synapse_location_histograms(config, target_model, source=None, target=None):
     """
@@ -832,6 +836,7 @@ def plot_synapse_location_histograms(config, target_model, source=None, target=N
     )
     print(pivot_table)
 
+
 def plot_connection_info(text, num, source_labels, target_labels, title, syn_info='0', save_file=None, return_dict=None):
     """
     Function to plot connection information as a heatmap, including handling missing source and target values.
@@ -908,6 +913,7 @@ def plot_connection_info(text, num, source_labels, target_labels, title, syn_inf
         return graph_dict
     else:
         return
+
 
 def connector_percent_matrix(csv_path: str = None, exclude_strings=None, assemb_key=None, title: str = 'Percent connection matrix', pop_order=None) -> None:
     """
