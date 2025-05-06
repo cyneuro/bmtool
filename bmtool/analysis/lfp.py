@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from scipy import signal 
 import pywt
 import pandas as pd
-
+from ..bmplot.connections import is_notebook
 
 def load_ecp_to_xarray(ecp_file: str, demean: bool = False) -> xr.DataArray:
     """
