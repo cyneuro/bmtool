@@ -11,22 +11,33 @@ from scipy.stats import mannwhitneyu
 import os
 
 
-def load_spikes_to_df(spike_file: str, network_name: str, sort: bool = True, config: str = None, groupby: str = 'pop_name') -> pd.DataFrame:
+def load_spikes_to_df(spike_file: str, network_name: str, sort: bool = True, config: str = None, groupby: Union[str, List[str]] = 'pop_name') -> pd.DataFrame:
     """
     Load spike data from an HDF5 file into a pandas DataFrame.
 
-    Args:
-        spike_file (str): Path to the HDF5 file containing spike data.
-        network_name (str): The name of the network within the HDF5 file from which to load spike data.
-        sort (bool, optional): Whether to sort the DataFrame by 'timestamps'. Defaults to True.
-        config (str, optional): Will label the cell type of each spike.
-        groupby (str or list of str, optional): The column(s) to group by. Defaults to 'pop_name'.
+    Parameters
+    ----------
+    spike_file : str
+        Path to the HDF5 file containing spike data
+    network_name : str
+        The name of the network within the HDF5 file from which to load spike data
+    sort : bool, optional
+        Whether to sort the DataFrame by 'timestamps' (default: True)
+    config : str, optional
+        Path to configuration file to label the cell type of each spike (default: None)
+    groupby : Union[str, List[str]], optional
+        The column(s) to group by (default: 'pop_name')
 
-    Returns:
-        pd.DataFrame: A pandas DataFrame containing 'node_ids' and 'timestamps' columns from the spike data.
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame containing 'node_ids' and 'timestamps' columns from the spike data,
+        with additional columns if a config file is provided
     
-    Example:
-        df = load_spikes_to_df("spikes.h5", "cortex")
+    Examples
+    --------
+    >>> df = load_spikes_to_df("spikes.h5", "cortex")
+    >>> df = load_spikes_to_df("spikes.h5", "cortex", config="config.json", groupby=["pop_name", "model_type"])
     """
     with h5py.File(spike_file) as f:
         spikes_df = pd.DataFrame({
@@ -126,23 +137,31 @@ def compute_firing_rate_stats(df: pd.DataFrame, groupby: Union[str, List[str]] =
 
 
 def _pop_spike_rate(spike_times: Union[np.ndarray, list], time: Optional[Tuple[float, float, float]] = None, 
-                   time_points: Optional[Union[np.ndarray, list]] = None, frequeny: bool = False) -> np.ndarray:
+                   time_points: Optional[Union[np.ndarray, list]] = None, frequency: bool = False) -> np.ndarray:
     """
     Calculate the spike count or frequency histogram over specified time intervals.
 
-    Args:
-        spike_times (Union[np.ndarray, list]): Array or list of spike times in milliseconds.
-        time (Optional[Tuple[float, float, float]], optional): Tuple specifying (start, stop, step) in milliseconds. 
-            Used to create evenly spaced time points if `time_points` is not provided. Default is None.
-        time_points (Optional[Union[np.ndarray, list]], optional): Array or list of specific time points for binning. 
-            If provided, `time` is ignored. Default is None.
-        frequeny (bool, optional): If True, returns spike frequency in Hz; otherwise, returns spike count. Default is False.
+    Parameters
+    ----------
+    spike_times : Union[np.ndarray, list]
+        Array or list of spike times in milliseconds
+    time : Optional[Tuple[float, float, float]], optional
+        Tuple specifying (start, stop, step) in milliseconds. Used to create evenly spaced time points 
+        if `time_points` is not provided. Default is None.
+    time_points : Optional[Union[np.ndarray, list]], optional
+        Array or list of specific time points for binning. If provided, `time` is ignored. Default is None.
+    frequency : bool, optional
+        If True, returns spike frequency in Hz; otherwise, returns spike count. Default is False.
 
-    Returns:
-        np.ndarray: Array of spike counts or frequencies, depending on the `frequeny` flag.
+    Returns
+    -------
+    np.ndarray
+        Array of spike counts or frequencies, depending on the `frequency` flag.
 
-    Raises:
-        ValueError: If both `time` and `time_points` are None.
+    Raises
+    ------
+    ValueError
+        If both `time` and `time_points` are None.
     """
     if time_points is None:
         if time is None:
@@ -156,43 +175,57 @@ def _pop_spike_rate(spike_times: Union[np.ndarray, list], time: Optional[Tuple[f
     bins = np.append(time_points, time_points[-1] + dt)
     spike_rate, _ = np.histogram(np.asarray(spike_times), bins)
     
-    if frequeny:
+    if frequency:
         spike_rate = 1000 / dt * spike_rate
     
     return spike_rate
 
 
-def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: float = 0, t_stop: Optional[float] = None, 
+def get_population_spike_rate(spike_data: pd.DataFrame, fs: float = 400.0, t_start: float = 0, t_stop: Optional[float] = None, 
                               config: Optional[str] = None, network_name: Optional[str] = None,
                               save: bool = False, save_path: Optional[str] = None,
                               normalize: bool = False) -> Dict[str, np.ndarray]:
     """
     Calculate the population spike rate for each population in the given spike data, with an option to normalize.
 
-    Args:
-        spikes (pd.DataFrame): A DataFrame containing spike data with columns 'pop_name', 'timestamps', and 'node_ids'.
-        fs (float, optional): Sampling frequency in Hz, which determines the time bin size for calculating the spike rate. Default is 400.
-        t_start (float, optional): Start time (in milliseconds) for spike rate calculation. Default is 0.
-        t_stop (Optional[float], optional): Stop time (in milliseconds) for spike rate calculation. If None, defaults to the maximum timestamp in the data.
-        config (Optional[str], optional): Path to a configuration file containing node information, used to determine the correct number of nodes per population. 
-            If None, node count is estimated from unique node spikes. Default is None.
-        network_name (Optional[str], optional): Name of the network used in the configuration file, allowing selection of nodes for that network. 
-            Required if `config` is provided. Default is None.
-        save (bool, optional): Whether to save the calculated population spike rate to a file. Default is False.
-        save_path (Optional[str], optional): Directory path where the file should be saved if `save` is True. If `save` is True and `save_path` is None, a ValueError is raised.
-        normalize (bool, optional): Whether to normalize the spike rates for each population to a range of [0, 1]. Default is False.
+    Parameters
+    ----------
+    spike_data : pd.DataFrame
+        A DataFrame containing spike data with columns 'pop_name', 'timestamps', and 'node_ids'
+    fs : float, optional
+        Sampling frequency in Hz, which determines the time bin size for calculating the spike rate (default: 400.0)
+    t_start : float, optional
+        Start time (in milliseconds) for spike rate calculation (default: 0)
+    t_stop : Optional[float], optional
+        Stop time (in milliseconds) for spike rate calculation. If None, defaults to the maximum timestamp in the data
+    config : Optional[str], optional
+        Path to a configuration file containing node information, used to determine the correct number of nodes per population.
+        If None, node count is estimated from unique node spikes (default: None)
+    network_name : Optional[str], optional
+        Name of the network used in the configuration file, allowing selection of nodes for that network.
+        Required if `config` is provided (default: None)
+    save : bool, optional
+        Whether to save the calculated population spike rate to a file (default: False)
+    save_path : Optional[str], optional
+        Directory path where the file should be saved if `save` is True (default: None)
+    normalize : bool, optional
+        Whether to normalize the spike rates for each population to a range of [0, 1] (default: False)
 
-    Returns:
-        Dict[str, np.ndarray]: A dictionary where keys are population names, and values are arrays representing the spike rate over time for each population. 
-            If `normalize` is True, each population's spike rate is scaled to [0, 1].
+    Returns
+    -------
+    Dict[str, np.ndarray]
+        A dictionary where keys are population names, and values are arrays representing the spike rate over time for each population.
+        If `normalize` is True, each population's spike rate is scaled to [0, 1].
 
-    Raises:
-        ValueError: If `save` is True but `save_path` is not provided.
+    Raises
+    ------
+    ValueError
+        If `save` is True but `save_path` is not provided.
 
-    Notes:
-        - If `config` is None, the function assumes all cells in each population have fired at least once; otherwise, the node count may be inaccurate.
-        - If normalization is enabled, each population's spike rate is scaled using Min-Max normalization based on its own minimum and maximum values.
-
+    Notes
+    -----
+    - If `config` is None, the function assumes all cells in each population have fired at least once; otherwise, the node count may be inaccurate.
+    - If normalization is enabled, each population's spike rate is scaled using Min-Max normalization based on its own minimum and maximum values.
     """
     pop_spikes = {}
     node_number = {}
@@ -205,8 +238,8 @@ def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: 
         if not network_name:
             print("Grabbing first network; specify a network name to ensure correct node population is selected.")
 
-    for pop_name in spikes['pop_name'].unique():
-        ps = spikes[spikes['pop_name'] == pop_name]
+    for pop_name in spike_data['pop_name'].unique():
+        ps = spike_data[spike_data['pop_name'] == pop_name]
         
         if config:
             nodes = load_nodes_from_config(config)
@@ -220,12 +253,12 @@ def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: 
             node_number[pop_name] = ps['node_ids'].nunique()
 
         if t_stop is None:
-            t_stop = spikes['timestamps'].max()
+            t_stop = spike_data['timestamps'].max()
 
-        filtered_spikes = spikes[
-            (spikes['pop_name'] == pop_name) & 
-            (spikes['timestamps'] > t_start) & 
-            (spikes['timestamps'] < t_stop)
+        filtered_spikes = spike_data[
+            (spike_data['pop_name'] == pop_name) & 
+            (spike_data['timestamps'] > t_start) & 
+            (spike_data['timestamps'] < t_stop)
         ]
         pop_spikes[pop_name] = filtered_spikes
 
@@ -254,11 +287,30 @@ def get_population_spike_rate(spikes: pd.DataFrame, fs: float = 400.0, t_start: 
     return spike_rate
 
 
-def compare_firing_over_times(spike_df,group_by, time_window_1, time_window_2):
+def compare_firing_over_times(spike_df: pd.DataFrame, group_by: str, time_window_1: List[float], time_window_2: List[float]) -> None:
     """
-    Compares the firing rates of a population during two different time windows
-    time_window_1 and time_window_2 should be a list of [start, stop] in milliseconds
-    Returns firing rates and results of a Mann-Whitney U test (non-parametric)
+    Compares the firing rates of a population during two different time windows and performs
+    a statistical test to determine if there is a significant difference.
+    
+    Parameters
+    ----------
+    spike_df : pd.DataFrame
+        DataFrame containing spike data with columns for timestamps, node_ids, and grouping variable
+    group_by : str
+        Column name to group spikes by (e.g., 'pop_name')
+    time_window_1 : List[float]
+        First time window as [start, stop] in milliseconds
+    time_window_2 : List[float]
+        Second time window as [start, stop] in milliseconds
+    
+    Returns
+    -------
+    None
+        Results are printed to the console
+    
+    Notes
+    -----
+    Uses Mann-Whitney U test (non-parametric) to compare firing rates between the two windows
     """
     # Filter spikes for the population of interest
     for pop_name in spike_df[group_by].unique():

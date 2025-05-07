@@ -273,10 +273,83 @@ def calculate_SNR(fooof_model: FOOOF, freq_band: tuple) -> float:
     return normalized_power
 
 
-def wavelet_filter(x: np.ndarray, freq: float, fs: float, bandwidth: float = 1.0, axis: int = -1) -> np.ndarray:
+def calculate_wavelet_passband(center_freq, bandwidth, threshold=0.3):
+    """
+    Calculate the passband of a complex Morlet wavelet filter.
+    
+    Parameters
+    ----------
+    center_freq : float
+        Center frequency (Hz) of the wavelet filter
+    bandwidth : float
+        Bandwidth parameter of the wavelet filter
+    threshold : float, optional
+        Power threshold to define the passband edges (default: 0.5 = -3dB point)
+        
+    Returns
+    -------
+    tuple
+        (lower_bound, upper_bound, passband_width) of the frequency passband in Hz
+    """
+    # Create a high-resolution frequency axis around the center frequency
+    # Extend range to 3x the expected width to ensure we capture the full passband
+    expected_width = center_freq * bandwidth / 2
+    freq_min = max(0.1, center_freq - 3 * expected_width)
+    freq_max = center_freq + 3 * expected_width
+    freq_axis = np.linspace(freq_min, freq_max, 1000)
+    
+    # Calculate the theoretical frequency response of the Morlet wavelet
+    # For a complex Morlet wavelet, the frequency response approximates a Gaussian
+    # centered at the center frequency with width related to the bandwidth parameter
+    sigma_f = bandwidth * center_freq / 8  # Approximate relationship for cmor wavelet
+    response = np.exp(-((freq_axis - center_freq)**2) / (2 * sigma_f**2))
+    
+    # Find the passband edges (where response crosses the threshold)
+    above_threshold = response >= threshold
+    if not np.any(above_threshold):
+        return (center_freq, center_freq, 0)  # No passband found
+    
+    # Find the first and last indices where response is above threshold
+    indices = np.where(above_threshold)[0]
+    lower_idx = indices[0]
+    upper_idx = indices[-1]
+    
+    # Get the corresponding frequencies
+    lower_bound = freq_axis[lower_idx]
+    upper_bound = freq_axis[upper_idx]
+    passband_width = upper_bound - lower_bound
+    
+    return (lower_bound, upper_bound, passband_width)
+
+
+def wavelet_filter(x: np.ndarray, freq: float, fs: float, bandwidth: float = 1.0, axis: int = -1,show_passband: bool = False) -> np.ndarray:
     """
     Compute the Continuous Wavelet Transform (CWT) for a specified frequency using a complex Morlet wavelet.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Input signal
+    freq : float
+        Target frequency for the wavelet filter
+    fs : float
+        Sampling frequency of the signal
+    bandwidth : float, optional
+        Bandwidth parameter of the wavelet filter (default is 1.0)
+    axis : int, optional
+        Axis along which to compute the CWT (default is -1)
+    show_passband : bool, optional
+        If True, print the passband of the wavelet filter (default is False)
+    
+    Returns
+    -------
+    np.ndarray
+        Continuous Wavelet Transform of the input signal
     """
+    if show_passband:
+        lower_bound, upper_bound, passband_width = calculate_wavelet_passband(freq, bandwidth, threshold=0.3) # kinda made up threshold gives the rough idea
+        print(f"Wavelet filter at {freq:.1f} Hz Bandwidth: {bandwidth:.1f} Hz:")
+        print(f"  Passband: {lower_bound:.1f} - {upper_bound:.1f} Hz (width: {passband_width:.1f} Hz)")
     wavelet = 'cmor' + str(2 * bandwidth ** 2) + '-1.0'
     scale = pywt.scale2frequency(wavelet, 1) * fs / freq
     x_a = pywt.cwt(x, [scale], wavelet=wavelet, axis=axis)[0][0]
@@ -290,6 +363,53 @@ def butter_bandpass_filter(data: np.ndarray, lowcut: float, highcut: float, fs: 
     sos = signal.butter(order, [lowcut, highcut], fs=fs, btype='band', output='sos')
     x_a = signal.sosfiltfilt(sos, data, axis=axis)
     return x_a
+
+
+def get_lfp_power(lfp_data: np.ndarray, freq: float, fs: float, filter_method: str = 'wavelet',
+                   lowcut: float = None, highcut: float = None, bandwidth: float = 1.0) -> np.ndarray:
+    """
+    Compute the power of the raw LFP signal in a specified frequency band.
+    
+    Parameters
+    ----------
+    lfp_data : np.ndarray
+        Raw local field potential (LFP) time series data
+    freq : float
+        Center frequency (Hz) for wavelet filtering method
+    fs : float
+        Sampling frequency (Hz) of the input data
+    filter_method : str, optional
+        Filtering method to use, either 'wavelet' or 'butter' (default: 'wavelet')
+    lowcut : float, optional
+        Lower frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
+    highcut : float, optional
+        Upper frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
+    bandwidth : float, optional
+        Bandwidth parameter for wavelet filter when method='wavelet' (default: 1.0)
+        
+    Returns
+    -------
+    np.ndarray
+        Power of the filtered signal (magnitude squared)
+        
+    Notes
+    -----
+    - The 'wavelet' method uses a complex Morlet wavelet centered at the specified frequency
+    - The 'butter' method uses a Butterworth bandpass filter with the specified cutoff frequencies
+    - When using the 'butter' method, both lowcut and highcut must be provided
+    """
+    if filter_method == 'wavelet':
+        filtered_signal = wavelet_filter(lfp_data, freq, fs, bandwidth)
+    elif filter_method == 'butter':
+        if lowcut is None or highcut is None:
+            raise ValueError("Both lowcut and highcut must be specified when using 'butter' method.")
+        filtered_signal = butter_bandpass_filter(lfp_data, lowcut, highcut, fs)
+    else:
+        raise ValueError("Invalid method. Choose 'wavelet' or 'butter'.")
+    
+    # Calculate power (magnitude squared of filtered signal)
+    power = np.abs(filtered_signal)**2
+    return power
 
 
 # windowing functions 
