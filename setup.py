@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="bmtool",
-    version='0.7.0.6.1',
+    version='0.7.0.6.2',
     author="Neural Engineering Laboratory at the University of Missouri",
     author_email="gregglickert@mail.missouri.edu",
     description="BMTool",
@@ -31,7 +31,8 @@ setup(
         'requests',
         'pyyaml',
         'PyWavelets',
-        'numba'
+        'numba',
+        'neuron'
     ],
     classifiers=[
         'Intended Audience :: Developers',
