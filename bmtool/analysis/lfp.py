@@ -412,6 +412,61 @@ def get_lfp_power(lfp_data: np.ndarray, freq: float, fs: float, filter_method: s
     return power
 
 
+def get_lfp_phase(lfp_data: np.ndarray, freq_of_interest: float, fs: float, filter_method: str = 'wavelet',
+                   lowcut: float = None, highcut: float = None, bandwidth: float = 1.0) -> np.ndarray:
+    """
+    Calculate the phase of the filtered signal.
+    
+    Parameters
+    ----------
+    lfp_data : np.ndarray
+        Input LFP data
+    fs : float
+        Sampling frequency (Hz)
+    freq : float
+        Frequency of interest (Hz)
+    filter_method : str, optional
+        Method for filtering the signal ('wavelet' or 'butter')
+    bandwidth : float, optional
+        Bandwidth parameter for wavelet filter when method='wavelet' (default: 1.0)
+    lowcut : float, optional
+        Low cutoff frequency for Butterworth filter when method='butter'
+    highcut : float, optional
+        High cutoff frequency for Butterworth filter when method='butter'
+        
+    Returns
+    -------
+    np.ndarray
+        Phase of the filtered signal
+        
+    Notes
+    -----
+    - The 'wavelet' method uses a complex Morlet wavelet centered at the specified frequency
+    - The 'butter' method uses a Butterworth bandpass filter with the specified cutoff frequencies
+      followed by Hilbert transform to extract the phase
+    - When using the 'butter' method, both lowcut and highcut must be provided
+    """
+    if filter_method == 'wavelet':
+        if freq_of_interest is None:
+            raise ValueError("freq_of_interest must be provided for the wavelet method.")
+        # Wavelet filter returns complex values directly
+        filtered_signal = wavelet_filter(lfp_data, freq_of_interest, fs, bandwidth)
+        # Phase is the angle of the complex signal
+        phase = np.angle(filtered_signal)
+    elif filter_method == 'butter':
+        if lowcut is None or highcut is None:
+            raise ValueError("Both lowcut and highcut must be specified when using 'butter' method.")
+        # Butterworth filter returns real values
+        filtered_signal = butter_bandpass_filter(lfp_data, lowcut, highcut, fs)
+        # Apply Hilbert transform to get analytic signal (complex)
+        analytic_signal = signal.hilbert(filtered_signal)
+        # Phase is the angle of the analytic signal
+        phase = np.angle(analytic_signal)
+    else:
+        raise ValueError(f"Invalid method {filter_method}. Choose 'wavelet' or 'butter'.")
+    
+    return phase
+
 # windowing functions 
 def windowed_xarray(da, windows, dim='time',
                     new_coord_name='cycle', new_coord=None):

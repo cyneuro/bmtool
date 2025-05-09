@@ -7,13 +7,10 @@ from scipy import signal
 import numba
 from numba import cuda
 import pandas as pd
-import xarray as xr
-from .lfp import wavelet_filter,butter_bandpass_filter,get_lfp_power
-from typing import Dict, List
+from .lfp import wavelet_filter,butter_bandpass_filter,get_lfp_power, get_lfp_phase
+from typing import Dict, List, Optional
 from tqdm.notebook import tqdm
 import scipy.stats as stats
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 
 def calculate_signal_signal_plv(signal1: np.ndarray, signal2: np.ndarray, fs: float, freq_of_interest: float = None, 
@@ -87,17 +84,17 @@ def calculate_signal_signal_plv(signal1: np.ndarray, signal2: np.ndarray, fs: fl
 
 def calculate_spike_lfp_plv(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, spike_fs: float = None,
                    lfp_fs: float = None, filter_method: str = 'butter', freq_of_interest: float = None,
-                   lowcut: float = None, highcut: float = None,
-                   bandwidth: float = 2.0) -> tuple:
+                   lowcut: float = None, highcut: float = None, bandwidth: float = 2.0,
+                   filtered_lfp_phase: np.ndarray = None) -> float:
     """
-    Calculate spike-lfp phase locking value Based on https://www.sciencedirect.com/science/article/pii/S1053811910000959
+    Calculate spike-lfp unbiased phase locking value 
     
     Parameters
     ----------
     spike_times : np.ndarray
         Array of spike times
     lfp_data : np.ndarray
-        Local field potential time series data
+        Local field potential time series data. Not required if filtered_lfp_phase is provided.
     spike_fs : float, optional
         Sampling frequency in Hz of the spike times, only needed if spike times and LFP have different sampling rates
     lfp_fs : float
@@ -112,13 +109,13 @@ def calculate_spike_lfp_plv(spike_times: np.ndarray = None, lfp_data: np.ndarray
         Upper frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
     bandwidth : float, optional
         Bandwidth parameter for wavelet filter when method='wavelet' (default: 2.0)
+    filtered_lfp_phase : np.ndarray, optional
+        Pre-computed instantaneous phase of the filtered LFP. If provided, the function will skip the filtering step.
     
     Returns
     -------
-    tuple
-        (plv, spike_phases) where:
-        - plv: Phase Locking Value
-        - spike_phases: Phases at spike times
+    float
+        Phase Locking Value (unbiased)
     """
     
     if spike_fs is None:
@@ -130,46 +127,41 @@ def calculate_spike_lfp_plv(spike_times: np.ndarray = None, lfp_data: np.ndarray
     spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
     
     # Filter indices to ensure they're within bounds of the LFP signal
-    valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
-    if len(valid_indices) <= 1:
-        return 0, np.array([])
-    
-    # Filter the LFP signal to extract the phase
-    if filter_method == 'wavelet':
-        if freq_of_interest is None:
-            raise ValueError("freq_of_interest must be provided for the wavelet method.")
-        
-        # Apply CWT to extract phase
-        filtered_lfp = wavelet_filter(x=lfp_data, freq=freq_of_interest, fs=lfp_fs, bandwidth=bandwidth)
-    
-    elif filter_method == 'butter':
-        if lowcut is None or highcut is None:
-            raise ValueError("Both lowcut and highcut must be specified for the butter method.")
-        
-        # Bandpass filter the LFP signal
-        filtered_lfp = butter_bandpass_filter(data=lfp_data, lowcut=lowcut, highcut=highcut, fs=lfp_fs)
-        filtered_lfp = signal.hilbert(filtered_lfp)  # Get analytic signal
-    
-        
+    if filtered_lfp_phase is not None:
+        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
     else:
-        raise ValueError("Invalid method. Choose 'wavelet' or 'butter'.")
+        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
+        
+    if len(valid_indices) <= 1:
+        return 0
+    
+    # Get instantaneous phase
+    if filtered_lfp_phase is None:
+        instantaneous_phase = get_lfp_phase(lfp_data=lfp_data, filter_method=filter_method, 
+                                           freq_of_interest=freq_of_interest, lowcut=lowcut, 
+                                           highcut=highcut, bandwidth=bandwidth, fs=lfp_fs)
+    else:
+        instantaneous_phase = filtered_lfp_phase
     
     # Get phases at spike times
     spike_phases = instantaneous_phase[valid_indices]
-    
-    # Calculate PPC1
-    n = len(spike_phases)
+
+    # Number of spikes
+    N = len(spike_phases)
     
     # Convert phases to unit vectors in the complex plane
     unit_vectors = np.exp(1j * spike_phases)
     
-    # Calculate the resultant vector
+    # Sum of all unit vectors (resultant vector)
     resultant_vector = np.sum(unit_vectors)
-    
-    # Plv is the squared length of the resultant vector divided by n²
-    plv = (np.abs(resultant_vector) ** 2) / (n ** 2)
-    
-    return plv
+
+    # Calculate plv^2 * N
+    plv2n = (resultant_vector * resultant_vector.conjugate()).real / N  # plv^2 * N
+    plv = (plv2n / N) ** 0.5
+    ppc = (plv2n - 1) / (N - 1)  # ppc = (plv^2 * N - 1) / (N - 1)
+    plv_unbiased = np.fmax(ppc, 0.) ** 0.5  # ensure non-negative
+
+    return plv_unbiased
 
 
 @numba.njit(parallel=True, fastmath=True)
@@ -209,8 +201,8 @@ def _ppc_gpu(spike_phases):
 
 def calculate_ppc(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, spike_fs: float = None,
                   lfp_fs: float = None, filter_method: str = 'wavelet', freq_of_interest: float = None,
-                  lowcut: float = None, highcut: float = None,
-                  bandwidth: float = 2.0, ppc_method: str = 'numpy') -> tuple:
+                  lowcut: float = None, highcut: float = None, bandwidth: float = 2.0, 
+                  ppc_method: str = 'numpy', filtered_lfp_phase: np.ndarray = None) -> float:
     """
     Calculate Pairwise Phase Consistency (PPC) between spike times and LFP signal.
     Based on https://www.sciencedirect.com/science/article/pii/S1053811910000959
@@ -220,7 +212,7 @@ def calculate_ppc(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, s
     spike_times : np.ndarray
         Array of spike times
     lfp_data : np.ndarray
-        Local field potential time series data
+        Local field potential time series data. Not required if filtered_lfp_phase is provided.
     spike_fs : float, optional
         Sampling frequency in Hz of the spike times, only needed if spike times and LFP have different sampling rates
     lfp_fs : float
@@ -237,13 +229,13 @@ def calculate_ppc(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, s
         Bandwidth parameter for wavelet filter when method='wavelet' (default: 2.0)
     ppc_method : str, optional
         Algorithm to use for PPC calculation: 'numpy', 'numba', or 'gpu' (default: 'numpy')
+    filtered_lfp_phase : np.ndarray, optional
+        Pre-computed instantaneous phase of the filtered LFP. If provided, the function will skip the filtering step.
     
     Returns
     -------
-    tuple
-        (ppc, spike_phases) where:
-        - ppc: Pairwise Phase Consistency value
-        - spike_phases: Phases at spike times
+    float
+        Pairwise Phase Consistency value
     """
     if spike_fs is None:
         spike_fs = lfp_fs
@@ -254,32 +246,21 @@ def calculate_ppc(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, s
     spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
     
     # Filter indices to ensure they're within bounds of the LFP signal
-    valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
-    if len(valid_indices) <= 1:
-        return 0, np.array([])
-    
-    # Extract phase using the specified method
-    if filter_method == 'wavelet':
-        if freq_of_interest is None:
-            raise ValueError("freq_of_interest must be provided for the wavelet method.")
-        
-        # Apply CWT to extract phase at the frequency of interest
-        lfp_complex = wavelet_filter(x=lfp_data, freq=freq_of_interest, fs=lfp_fs, bandwidth=bandwidth)
-        instantaneous_phase = np.angle(lfp_complex)
-        
-    elif filter_method == 'butter':
-        if lowcut is None or highcut is None:
-            raise ValueError("Both lowcut and highcut must be specified for the butter method.")
-        
-        # Bandpass filter the signal
-        filtered_lfp = butter_bandpass_filter(data=lfp_data, lowcut=lowcut, highcut=highcut, fs=lfp_fs)
-        
-        # Get phase using the Hilbert transform
-        analytic_signal = signal.hilbert(filtered_lfp)
-        instantaneous_phase = np.angle(analytic_signal)
-        
+    if filtered_lfp_phase is not None:
+        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
     else:
-        raise ValueError("Invalid method. Choose 'wavelet' or 'butter'.")
+        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
+        
+    if len(valid_indices) <= 1:
+        return 0
+    
+    # Get instantaneous phase
+    if filtered_lfp_phase is None:
+        instantaneous_phase = get_lfp_phase(lfp_data=lfp_data, filter_method=filter_method, 
+                                           freq_of_interest=freq_of_interest, lowcut=lowcut, 
+                                           highcut=highcut, bandwidth=bandwidth, fs=lfp_fs)
+    else:
+        instantaneous_phase = filtered_lfp_phase
     
     # Get phases at spike times
     spike_phases = instantaneous_phase[valid_indices]
@@ -288,28 +269,10 @@ def calculate_ppc(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, s
 
     # Calculate PPC (Pairwise Phase Consistency)
     if n_spikes <= 1:
-        return 0, spike_phases
+        return 0
     
     # Explicit calculation of pairwise phase consistency
-    sum_cos_diff = 0.0
-    
-    # # Σᵢ Σⱼ₍ᵢ₊₁₎ f(θᵢ, θⱼ)
-    # for i in range(n_spikes - 1):  # For each spike i
-    #     for j in range(i + 1, n_spikes):  # For each spike j > i
-    #         # Calculate the phase difference between spikes i and j
-    #         phase_diff = spike_phases[i] - spike_phases[j]
-            
-    #         #f(θᵢ, θⱼ) = cos(θᵢ)cos(θⱼ) + sin(θᵢ)sin(θⱼ) can become #f(θᵢ, θⱼ) = cos(θᵢ - θⱼ)
-    #         cos_diff = np.cos(phase_diff)
-            
-    #         # Add to the sum
-    #         sum_cos_diff += cos_diff
-    
-    # # Calculate PPC according to the equation
-    # # PPC = (2 / (N(N-1))) * Σᵢ Σⱼ₍ᵢ₊₁₎ f(θᵢ, θⱼ)
-    # ppc = ((2 / (n_spikes * (n_spikes - 1))) * sum_cos_diff)
-    
-    # same as above (i think) but with vectorized computation and memory fixes so it wont take forever to run.
+    # Vectorized computation for efficiency
     if ppc_method == 'numpy':
         i, j = np.triu_indices(n_spikes, k=1)
         phase_diff = spike_phases[i] - spike_phases[j]
@@ -320,14 +283,14 @@ def calculate_ppc(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, s
     elif ppc_method == 'gpu':
         ppc = _ppc_gpu(spike_phases)
     else:
-        raise ExceptionType("Please use a supported ppc method currently that is numpy, numba or gpu")
+        raise ValueError("Please use a supported ppc method currently that is numpy, numba or gpu")
     return ppc
 
     
 def calculate_ppc2(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, spike_fs: float = None,
                   lfp_fs: float = None, filter_method: str = 'wavelet', freq_of_interest: float = None,
-                  lowcut: float = None, highcut: float = None,
-                  bandwidth: float = 2.0) -> float:
+                  lowcut: float = None, highcut: float = None, bandwidth: float = 2.0,
+                  filtered_lfp_phase: np.ndarray = None) -> float:
     """
     # -----------------------------------------------------------------------------
     # PPC2 Calculation (Vinck et al., 2010) 
@@ -343,7 +306,7 @@ def calculate_ppc2(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, 
     spike_times : np.ndarray
         Array of spike times
     lfp_data : np.ndarray
-        Local field potential time series data
+        Local field potential time series data. Not required if filtered_lfp_phase is provided.
     spike_fs : float, optional
         Sampling frequency in Hz of the spike times, only needed if spike times and LFP have different sampling rates
     lfp_fs : float
@@ -358,6 +321,8 @@ def calculate_ppc2(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, 
         Upper frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
     bandwidth : float, optional
         Bandwidth parameter for wavelet filter when method='wavelet' (default: 2.0)
+    filtered_lfp_phase : np.ndarray, optional
+        Pre-computed instantaneous phase of the filtered LFP. If provided, the function will skip the filtering step.
     
     Returns
     -------
@@ -374,32 +339,21 @@ def calculate_ppc2(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, 
     spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
     
     # Filter indices to ensure they're within bounds of the LFP signal
-    valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
+    if filtered_lfp_phase is not None:
+        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
+    else:
+        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
+        
     if len(valid_indices) <= 1:
         return 0
     
-    # Extract phase using the specified method
-    if filter_method == 'wavelet':
-        if freq_of_interest is None:
-            raise ValueError("freq_of_interest must be provided for the wavelet method.")
-        
-        # Apply CWT to extract phase at the frequency of interest
-        lfp_complex = wavelet_filter(x=lfp_data, freq=freq_of_interest, fs=lfp_fs, bandwidth=bandwidth)
-        instantaneous_phase = np.angle(lfp_complex)
-        
-    elif filter_method == 'butter':
-        if lowcut is None or highcut is None:
-            raise ValueError("Both lowcut and highcut must be specified for the butter method.")
-        
-        # Bandpass filter the signal
-        filtered_lfp = butter_bandpass_filter(data=lfp_data, lowcut=lowcut, highcut=highcut, fs=lfp_fs)
-        
-        # Get phase using the Hilbert transform
-        analytic_signal = signal.hilbert(filtered_lfp)
-        instantaneous_phase = np.angle(analytic_signal)
-        
+    # Get instantaneous phase
+    if filtered_lfp_phase is None:
+        instantaneous_phase = get_lfp_phase(lfp_data=lfp_data, filter_method=filter_method, 
+                                           freq_of_interest=freq_of_interest, lowcut=lowcut, 
+                                           highcut=highcut, bandwidth=bandwidth, fs=lfp_fs)
     else:
-        raise ValueError("Invalid method. Choose 'wavelet' or 'butter'.")
+        instantaneous_phase = filtered_lfp_phase
     
     # Get phases at spike times
     spike_phases = instantaneous_phase[valid_indices]
@@ -422,14 +376,15 @@ def calculate_ppc2(spike_times: np.ndarray = None, lfp_data: np.ndarray = None, 
     return ppc2
 
 
-def calculate_ppc_per_cell(spike_df: pd.DataFrame=None, lfp_data: np.ndarray=None,
+def calculate_entrainment_per_cell(spike_df: pd.DataFrame=None, lfp_data: np.ndarray=None, filter_method: str='wavelet', pop_names: List[str]=None,
+                            entrainment_method: str='plv', lowcut: float=None, highcut: float=None,
                             spike_fs: float=None, lfp_fs: float=None, bandwidth: float=2,
-                            pop_names: List[str]=None, freqs: List[float]=None) -> Dict[str, Dict[int, Dict[float, float]]]:
+                            freqs: List[float]=None, ppc_method: str='numpy',) -> Dict[str, Dict[int, Dict[float, float]]]:
     """
-    Calculate pairwise phase consistency (PPC) per neuron (cell) for specified frequencies across different populations.
+    Calculate neural entrainment (PPC, PLV) per neuron (cell) for specified frequencies across different populations.
 
-    This function computes the PPC for each neuron within the specified populations based on their spike times
-    and the provided LFP signal. It returns a nested dictionary structure containing the PPC values
+    This function computes the entrainment metrics for each neuron within the specified populations based on their spike times
+    and the provided LFP signal. It returns a nested dictionary structure containing the entrainment values
     organized by population, node ID, and frequency.
 
     Parameters
@@ -438,14 +393,26 @@ def calculate_ppc_per_cell(spike_df: pd.DataFrame=None, lfp_data: np.ndarray=Non
         DataFrame containing spike data with columns 'pop_name', 'node_ids', and 'timestamps'
     lfp_data : np.ndarray
         Local field potential (LFP) time series data
+    filter_method : str, optional
+        Method to use for filtering, either 'wavelet' or 'butter' (default: 'wavelet')
+    entrainment_method : str, optional
+        Method to use for entrainment calculation, either 'plv', 'ppc', or 'ppc2' (default: 'plv')
+    lowcut : float, optional
+        Lower frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
+    highcut : float, optional
+        Upper frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
     spike_fs : float
         Sampling frequency of the spike times in Hz
     lfp_fs : float
         Sampling frequency of the LFP signal in Hz
+    bandwidth : float, optional
+        Bandwidth parameter for wavelet filter when method='wavelet' (default: 2.0)
+    ppc_method : str, optional
+        Algorithm to use for PPC calculation: 'numpy', 'numba', or 'gpu' (default: 'numpy')
     pop_names : List[str]
         List of population names to analyze
     freqs : List[float]
-        List of frequencies (in Hz) at which to calculate PPC
+        List of frequencies (in Hz) at which to calculate entrainment
 
     Returns
     -------
@@ -454,18 +421,32 @@ def calculate_ppc_per_cell(spike_df: pd.DataFrame=None, lfp_data: np.ndarray=Non
         {
             population_name: {
                 node_id: {
-                    frequency: PPC value
+                    frequency: entrainment value
                 }
             }
         }
-        PPC values are floats representing the pairwise phase consistency at each frequency
+        Entrainment values are floats representing the metric (PPC, PLV) at each frequency
     """
-    ppc_dict = {}
+    # pre filter lfp to speed up calculate of entrainment
+    filtered_lfp_phases = {}
+    for freq in range(len(freqs)):
+        phase = get_lfp_phase(
+            lfp_data=lfp_data, 
+            freq_of_interest=freqs[freq], 
+            fs=lfp_fs, 
+            filter_method=filter_method,
+            lowcut=lowcut, 
+            highcut=highcut, 
+            bandwidth=bandwidth
+        )
+        filtered_lfp_phases[freqs[freq]] = phase
+            
+    entrainment_dict = {}
     for pop in pop_names:
         skip_count = 0
         pop_spikes = spike_df[spike_df['pop_name'] == pop]
         nodes = pop_spikes['node_ids'].unique()
-        ppc_dict[pop] = {}
+        entrainment_dict[pop] = {}
         print(f'Processing {pop} population')
         for node in tqdm(nodes):
             node_spikes = pop_spikes[pop_spikes['node_ids'] == node]
@@ -475,22 +456,53 @@ def calculate_ppc_per_cell(spike_df: pd.DataFrame=None, lfp_data: np.ndarray=Non
                 skip_count += 1
                 continue
 
-            ppc_dict[pop][node] = {}
+            entrainment_dict[pop][node] = {}
             for freq in freqs:
-                ppc = calculate_ppc2(
-                    node_spikes['timestamps'].values,
-                    lfp_data,
-                    spike_fs=spike_fs,
-                    lfp_fs=lfp_fs,
-                    freq_of_interest=freq,
-                    bandwidth=bandwidth,
-                    filter_method='wavelet'
-                )
-                ppc_dict[pop][node][freq] = ppc
+                # Calculate entrainment based on the selected method using the pre-filtered phases
+                if entrainment_method == 'plv':
+                    entrainment_dict[pop][node][freq] = calculate_spike_lfp_plv(
+                        node_spikes['timestamps'].values,
+                        lfp_data,
+                        spike_fs=spike_fs,
+                        lfp_fs=lfp_fs,
+                        freq_of_interest=freq,
+                        bandwidth=bandwidth,
+                        lowcut=lowcut,
+                        highcut=highcut,
+                        filter_method=filter_method,
+                        filtered_lfp_phase=filtered_lfp_phases[freq]
+                    )
+                elif entrainment_method == 'ppc2':
+                    entrainment_dict[pop][node][freq] = calculate_ppc2(
+                        node_spikes['timestamps'].values,
+                        lfp_data,
+                        spike_fs=spike_fs,
+                        lfp_fs=lfp_fs,
+                        freq_of_interest=freq,
+                        bandwidth=bandwidth,
+                        lowcut=lowcut,
+                        highcut=highcut,
+                        filter_method=filter_method,
+                        filtered_lfp_phase=filtered_lfp_phases[freq]
+                    )
+                elif entrainment_method == 'ppc':
+                    entrainment_dict[pop][node][freq] = calculate_ppc(
+                        node_spikes['timestamps'].values,
+                        lfp_data,
+                        spike_fs=spike_fs,
+                        lfp_fs=lfp_fs,
+                        freq_of_interest=freq,
+                        bandwidth=bandwidth,
+                        lowcut=lowcut,
+                        highcut=highcut,
+                        filter_method=filter_method,
+                        ppc_method=ppc_method,
+                        filtered_lfp_phase=filtered_lfp_phases[freq]
+                    )
 
-        print(f'Calculated PPC for {pop} population with {len(nodes)-skip_count} valid cells, skipped {skip_count} cells for lack of spikes')
+        print(f'Calculated {entrainment_method.upper()} for {pop} population with {len(nodes)-skip_count} valid cells, skipped {skip_count} cells for lack of spikes')
 
-    return ppc_dict
+    return entrainment_dict
 
 
 def calculate_spike_rate_power_correlation(spike_rate, lfp_data, fs, pop_names, filter_method='wavelet',
@@ -540,12 +552,8 @@ def calculate_spike_rate_power_correlation(spike_rate, lfp_data, fs, pop_names, 
     # Calculate power at each frequency band using specified filter
     power_by_freq = {}
     for freq in frequencies:
-        if filter_method == 'wavelet':
-            power_by_freq[freq] = get_lfp_power(lfp_data, freq, fs, filter_method, 
-                                               lowcut=None, highcut=None, bandwidth=bandwidth)
-        elif filter_method == 'butter':
-            power_by_freq[freq] = get_lfp_power(lfp_data, freq, fs, filter_method, 
-                                               lowcut=lowcut, highcut=highcut)
+        power_by_freq[freq] = get_lfp_power(lfp_data, freq, fs, filter_method, 
+                                           lowcut=lowcut, highcut=highcut, bandwidth=bandwidth)
     
     # Calculate correlation for each population
     for pop in pop_names:
