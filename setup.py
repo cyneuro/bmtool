@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="bmtool",
-    version='0.7.0.6.3',
+    version='0.7.0.6.4',
     author="Neural Engineering Laboratory at the University of Missouri",
     author_email="gregglickert@mail.missouri.edu",
     description="BMTool",
@@ -16,7 +16,7 @@ setup(
     download_url='',
     license='MIT',
     install_requires=[
-        'neuron',
+        'neuron==8.2.4', # hard code version
         'bmtk',
         'click',
         'clint',
