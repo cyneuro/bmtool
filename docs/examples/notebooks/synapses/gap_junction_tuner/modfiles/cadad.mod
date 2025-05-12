@@ -6,7 +6,7 @@ TITLE Fast mechanism for submembranal Ca++ concentration (cai)
 :	- increase of cai due to calcium currents
 :	- extrusion of calcium with a simple first order equation
 :
-: This mechanism is compatible with the calcium pump "cad" and has the 
+: This mechanism is compatible with the calcium pump "cad" and has the
 : same name and parameters; however the parameters specific to the pump
 : are dummy here.
 :
@@ -50,7 +50,7 @@ PARAMETER {
 }
 
 STATE {
-  cai		(mM) 
+  cai		(mM)
 }
 
 INITIAL {
@@ -61,14 +61,13 @@ ASSIGNED {
   ica		(mA/cm2)
   drive_channel	(mM/ms)
 }
-	
+
 BREAKPOINT {
   SOLVE state METHOD cnexp
 }
 
-DERIVATIVE state { 
+DERIVATIVE state {
   drive_channel =  - (10000) * ica / (2 * FARADAY * depth)
   if (drive_channel <= 0.) { drive_channel = 0. }	: cannot pump inward
   cai' = drive_channel + (cainf-cai)/taur
 }
-

@@ -78,10 +78,10 @@ gap_junc.setup_nodes(source=net.nodes(pop_name='PopA'), target=net.nodes(pop_nam
 
 # Add gap junction edges
 conn = net.add_edges(
-    is_gap_junction=True, 
-    syn_weight=0.0000495, 
+    is_gap_junction=True,
+    syn_weight=0.0000495,
     target_sections=None,
-    afferent_section_id=0, 
+    afferent_section_id=0,
     afferent_section_pos=0.5,
     **gap_junc.edge_params()
 )
@@ -104,4 +104,4 @@ net.add_edges(**connector.edge_params())
 # Connect background to PopB
 connector.setup_nodes(target=net.nodes(pop_name='PopB'))
 net.add_edges(**connector.edge_params())
-``` 
+```

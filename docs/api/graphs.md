@@ -15,4 +15,3 @@ This page provides API reference documentation for the Graphs module, which cont
     options:
       show_root_heading: true
       heading_level: 3
-

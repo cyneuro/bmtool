@@ -47,7 +47,7 @@ from bmtool.connectors import ReciprocalConnector
 
 # Create connector with 15% base probability and 6.7% reciprocal probability
 connector = ReciprocalConnector(
-    p0=0.15,           # Base connection probability 
+    p0=0.15,           # Base connection probability
     pr=0.06767705087,  # Reciprocal connection probability
     n_syn0=1,          # Number of synapses for base connection
     n_syn1=1,          # Number of synapses for reciprocal connection
@@ -88,10 +88,10 @@ gap_junc.setup_nodes(source=net.nodes(pop_name='PopA'), target=net.nodes(pop_nam
 
 # Add gap junction edges
 conn = net.add_edges(
-    is_gap_junction=True, 
-    syn_weight=0.0000495, 
+    is_gap_junction=True,
+    syn_weight=0.0000495,
     target_sections=None,
-    afferent_section_id=0, 
+    afferent_section_id=0,
     afferent_section_pos=0.5,
     **gap_junc.edge_params()
 )
@@ -142,4 +142,4 @@ connector.setup_nodes(source=net.nodes(pop_name='PopA'), target=net.nodes(pop_na
 net.add_edges(**connector.edge_params())
 ```
 
-This creates connections where the probability decreases exponentially with distance between neurons. 
+This creates connections where the probability decreases exponentially with distance between neurons.

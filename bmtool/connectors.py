@@ -1,32 +1,33 @@
-from abc import ABC, abstractmethod
-import numpy as np
-from scipy.special import erf
-from scipy.optimize import minimize_scalar
-from functools import partial
 import time
 import types
+from abc import ABC, abstractmethod
+from functools import partial
+
+import numpy as np
 import pandas as pd
-import re
+from scipy.optimize import minimize_scalar
+from scipy.special import erf
 
 rng = np.random.default_rng()
 
-report_name = 'conn.csv'
+report_name = "conn.csv"
 
 ##############################################################################
 ############################## CONNECT CELLS #################################
+
 
 # Utility Functions
 def num_prop(ratio, N):
     """
     Calculate numbers of total N in proportion to ratio.
-    
+
     Parameters:
     -----------
     ratio : array-like
         Proportions to distribute N across.
     N : int
         Total number to distribute.
-        
+
     Returns:
     --------
     numpy.ndarray
@@ -40,14 +41,14 @@ def num_prop(ratio, N):
 def decision(prob, size=None):
     """
     Make random decision(s) based on input probability.
-    
+
     Parameters:
     -----------
     prob : float
         Probability threshold between 0 and 1.
     size : int or tuple, optional
         Size of the output array. If None, a single decision is returned.
-        
+
     Returns:
     --------
     bool or numpy.ndarray
@@ -60,16 +61,16 @@ def decision(prob, size=None):
 def decisions(prob):
     """
     Make multiple random decisions based on input probabilities.
-    
+
     Parameters:
     -----------
     prob : array-like
         Array of probability thresholds between 0 and 1.
-        
+
     Returns:
     --------
     numpy.ndarray
-        Boolean array with the same shape as prob, containing results of 
+        Boolean array with the same shape as prob, containing results of
         the random decisions.
     """
     prob = np.asarray(prob)
@@ -82,17 +83,17 @@ def euclid_dist(p1, p2):
     p1, p2: Coordinates in numpy array
     """
     dvec = np.asarray(p1) - np.asarray(p2)
-    return (dvec @ dvec) ** .5
+    return (dvec @ dvec) ** 0.5
 
 
 def spherical_dist(node1, node2):
     """Spherical distance between two input nodes"""
-    return euclid_dist(node1['positions'], node2['positions']).item()
+    return euclid_dist(node1["positions"], node2["positions"]).item()
 
 
 def cylindrical_dist_z(node1, node2):
     """Cylindircal distance between two input nodes (ignoring z-axis)"""
-    return euclid_dist(node1['positions'][:2], node2['positions'][:2]).item()
+    return euclid_dist(node1["positions"][:2], node2["positions"][:2]).item()
 
 
 # Probability Classes
@@ -118,8 +119,8 @@ class ProbabilityFunction(ABC):
 class DistantDependentProbability(ProbabilityFunction):
     """Base class for distance dependent probability"""
 
-    def __init__(self, min_dist=0., max_dist=np.inf):
-        assert(min_dist >= 0 and min_dist < max_dist)
+    def __init__(self, min_dist=0.0, max_dist=np.inf):
+        assert min_dist >= 0 and min_dist < max_dist
         self.min_dist, self.max_dist = min_dist, max_dist
 
     def __call__(self, dist, *arg, **kwargs):
@@ -127,7 +128,7 @@ class DistantDependentProbability(ProbabilityFunction):
         if dist >= self.min_dist and dist <= self.max_dist:
             return self.probability(dist)
         else:
-            return 0.
+            return 0.0
 
     def decisions(self, dist):
         """Return bool array of decisions given distance array"""
@@ -144,31 +145,32 @@ class DistantDependentProbability(ProbabilityFunction):
 class UniformInRange(DistantDependentProbability):
     """Constant probability within a distance range"""
 
-    def __init__(self, p=0., min_dist=0., max_dist=np.inf):
+    def __init__(self, p=0.0, min_dist=0.0, max_dist=np.inf):
         super().__init__(min_dist=min_dist, max_dist=max_dist)
         self.p = np.array(p)
-        assert(self.p.size == 1)
-        assert(p >= 0. and p <= 1.)
+        assert self.p.size == 1
+        assert p >= 0.0 and p <= 1.0
 
     def probability(self, dist):
         return self.p
 
 
-NORM_COEF = (2 * np.pi) ** (-.5)  # coefficient of standard normal PDF
+NORM_COEF = (2 * np.pi) ** (-0.5)  # coefficient of standard normal PDF
 
-def gaussian(x, mean=0., stdev=1., pmax=NORM_COEF):
+
+def gaussian(x, mean=0.0, stdev=1.0, pmax=NORM_COEF):
     """Gaussian function. Default is the PDF of standard normal distribution"""
     x = (x - mean) / stdev
-    return pmax * np.exp(- x * x / 2)
+    return pmax * np.exp(-x * x / 2)
 
 
 class GaussianDropoff(DistantDependentProbability):
     """
     Connection probability class that follows a Gaussian function of distance.
-    
+
     This class calculates connection probabilities using a Gaussian function
     of the distance between cells, with options for spherical or cylindrical metrics.
-    
+
     Parameters:
     -----------
     mean : float, optional
@@ -188,7 +190,7 @@ class GaussianDropoff(DistantDependentProbability):
         Distance range (min_dist, max_dist) for calculating pmax when ptotal is provided.
     dist_type : str, optional
         Distance metric to use, either 'spherical' (default) or 'cylindrical'.
-        
+
     Notes:
     ------
     When ptotal is specified, the maximum probability (pmax) is calculated to achieve
@@ -196,16 +198,24 @@ class GaussianDropoff(DistantDependentProbability):
     assuming homogeneous cell density.
     """
 
-    def __init__(self, mean=0., stdev=1., min_dist=0., max_dist=np.inf,
-                 pmax=1, ptotal=None, ptotal_dist_range=None,
-                 dist_type='spherical'):
+    def __init__(
+        self,
+        mean=0.0,
+        stdev=1.0,
+        min_dist=0.0,
+        max_dist=np.inf,
+        pmax=1,
+        ptotal=None,
+        ptotal_dist_range=None,
+        dist_type="spherical",
+    ):
         super().__init__(min_dist=min_dist, max_dist=max_dist)
         self.mean, self.stdev = mean, stdev
         self.ptotal = ptotal
-        self.ptotal_dist_range = (min_dist, max_dist) \
-            if ptotal_dist_range is None else ptotal_dist_range
-        self.dist_type = dist_type if dist_type in \
-            ['cylindrical'] else 'spherical'
+        self.ptotal_dist_range = (
+            (min_dist, max_dist) if ptotal_dist_range is None else ptotal_dist_range
+        )
+        self.dist_type = dist_type if dist_type in ["cylindrical"] else "spherical"
         self.pmax = pmax if ptotal is None else self.calc_pmax_from_ptotal()
         self.set_probability_func()
 
@@ -233,18 +243,21 @@ class GaussianDropoff(DistantDependentProbability):
         mu, sig = self.mean, self.stdev
         r1, r2 = self.ptotal_dist_range[:2]
         x1, x2 = (r1 - mu) / sig, (r2 - mu) / sig  # normalized distance
-        if self.dist_type == 'cylindrical':
-            dr = r2 ** 2 - r1 ** 2
+        if self.dist_type == "cylindrical":
+            dr = r2**2 - r1**2
+
             def F(x):
-                f1 = sig * mu / NORM_COEF * erf(x / 2**.5)
-                f2 = -2 * sig * sig * gaussian(x, pmax=1.)
+                f1 = sig * mu / NORM_COEF * erf(x / 2**0.5)
+                f2 = -2 * sig * sig * gaussian(x, pmax=1.0)
                 return f1 + f2
         else:
-            dr = r2 ** 3 - r1 ** 3
+            dr = r2**3 - r1**3
+
             def F(x):
-                f1 = 1.5 * sig * (sig**2 + mu**2) / NORM_COEF * erf(x / 2**.5)
-                f2 = -3 * sig * sig * (2 * mu + sig * x) * gaussian(x, pmax=1.)
+                f1 = 1.5 * sig * (sig**2 + mu**2) / NORM_COEF * erf(x / 2**0.5)
+                f2 = -3 * sig * sig * (2 * mu + sig * x) * gaussian(x, pmax=1.0)
                 return f1 + f2
+
         return self.ptotal * dr / (F(x2) - F(x1))
 
     def probability(self):
@@ -252,24 +265,30 @@ class GaussianDropoff(DistantDependentProbability):
 
     def set_probability_func(self):
         """Set up function for calculating probability"""
-        keys = ['mean', 'stdev', 'pmax']
+        keys = ["mean", "stdev", "pmax"]
         kwargs = {key: getattr(self, key) for key in keys}
         probability = partial(gaussian, **kwargs)
 
         # Verify maximum probability
         # (is not self.pmax if self.mean outside distance range)
         bounds = (self.min_dist, min(self.max_dist, 1e9))
-        pmax = self.pmax if self.mean >= bounds[0] and self.mean <= bounds[1] \
+        pmax = (
+            self.pmax
+            if self.mean >= bounds[0] and self.mean <= bounds[1]
             else probability(np.asarray(bounds)).max()
+        )
         if pmax > 1:
-            d = minimize_scalar(lambda x: (probability(x) - 1)**2,
-                                method='bounded', bounds=bounds).x
-            warn = ("\nWarning: Maximum probability=%.3f is greater than 1. "
-                    "Probability crosses 1 at distance %.3g.\n") % (pmax, d)
+            d = minimize_scalar(
+                lambda x: (probability(x) - 1) ** 2, method="bounded", bounds=bounds
+            ).x
+            warn = (
+                "\nWarning: Maximum probability=%.3f is greater than 1. "
+                "Probability crosses 1 at distance %.3g.\n"
+            ) % (pmax, d)
             if self.ptotal is not None:
                 warn += " ptotal may not be reached."
-            print(warn,flush=True)
-            self.probability = lambda dist: np.fmin(probability(dist), 1.)
+            print(warn, flush=True)
+            self.probability = lambda dist: np.fmin(probability(dist), 1.0)
         else:
             self.probability = probability
 
@@ -280,7 +299,7 @@ class NormalizedReciprocalRate(ProbabilityFunction):
     connection probability and the connection probability for a randomly
     connected network where the two unidirectional connections between any pair
     of neurons are independent. NRR = pr / (p0 * p1)
-    
+
     Parameters:
         NRR: a constant or distance dependent function for normalized reciprocal
             rate. When being a function, it should be accept vectorized input.
@@ -288,7 +307,7 @@ class NormalizedReciprocalRate(ProbabilityFunction):
         A callable object that returns the probability value.
     """
 
-    def __init__(self, NRR=1.):
+    def __init__(self, NRR=1.0):
         self.NRR = NRR if callable(NRR) else lambda *x: NRR
 
     def probability(self, dist, p0, p1):
@@ -311,17 +330,18 @@ class NormalizedReciprocalRate(ProbabilityFunction):
         dist, p0, p1 = map(np.asarray, (dist, p0, p1))
         pr = np.empty(dist.shape)
         pr[:] = self.probability(dist, p0, p1)
-        pr = np.clip(pr, a_min=np.fmax(p0 + p1 - 1., 0.), a_max=np.fmin(p0, p1))
+        pr = np.clip(pr, a_min=np.fmax(p0 + p1 - 1.0, 0.0), a_max=np.fmin(p0, p1))
         if cond is not None:
             mask = np.asarray(cond[1])
             pr[mask] /= p1 if cond[0] else p0
-            pr[~mask] = 0.
+            pr[~mask] = 0.0
         return decisions(pr)
 
 
 # Connector Classes
 class AbstractConnector(ABC):
     """Abstract base class for connectors"""
+
     @abstractmethod
     def setup_nodes(self, source=None, target=None):
         """After network nodes are added to the BMTK network. Pass in the
@@ -338,8 +358,10 @@ class AbstractConnector(ABC):
     @staticmethod
     def constant_function(val):
         """Convert a constant to a constant function"""
+
         def constant(*arg):
             return val
+
         return constant
 
 
@@ -348,29 +370,31 @@ def is_same_pop(source, target, quick=False):
     """Check whether two NodePool objects direct to the same population"""
     if quick:
         # Quick check (compare filter conditions)
-        same = (source.network_name == target.network_name and
-                source._NodePool__properties ==
-                target._NodePool__properties)
+        same = (
+            source.network_name == target.network_name
+            and source._NodePool__properties == target._NodePool__properties
+        )
     else:
         # Strict check (compare all nodes)
-        same = (source.network_name == target.network_name and
-                len(source) == len(target) and
-                all([s.node_id == t.node_id
-                     for s, t in zip(source, target)]))
+        same = (
+            source.network_name == target.network_name
+            and len(source) == len(target)
+            and all([s.node_id == t.node_id for s, t in zip(source, target)])
+        )
     return same
 
 
 class Timer(object):
-    def __init__(self, unit='sec'):
-        if unit == 'ms':
+    def __init__(self, unit="sec"):
+        if unit == "ms":
             self.scale = 1e3
-        elif unit == 'us':
+        elif unit == "us":
             self.scale = 1e6
-        elif unit == 'min':
+        elif unit == "min":
             self.scale = 1 / 60
         else:
             self.scale = 1
-            unit = 'sec'
+            unit = "sec"
         self.unit = unit
         self.start()
 
@@ -380,28 +404,30 @@ class Timer(object):
     def end(self):
         return (time.perf_counter() - self._start) * self.scale
 
-    def report(self, msg='Run time'):
-        print((msg + ": %.3f " + self.unit) % self.end(),flush=True)
+    def report(self, msg="Run time"):
+        print((msg + ": %.3f " + self.unit) % self.end(), flush=True)
 
 
 def pr_2_rho(p0, p1, pr):
     """Calculate correlation coefficient rho given reciprocal probability pr"""
     for p in (p0, p1):
-        assert(p > 0 and p < 1)
-    assert(pr >= 0 and pr <= p0 and pr <= p1 and pr >= p0 + p1 - 1)
-    return (pr - p0 * p1) / (p0 * (1 - p0) * p1 * (1 - p1)) ** .5
+        assert p > 0 and p < 1
+    assert pr >= 0 and pr <= p0 and pr <= p1 and pr >= p0 + p1 - 1
+    return (pr - p0 * p1) / (p0 * (1 - p0) * p1 * (1 - p1)) ** 0.5
 
 
 def rho_2_pr(p0, p1, rho):
     """Calculate reciprocal probability pr given correlation coefficient rho"""
     for p in (p0, p1):
-        assert(p > 0 and p < 1)
-    pr = p0 * p1 + rho * (p0 * (1 - p0) * p1 * (1 - p1)) ** .5
+        assert p > 0 and p < 1
+    pr = p0 * p1 + rho * (p0 * (1 - p0) * p1 * (1 - p1)) ** 0.5
     if not (pr >= 0 and pr <= p0 and pr <= p1 and pr >= p0 + p1 - 1):
-        pr0, pr = pr, np.max((0., p0 + p1 - 1, np.min((p0, p1, pr))))
-        rho0, rho = rho, (pr - p0 * p1) / (p0 * (1 - p0) * p1 * (1 - p1)) ** .5
-        print('rho changed from %.3f to %.3f; pr changed from %.3f to %.3f'
-              % (rho0, rho, pr0, pr),flush=True)
+        pr0, pr = pr, np.max((0.0, p0 + p1 - 1, np.min((p0, p1, pr))))
+        rho0, rho = rho, (pr - p0 * p1) / (p0 * (1 - p0) * p1 * (1 - p1)) ** 0.5
+        print(
+            "rho changed from %.3f to %.3f; pr changed from %.3f to %.3f" % (rho0, rho, pr0, pr),
+            flush=True,
+        )
     return pr
 
 
@@ -575,15 +601,31 @@ class ReciprocalConnector(AbstractConnector):
             properties, so that they can access the information here.
     """
 
-    def __init__(self, p0=1., p1=1., symmetric_p1=False,
-                 p0_arg=None, p1_arg=None, symmetric_p1_arg=False,
-                 pr=0., pr_arg=None, estimate_rho=True, rho=None,
-                 dist_range_forward=None, dist_range_backward=None,
-                 n_syn0=1, n_syn1=1, autapses=False,
-                 quick_pop_check=False, cache_data=True, verbose=True,save_report=True,report_name=None):
+    def __init__(
+        self,
+        p0=1.0,
+        p1=1.0,
+        symmetric_p1=False,
+        p0_arg=None,
+        p1_arg=None,
+        symmetric_p1_arg=False,
+        pr=0.0,
+        pr_arg=None,
+        estimate_rho=True,
+        rho=None,
+        dist_range_forward=None,
+        dist_range_backward=None,
+        n_syn0=1,
+        n_syn1=1,
+        autapses=False,
+        quick_pop_check=False,
+        cache_data=True,
+        verbose=True,
+        save_report=True,
+        report_name=None,
+    ):
         args = locals()
-        var_set = ('p0', 'p0_arg', 'p1', 'p1_arg',
-                   'pr', 'pr_arg', 'n_syn0', 'n_syn1')
+        var_set = ("p0", "p0_arg", "p1", "p1_arg", "pr", "pr_arg", "n_syn0", "n_syn1")
         self.vars = {key: args[key] for key in var_set}
 
         self.symmetric_p1 = symmetric_p1 and symmetric_p1_arg
@@ -601,7 +643,7 @@ class ReciprocalConnector(AbstractConnector):
         self.save_report = save_report
 
         if report_name is None:
-            report_name = globals().get('report_name', 'default_report.csv')
+            report_name = globals().get("report_name", "default_report.csv")
         self.report_name = report_name
 
         self.conn_prop = [{}, {}]
@@ -613,9 +655,12 @@ class ReciprocalConnector(AbstractConnector):
         """Must run this before building connections"""
         if self.stage:
             # check whether the correct populations
-            if (source is None or target is None or
-                    not is_same_pop(source, self.target, quick=self.quick) or
-                    not is_same_pop(target, self.source, quick=self.quick)):
+            if (
+                source is None
+                or target is None
+                or not is_same_pop(source, self.target, quick=self.quick)
+                or not is_same_pop(target, self.source, quick=self.quick)
+            ):
                 raise ValueError("Source or target population not consistent.")
             # Skip adding nodes for the backward stage.
             return
@@ -648,22 +693,28 @@ class ReciprocalConnector(AbstractConnector):
         if self.recurrent:
             self.symmetric_p1_arg = True
             self.symmetric_p1 = True
-            self.vars['n_syn1'] = self.vars['n_syn0']
+            self.vars["n_syn1"] = self.vars["n_syn0"]
         if self.symmetric_p1_arg:
-            self.vars['p1_arg'] = self.vars['p0_arg']
+            self.vars["p1_arg"] = self.vars["p0_arg"]
         if self.symmetric_p1:
-            self.vars['p1'] = self.vars['p0']
+            self.vars["p1"] = self.vars["p0"]
 
     def edge_params(self):
         """Create the arguments for BMTK add_edges() method"""
         if self.stage == 0:
-            params = {'source': self.source, 'target': self.target,
-                      'iterator': 'one_to_all',
-                      'connection_rule': self.make_forward_connection}
+            params = {
+                "source": self.source,
+                "target": self.target,
+                "iterator": "one_to_all",
+                "connection_rule": self.make_forward_connection,
+            }
         else:
-            params = {'source': self.target, 'target': self.source,
-                      'iterator': 'all_to_one',
-                      'connection_rule': self.make_backward_connection}
+            params = {
+                "source": self.target,
+                "target": self.source,
+                "iterator": "all_to_one",
+                "connection_rule": self.make_backward_connection,
+            }
         self.stage += 1
         return params
 
@@ -687,6 +738,7 @@ class ReciprocalConnector(AbstractConnector):
                     val = func(*args)
                     output.append(val)
                     return val
+
                 setattr(self, func_name, writer)
             else:
                 setattr(self, func_name, func)
@@ -694,15 +746,17 @@ class ReciprocalConnector(AbstractConnector):
         def write_mode(self):
             for val in self._output.values():
                 val.clear()
-            self.mode = 'write'
+            self.mode = "write"
             self.iter_count = 0
 
         def fetch_output(self, func_name, fetch=True):
             output = self._output[func_name]
 
             if fetch:
+
                 def reader(*args):
                     return output[self.iter_count]
+
                 setattr(self, func_name, reader)
             else:
                 setattr(self, func_name, self.cache_dict[func_name])
@@ -718,36 +772,44 @@ class ReciprocalConnector(AbstractConnector):
                     for func_name, out_len in zip(self._output, output_len):
                         fetch = out_len > 0
                         if not fetch:
-                            print("\nWarning: Cache did not work properly for "
-                                  + func_name + '\n',flush=True)
+                            print(
+                                "\nWarning: Cache did not work properly for " + func_name + "\n",
+                                flush=True,
+                            )
                         self.fetch_output(func_name, fetch)
                     self.iter_count = 0
                 else:
                     # if output not correct, disable and use original function
-                    print("\nWarning: Cache did not work properly.\n",flush=True)
+                    print("\nWarning: Cache did not work properly.\n", flush=True)
                     for func_name in self.cache_dict:
                         self.fetch_output(func_name, False)
                     self.enable = False
-            self.mode = 'read'
+            self.mode = "read"
 
         def set_next_it(self):
             if self.enable:
+
                 def next_it():
                     self.iter_count += 1
             else:
+
                 def next_it():
                     pass
+
             self.next_it = next_it
 
     def node_2_idx_input(self, var_func, reverse=False):
         """Convert a function that accept nodes as input
         to accept indices as input"""
         if reverse:
+
             def idx_2_var(j, i):
                 return var_func(self.target_list[j], self.source_list[i])
         else:
+
             def idx_2_var(i, j):
                 return var_func(self.source_list[i], self.target_list[j])
+
         return idx_2_var
 
     def iterate_pairs(self):
@@ -784,6 +846,7 @@ class ReciprocalConnector(AbstractConnector):
         if self.rho is None:
             # Determine by pr for each pair
             if self.verbose:
+
                 def cond_backward(cond, p0, p1, pr):
                     if p0 > 0:
                         pr_bound = (p0 + p1 - 1, min(p0, p1))
@@ -795,6 +858,7 @@ class ReciprocalConnector(AbstractConnector):
                     else:
                         return p1
             else:
+
                 def cond_backward(cond, p0, p1, pr):
                     if p0 > 0:
                         pr_bound = (p0 + p1 - 1, min(p0, p1))
@@ -810,10 +874,11 @@ class ReciprocalConnector(AbstractConnector):
             # Dependent with fixed correlation coefficient rho
             def cond_backward(cond, p0, p1, pr):
                 # Standard deviation of r.v. for p1
-                sd = ((1 - p1) * p1) ** .5
+                sd = ((1 - p1) * p1) ** 0.5
                 # Z-score of random variable for p0
-                zs = ((1 - p0) / p0) ** .5 if cond else - (p0 / (1 - p0)) ** .5
+                zs = ((1 - p0) / p0) ** 0.5 if cond else -((p0 / (1 - p0)) ** 0.5)
                 return p1 + self.rho * sd * zs
+
         self.cond_backward = cond_backward
 
     def add_conn_prop(self, src, trg, prop, stage=0):
@@ -833,9 +898,9 @@ class ReciprocalConnector(AbstractConnector):
     # *** A sequence of major methods executed during build ***
     def setup_variables(self):
         # If pr_arg is string, use the same value as p0_arg or p1_arg
-        if isinstance(self.vars['pr_arg'], str):
-            pr_arg_func = 'p1_arg' if '1' in self.vars['pr_arg'] else 'p0_arg'
-            self.vars['pr_arg'] = self.vars[pr_arg_func]
+        if isinstance(self.vars["pr_arg"], str):
+            pr_arg_func = "p1_arg" if "1" in self.vars["pr_arg"] else "p0_arg"
+            self.vars["pr_arg"] = self.vars[pr_arg_func]
         else:
             pr_arg_func = None
 
@@ -850,60 +915,70 @@ class ReciprocalConnector(AbstractConnector):
         self.callable_set = callable_set
 
         # Make callable variables except a few, accept index input instead
-        for name in callable_set - {'p0', 'p1', 'pr'}:
+        for name in callable_set - {"p0", "p1", "pr"}:
             var = self.vars[name]
-            setattr(self, name, self.node_2_idx_input(var, '1' in name))
+            setattr(self, name, self.node_2_idx_input(var, "1" in name))
 
         # Set up function for pr_arg if use value from p0_arg or p1_arg
         if pr_arg_func is None:
             self._pr_arg = self.pr_arg  # use specified pr_arg
         else:
-            self._pr_arg_val = 0.  # storing current value from p_arg
+            self._pr_arg_val = 0.0  # storing current value from p_arg
             p_arg = getattr(self, pr_arg_func)
+
             def p_arg_4_pr(*args, **kwargs):
                 val = p_arg(*args, **kwargs)
                 self._pr_arg_val = val
                 return val
+
             setattr(self, pr_arg_func, p_arg_4_pr)
+
             def pr_arg(self, *arg):
                 return self._pr_arg_val
+
             self._pr_arg = types.MethodType(pr_arg, self)
 
     def cache_variables(self):
         # Select cacheable attrilbutes
-        cache_set = {'p0', 'p0_arg', 'p1', 'p1_arg'}
+        cache_set = {"p0", "p0_arg", "p1", "p1_arg"}
         if self.symmetric_p1:
-            cache_set.remove('p1')
+            cache_set.remove("p1")
         if self.symmetric_p1_arg:
-            cache_set.remove('p1_arg')
+            cache_set.remove("p1_arg")
         # Output of callable variables will be cached
         # Constant functions will be called from cache but output not cached
         for name in cache_set:
             var = getattr(self, name)
             self.cache.cache_output(var, name, name in self.callable_set)
         if self.verbose and len(self.cache.cache_dict):
-            print('Output of %s will be cached.'
-                  % ', '.join(self.cache.cache_dict),flush=True)
+            print("Output of %s will be cached." % ", ".join(self.cache.cache_dict), flush=True)
 
     def setup_dist_range_checker(self):
         # Checker that determines whether to consider a pair for rho estimation
         if self.dist_range_forward is None and self.dist_range_backward is None:
+
             def checker(var):
                 p0, p1 = var[2:]
                 return p0 > 0 and p1 > 0
         else:
+
             def in_range(p_arg, dist_range):
                 return p_arg >= dist_range[0] and p_arg <= dist_range[1]
+
             r0, r1 = self.dist_range_forward, self.dist_range_backward
             if r1 is None:
+
                 def checker(var):
                     return in_range(var[0], r0)
             elif r0 is None:
+
                 def checker(var):
                     return in_range(var[1], r1)
             else:
+
                 def checker(var):
                     return in_range(var[0], r0) and in_range(var[1], r1)
+
         return checker
 
     def initialize(self):
@@ -918,8 +993,9 @@ class ReciprocalConnector(AbstractConnector):
         """The major part of the algorithm run at beginning of BMTK iterator"""
         if self.verbose:
             src_str, trg_str = self.get_nodes_info()
-            print("\nStart building connection between: \n  "
-                  + src_str + "\n  " + trg_str,flush=True)
+            print(
+                "\nStart building connection between: \n  " + src_str + "\n  " + trg_str, flush=True
+            )
         self.initialize()
         cache = self.cache  # write mode
 
@@ -928,8 +1004,8 @@ class ReciprocalConnector(AbstractConnector):
             self.timer = Timer()
         if self.estimate_rho:
             dist_range_checker = self.setup_dist_range_checker()
-            p0p1_sum = 0.
-            norm_fac_sum = 0.
+            p0p1_sum = 0.0
+            norm_fac_sum = 0.0
             n = 0
             # Make sure each cacheable function runs excatly once per iteration
             for i, j in self.iterate_pairs():
@@ -939,22 +1015,25 @@ class ReciprocalConnector(AbstractConnector):
                     n += 1
                     p0, p1 = var[2:]
                     p0p1_sum += p0 * p1
-                    norm_fac_sum += (p0 * (1 - p0) * p1 * (1 - p1)) ** .5
+                    norm_fac_sum += (p0 * (1 - p0) * p1 * (1 - p1)) ** 0.5
             if norm_fac_sum > 0:
                 rho = (self.pr() * n - p0p1_sum) / norm_fac_sum
                 if abs(rho) > 1:
-                    print("\nWarning: Estimated value of rho=%.3f "
-                          "outside the range [-1, 1]." % rho,flush=True)
+                    print(
+                        "\nWarning: Estimated value of rho=%.3f "
+                        "outside the range [-1, 1]." % rho,
+                        flush=True,
+                    )
                     rho = np.clip(rho, -1, 1).item()
-                    print("Force rho to be %.0f.\n" % rho,flush=True)
+                    print("Force rho to be %.0f.\n" % rho, flush=True)
                 elif self.verbose:
-                    print("Estimated value of rho=%.3f" % rho,flush=True)
+                    print("Estimated value of rho=%.3f" % rho, flush=True)
                 self.rho = rho
             else:
                 self.rho = 0
 
             if self.verbose:
-                self.timer.report('Time for estimating rho')
+                self.timer.report("Time for estimating rho")
 
         # Setup function for calculating conditional backward probability
         self.setup_conditional_backward_probability()
@@ -998,15 +1077,15 @@ class ReciprocalConnector(AbstractConnector):
         self.possible_count = possible_count
 
         if self.verbose:
-            self.timer.report('Total time for creating connection matrix')
+            self.timer.report("Total time for creating connection matrix")
             if self.wrong_pr:
-                print("Warning: Value of 'pr' outside the bounds occurred.\n",flush=True)
+                print("Warning: Value of 'pr' outside the bounds occurred.\n", flush=True)
             self.connection_number_info()
         if self.save_report:
             self.save_connection_report()
 
     def make_connection(self):
-        """ Assign number of synapses per iteration.
+        """Assign number of synapses per iteration.
         Use iterator one_to_all for forward and all_to_one for backward.
         """
         nsyns = self.conn_mat[self.stage, self.iter_count, :]
@@ -1017,7 +1096,7 @@ class ReciprocalConnector(AbstractConnector):
             self.iter_count = 0
             if self.stage == self.end_stage:
                 if self.verbose:
-                    self.timer.report('Done! \nTime for building connections')
+                    self.timer.report("Done! \nTime for building connections")
                 self.free_memory()
         return nsyns
 
@@ -1028,7 +1107,7 @@ class ReciprocalConnector(AbstractConnector):
             self.stage = 0
             self.initial_all_to_all()
             if self.verbose:
-                print("Assigning forward connections.",flush=True)
+                print("Assigning forward connections.", flush=True)
                 self.timer.start()
         return self.make_connection()
 
@@ -1037,22 +1116,21 @@ class ReciprocalConnector(AbstractConnector):
         if self.iter_count == 0:
             self.stage = 1
             if self.verbose:
-                print("Assigning backward connections.",flush=True)
+                print("Assigning backward connections.", flush=True)
         return self.make_connection()
 
     def free_memory(self):
         """Free up memory after connections are built"""
         # Do not clear self.conn_prop if it will be used by conn.add_properties
-        variables = ('conn_mat', 'source_list', 'target_list',
-                     'source_ids', 'target_ids')
+        variables = ("conn_mat", "source_list", "target_list", "source_ids", "target_ids")
         for var in variables:
             setattr(self, var, None)
 
     # *** Helper functions for verbose ***
     def get_nodes_info(self):
         """Get strings with source and target population information"""
-        source_str = self.source.network_name + ': ' + self.source.filter_str
-        target_str = self.target.network_name + ': ' + self.target.filter_str
+        source_str = self.source.network_name + ": " + self.source.filter_str
+        target_str = self.target.network_name + ": " + self.target.filter_str
         return source_str, target_str
 
     def connection_number(self):
@@ -1080,24 +1158,31 @@ class ReciprocalConnector(AbstractConnector):
         n_conn = np.append(n_conn, n_recp)
         n_pair = int(n_pair)
         fraction = np.array([n_conn / n_poss, n_conn / n_pair])
-        fraction[np.isnan(fraction)] = 0.
+        fraction[np.isnan(fraction)] = 0.0
         return n_conn, n_poss, n_pair, fraction
 
     def connection_number_info(self):
         """Print connection numbers after connections built"""
+
         def arr2str(a, f):
-            return ', '.join([f] * a.size) % tuple(a.tolist())
+            return ", ".join([f] * a.size) % tuple(a.tolist())
+
         n_conn, n_poss, n_pair, fraction = self.connection_number()
-        conn_type = "(all, reciprocal)" if self.recurrent \
-                    else "(forward, backward, reciprocal)"
-        print("Numbers of " + conn_type + " connections:",flush=True)
-        print("Number of connected pairs: (%s)" % arr2str(n_conn, '%d'),flush=True)
-        print("Number of possible connections: (%s)" % arr2str(n_poss, '%d'),flush=True)
-        print("Fraction of connected pairs in possible ones: (%s)"
-              % arr2str(100 * fraction[0], '%.2f%%'),flush=True)
-        print("Number of total pairs: %d" % n_pair,flush=True)
-        print("Fraction of connected pairs in all pairs: (%s)\n"
-              % arr2str(100 * fraction[1], '%.2f%%'),flush=True)
+        conn_type = "(all, reciprocal)" if self.recurrent else "(forward, backward, reciprocal)"
+        print("Numbers of " + conn_type + " connections:", flush=True)
+        print("Number of connected pairs: (%s)" % arr2str(n_conn, "%d"), flush=True)
+        print("Number of possible connections: (%s)" % arr2str(n_poss, "%d"), flush=True)
+        print(
+            "Fraction of connected pairs in possible ones: (%s)"
+            % arr2str(100 * fraction[0], "%.2f%%"),
+            flush=True,
+        )
+        print("Number of total pairs: %d" % n_pair, flush=True)
+        print(
+            "Fraction of connected pairs in all pairs: (%s)\n"
+            % arr2str(100 * fraction[1], "%.2f%%"),
+            flush=True,
+        )
 
     def save_connection_report(self):
         """Save connections into a CSV file to be read from later"""
@@ -1108,21 +1193,21 @@ class ReciprocalConnector(AbstractConnector):
         data = {
             "Source": [src_str],
             "Target": [trg_str],
-            "Percent connectionivity within possible connections": [fraction[0]*100],
-            "Percent connectionivity within all connections": [fraction[1]*100]
+            "Percent connectionivity within possible connections": [fraction[0] * 100],
+            "Percent connectionivity within all connections": [fraction[1] * 100],
         }
         df = pd.DataFrame(data)
-        
+
         # Append the data to the CSV file
         try:
             # Check if the file exists by trying to read it
             existing_df = pd.read_csv(self.report_name)
             # If no exception is raised, append without header
-            df.to_csv(self.report_name, mode='a', header=False, index=False)
+            df.to_csv(self.report_name, mode="a", header=False, index=False)
         except FileNotFoundError:
             # If the file does not exist, write with header
-            df.to_csv(self.report_name, mode='w', header=True, index=False)
-            
+            df.to_csv(self.report_name, mode="w", header=True, index=False)
+
 
 class UnidirectionConnector(AbstractConnector):
     """
@@ -1155,15 +1240,17 @@ class UnidirectionConnector(AbstractConnector):
             This is useful in similar manner as in ReciprocalConnector.
     """
 
-    def __init__(self, p=1., p_arg=None, n_syn=1, verbose=True,save_report=True,report_name=None):
+    def __init__(
+        self, p=1.0, p_arg=None, n_syn=1, verbose=True, save_report=True, report_name=None
+    ):
         args = locals()
-        var_set = ('p', 'p_arg', 'n_syn')
+        var_set = ("p", "p_arg", "n_syn")
         self.vars = {key: args[key] for key in var_set}
 
         self.verbose = verbose
         self.save_report = save_report
         if report_name is None:
-            report_name = globals().get('report_name', 'default_report.csv')
+            report_name = globals().get("report_name", "default_report.csv")
         self.report_name = report_name
 
         self.conn_prop = {}
@@ -1185,9 +1272,12 @@ class UnidirectionConnector(AbstractConnector):
 
     def edge_params(self):
         """Create the arguments for BMTK add_edges() method"""
-        params = {'source': self.source, 'target': self.target,
-                  'iterator': 'one_to_one',
-                  'connection_rule': self.make_connection}
+        params = {
+            "source": self.source,
+            "target": self.target,
+            "iterator": "one_to_one",
+            "connection_rule": self.make_connection,
+        }
         return params
 
     # *** Methods executed during bmtk network.build() ***
@@ -1223,8 +1313,10 @@ class UnidirectionConnector(AbstractConnector):
             self.initialize()
             if self.verbose:
                 src_str, trg_str = self.get_nodes_info()
-                print("\nStart building connection \n  from "
-                      + src_str + "\n  to " + trg_str,flush=True)
+                print(
+                    "\nStart building connection \n  from " + src_str + "\n  to " + trg_str,
+                    flush=True,
+                )
 
         # Make random connections
 
@@ -1245,7 +1337,7 @@ class UnidirectionConnector(AbstractConnector):
         if self.iter_count == self.n_pair:
             if self.verbose:
                 self.connection_number_info()
-                self.timer.report('Done! \nTime for building connections')
+                self.timer.report("Done! \nTime for building connections")
             if self.save_report:
                 self.save_connection_report()
 
@@ -1254,45 +1346,52 @@ class UnidirectionConnector(AbstractConnector):
     # *** Helper functions for verbose ***
     def get_nodes_info(self):
         """Get strings with source and target population information"""
-        source_str = self.source.network_name + ': ' + self.source.filter_str
-        target_str = self.target.network_name + ': ' + self.target.filter_str
+        source_str = self.source.network_name + ": " + self.source.filter_str
+        target_str = self.target.network_name + ": " + self.target.filter_str
         return source_str, target_str
 
     def connection_number_info(self):
         """Print connection numbers after connections built"""
-        print("Number of connected pairs: %d" % self.n_conn,flush=True)
-        print("Number of possible connections: %d" % self.n_poss,flush=True)
-        print("Fraction of connected pairs in possible ones: %.2f%%"
-              % (100. * self.n_conn / self.n_poss) if self.n_poss else 0.)
-        print("Number of total pairs: %d" % self.n_pair,flush=True)
-        print("Fraction of connected pairs in all pairs: %.2f%%\n"
-              % (100. * self.n_conn / self.n_pair),flush=True)
-    
+        print("Number of connected pairs: %d" % self.n_conn, flush=True)
+        print("Number of possible connections: %d" % self.n_poss, flush=True)
+        print(
+            "Fraction of connected pairs in possible ones: %.2f%%"
+            % (100.0 * self.n_conn / self.n_poss)
+            if self.n_poss
+            else 0.0
+        )
+        print("Number of total pairs: %d" % self.n_pair, flush=True)
+        print(
+            "Fraction of connected pairs in all pairs: %.2f%%\n"
+            % (100.0 * self.n_conn / self.n_pair),
+            flush=True,
+        )
+
     def save_connection_report(self):
         """Save connections into a CSV file to be read from later"""
         src_str, trg_str = self.get_nodes_info()
-        
-        possible_fraction = (100. * self.n_conn / self.n_poss)
-        all_fraction = (100. * self.n_conn / self.n_pair)
+
+        possible_fraction = 100.0 * self.n_conn / self.n_poss
+        all_fraction = 100.0 * self.n_conn / self.n_pair
 
         # Extract the population name from source_str and target_str
         data = {
             "Source": [src_str],
             "Target": [trg_str],
             "Percent connectionivity within possible connections": [possible_fraction],
-            "Percent connectionivity within all connections": [all_fraction]
+            "Percent connectionivity within all connections": [all_fraction],
         }
         df = pd.DataFrame(data)
-        
+
         # Append the data to the CSV file
         try:
             # Check if the file exists by trying to read it
             existing_df = pd.read_csv(self.report_name)
             # If no exception is raised, append without header
-            df.to_csv(self.report_name, mode='a', header=False, index=False)
+            df.to_csv(self.report_name, mode="a", header=False, index=False)
         except FileNotFoundError:
             # If the file does not exist, write with header
-            df.to_csv(self.report_name, mode='w', header=True, index=False)
+            df.to_csv(self.report_name, mode="w", header=True, index=False)
 
 
 class GapJunction(UnidirectionConnector):
@@ -1316,16 +1415,19 @@ class GapJunction(UnidirectionConnector):
         Similar to `UnidirectionConnector`.
     """
 
-    def __init__(self, p=1., p_arg=None, verbose=True,save_report=True,report_name=None):
-        super().__init__(p=p, p_arg=p_arg, verbose=verbose,save_report=save_report,report_name=None)
-
+    def __init__(self, p=1.0, p_arg=None, verbose=True, save_report=True, report_name=None):
+        super().__init__(
+            p=p, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None
+        )
 
     def setup_nodes(self, source=None, target=None):
         super().setup_nodes(source=source, target=target)
         if len(self.source) != len(self.target):
             src_str, trg_str = self.get_nodes_info()
-            raise ValueError(f"Source and target must be the same for "
-                             f"gap junction. Nodes are {src_str} and {trg_str}")
+            raise ValueError(
+                f"Source and target must be the same for "
+                f"gap junction. Nodes are {src_str} and {trg_str}"
+            )
         self.n_source = len(self.source)
 
     def make_connection(self, source, target, *args, **kwargs):
@@ -1335,7 +1437,7 @@ class GapJunction(UnidirectionConnector):
             self.initialize()
             if self.verbose:
                 src_str, _ = self.get_nodes_info()
-                print("\nStart building gap junction \n  in " + src_str,flush=True)
+                print("\nStart building gap junction \n  in " + src_str, flush=True)
 
         # Consider each pair only once
         nsyns = 0
@@ -1358,7 +1460,7 @@ class GapJunction(UnidirectionConnector):
         if self.iter_count == self.n_pair:
             if self.verbose:
                 self.connection_number_info()
-                self.timer.report('Done! \nTime for building connections')
+                self.timer.report("Done! \nTime for building connections")
             if self.save_report:
                 self.save_connection_report()
         return nsyns
@@ -1373,27 +1475,27 @@ class GapJunction(UnidirectionConnector):
         """Save connections into a CSV file to be read from later"""
         src_str, trg_str = self.get_nodes_info()
         n_pair = self.n_pair
-        fraction_0 = self.n_conn / self.n_poss if self.n_poss else 0.
+        fraction_0 = self.n_conn / self.n_poss if self.n_poss else 0.0
         fraction_1 = self.n_conn / self.n_pair
 
         # Convert fraction to percentage and prepare data for the DataFrame
         data = {
-            "Source": [src_str+"Gap"],
-            "Target": [trg_str+"Gap"],
-            "Percent connectionivity within possible connections": [fraction_0*100],
-            "Percent connectionivity within all connections": [fraction_1*100]
+            "Source": [src_str + "Gap"],
+            "Target": [trg_str + "Gap"],
+            "Percent connectionivity within possible connections": [fraction_0 * 100],
+            "Percent connectionivity within all connections": [fraction_1 * 100],
         }
         df = pd.DataFrame(data)
-        
+
         # Append the data to the CSV file
         try:
             # Check if the file exists by trying to read it
             existing_df = pd.read_csv(self.report_name)
             # If no exception is raised, append without header
-            df.to_csv(self.report_name, mode='a', header=False, index=False)
+            df.to_csv(self.report_name, mode="a", header=False, index=False)
         except FileNotFoundError:
             # If the file does not exist, write with header
-            df.to_csv(self.report_name, mode='w', header=True, index=False)
+            df.to_csv(self.report_name, mode="w", header=True, index=False)
 
 
 class CorrelatedGapJunction(GapJunction):
@@ -1423,12 +1525,23 @@ class CorrelatedGapJunction(GapJunction):
         Similar to `UnidirectionConnector`.
     """
 
-    def __init__(self, p_non=1., p_uni=1., p_rec=1., p_arg=None,
-                 connector=None, verbose=True,save_report=True,report_name=None):
-        super().__init__(p=p_non, p_arg=p_arg, verbose=verbose,save_report=save_report,report_name=None)
-        self.vars['p_non'] = self.vars.pop('p')
-        self.vars['p_uni'] = p_uni
-        self.vars['p_rec'] = p_rec
+    def __init__(
+        self,
+        p_non=1.0,
+        p_uni=1.0,
+        p_rec=1.0,
+        p_arg=None,
+        connector=None,
+        verbose=True,
+        save_report=True,
+        report_name=None,
+    ):
+        super().__init__(
+            p=p_non, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None
+        )
+        self.vars["p_non"] = self.vars.pop("p")
+        self.vars["p_uni"] = p_uni
+        self.vars["p_rec"] = p_rec
         self.connector = connector
         conn_prop = connector.conn_prop
         if isinstance(conn_prop, list):
@@ -1448,10 +1561,10 @@ class CorrelatedGapJunction(GapJunction):
         return conn0 + conn1, prop0 if conn0 else prop1
 
     def initialize(self):
-        self.has_p_arg = self.vars['p_arg'] is not None
+        self.has_p_arg = self.vars["p_arg"] is not None
         if not self.has_p_arg:
             var = self.connector.vars
-            self.vars['p_arg'] = var.get('p_arg', var.get('p0_arg', None))
+            self.vars["p_arg"] = var.get("p_arg", var.get("p0_arg", None))
         super().initialize()
         self.ps = [self.p_non, self.p_uni, self.p_rec]
 
@@ -1462,7 +1575,7 @@ class CorrelatedGapJunction(GapJunction):
             self.initialize()
             if self.verbose:
                 src_str, _ = self.get_nodes_info()
-                print("\nStart building gap junction \n  in " + src_str,flush=True)
+                print("\nStart building gap junction \n  in " + src_str, flush=True)
 
         # Consider each pair only once
         nsyns = 0
@@ -1487,7 +1600,7 @@ class CorrelatedGapJunction(GapJunction):
         if self.iter_count == self.n_pair:
             if self.verbose:
                 self.connection_number_info()
-                self.timer.report('Done! \nTime for building connections')
+                self.timer.report("Done! \nTime for building connections")
             if self.save_report:
                 self.save_connection_report()
         return nsyns
@@ -1551,13 +1664,16 @@ class OneToOneSequentialConnector(AbstractConnector):
         if self.target_count == 0:
             if source is None or len(source) == 0:
                 src_str, trg_str = self.get_nodes_info()
-                raise ValueError((f"{trg_str}" if self.partition_source else
-                                  f"{src_str}") + " nodes do not exists")
+                raise ValueError(
+                    (f"{trg_str}" if self.partition_source else f"{src_str}")
+                    + " nodes do not exists"
+                )
             self.source = source
             self.n_source = len(source)
         if target is None or len(target) == 0:
-            raise ValueError(("Source" if self.partition_source else
-                              "Target") + " nodes do not exists")
+            raise ValueError(
+                ("Source" if self.partition_source else "Target") + " nodes do not exists"
+            )
 
         self.targets.append(target)
         self.idx_range.append(self.idx_range[-1] + len(target))
@@ -1567,25 +1683,33 @@ class OneToOneSequentialConnector(AbstractConnector):
             if self.partition_source:
                 raise ValueError(
                     "Total target populations exceed the source population."
-                    if self.partition_source else
-                    "Total source populations exceed the target population."
-                    )
+                    if self.partition_source
+                    else "Total source populations exceed the target population."
+                )
 
         if self.verbose and self.idx_range[-1] == self.n_source:
-            print("All " + ("source" if self.partition_source else "target")
-                  + " population partitions are filled.",flush=True)
+            print(
+                "All "
+                + ("source" if self.partition_source else "target")
+                + " population partitions are filled.",
+                flush=True,
+            )
 
     def edge_params(self, target_pop_idx=-1):
         """Create the arguments for BMTK add_edges() method"""
         if self.partition_source:
-            params = {'source': self.targets[target_pop_idx],
-                      'target': self.source,
-                      'iterator': 'one_to_all'}
+            params = {
+                "source": self.targets[target_pop_idx],
+                "target": self.source,
+                "iterator": "one_to_all",
+            }
         else:
-            params = {'source': self.source,
-                      'target': self.targets[target_pop_idx],
-                      'iterator': 'all_to_one'}
-        params['connection_rule'] = self.make_connection
+            params = {
+                "source": self.source,
+                "target": self.targets[target_pop_idx],
+                "iterator": "all_to_one",
+            }
+        params["connection_rule"] = self.make_connection
         return params
 
     # *** Methods executed during bmtk network.build() ***
@@ -1597,15 +1721,23 @@ class OneToOneSequentialConnector(AbstractConnector):
                 # Very beginning
                 self.target_count = 0
                 src_str, trg_str = self.get_nodes_info()
-                print("\nStart building connection " +
-                      ("to " if self.partition_source else "from ") + src_str,flush=True)
+                print(
+                    "\nStart building connection "
+                    + ("to " if self.partition_source else "from ")
+                    + src_str,
+                    flush=True,
+                )
                 self.timer = Timer()
 
             if self.iter_count == self.idx_range[self.target_count]:
                 # Beginning of each target population
                 src_str, trg_str = self.get_nodes_info(self.target_count)
-                print(("  %d. " % self.target_count) +
-                      ("from " if self.partition_source else "to ") + trg_str,flush=True)
+                print(
+                    ("  %d. " % self.target_count)
+                    + ("from " if self.partition_source else "to ")
+                    + trg_str,
+                    flush=True,
+                )
                 self.target_count += 1
                 self.timer_part = Timer()
 
@@ -1618,18 +1750,18 @@ class OneToOneSequentialConnector(AbstractConnector):
         if self.verbose:
             if self.iter_count == self.idx_range[self.target_count]:
                 # End of each target population
-                self.timer_part.report('    Time for this partition')
+                self.timer_part.report("    Time for this partition")
             if self.iter_count == self.n_source:
                 # Very end
-                self.timer.report('Done! \nTime for building connections')
+                self.timer.report("Done! \nTime for building connections")
         return nsyns
 
     # *** Helper functions for verbose ***
     def get_nodes_info(self, target_pop_idx=-1):
         """Get strings with source and target population information"""
         target = self.targets[target_pop_idx]
-        source_str = self.source.network_name + ': ' + self.source.filter_str
-        target_str = target.network_name + ': ' + target.filter_str
+        source_str = self.source.network_name + ": " + self.source.filter_str
+        target_str = target.network_name + ": " + target.filter_str
         return source_str, target_str
 
 
@@ -1637,27 +1769,38 @@ class OneToOneSequentialConnector(AbstractConnector):
 ######################### ADDTIONAL EDGE PROPERTIES ##########################
 
 SYN_MIN_DELAY = 0.8  # ms
-SYN_VELOCITY = 1000.  # um/ms
+SYN_VELOCITY = 1000.0  # um/ms
 FLUC_STDEV = 0.2  # ms
 DELAY_LOWBOUND = 0.2  # ms must be greater than h.dt
 DELAY_UPBOUND = 2.0  # ms
 
-def syn_const_delay(source=None, target = None, dist=100, 
-                    min_delay=SYN_MIN_DELAY, velocity=SYN_VELOCITY,
-                    fluc_stdev=FLUC_STDEV, delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
-                    connector=None): 
-    """Synapse delay constant with some random fluctuation.
-    """
+
+def syn_const_delay(
+    source=None,
+    target=None,
+    dist=100,
+    min_delay=SYN_MIN_DELAY,
+    velocity=SYN_VELOCITY,
+    fluc_stdev=FLUC_STDEV,
+    delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
+    connector=None,
+):
+    """Synapse delay constant with some random fluctuation."""
     del_fluc = fluc_stdev * rng.normal()
     delay = dist / SYN_VELOCITY + SYN_MIN_DELAY + del_fluc
     delay = min(max(delay, DELAY_LOWBOUND), DELAY_UPBOUND)
     return delay
 
 
-def syn_dist_delay_feng(source, target, min_delay=SYN_MIN_DELAY,
-                        velocity=SYN_VELOCITY, fluc_stdev=FLUC_STDEV,
-                        delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
-                        connector=None):
+def syn_dist_delay_feng(
+    source,
+    target,
+    min_delay=SYN_MIN_DELAY,
+    velocity=SYN_VELOCITY,
+    fluc_stdev=FLUC_STDEV,
+    delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
+    connector=None,
+):
     """Synpase delay linearly dependent on distance.
     min_delay: minimum delay (ms)
     velocity: synapse conduction velocity (micron/ms)
@@ -1666,7 +1809,7 @@ def syn_dist_delay_feng(source, target, min_delay=SYN_MIN_DELAY,
     connector: connector object from which to read distance
     """
     if connector is None:
-        dist = euclid_dist(target['positions'], source['positions'])
+        dist = euclid_dist(target["positions"], source["positions"])
     else:
         dist = connector.get_conn_prop(source.node_id, target.node_id)
     del_fluc = fluc_stdev * rng.normal()
@@ -1675,30 +1818,30 @@ def syn_dist_delay_feng(source, target, min_delay=SYN_MIN_DELAY,
     return delay
 
 
-def syn_section_PN(source, target, p=0.9,
-                   sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs):
+def syn_section_PN(source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs):
     """Synapse location follows a Bernoulli distribution, with probability p
     to obtain the former in sec_id and sec_x"""
     syn_loc = int(not decision(p))
     return sec_id[syn_loc], sec_x[syn_loc]
 
 
-def syn_const_delay_feng_section_PN(source, target, p=0.9,
-                                   sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs):
+def syn_const_delay_feng_section_PN(
+    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs
+):
     """Assign both synapse delay and location with constant distance assumed"""
-    delay = syn_const_delay(source, target,**kwargs)
+    delay = syn_const_delay(source, target, **kwargs)
     s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x)
     return delay, s_id, s_x
 
 
-def syn_dist_delay_feng_section_PN(source, target, p=0.9,
-                                   sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs):
+def syn_dist_delay_feng_section_PN(
+    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs
+):
     """Assign both synapse delay and location"""
     delay = syn_dist_delay_feng(source, target, **kwargs)
     s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x)
     return delay, s_id, s_x
 
 
-def syn_uniform_delay_section(source, target, low=DELAY_LOWBOUND,
-                              high=DELAY_UPBOUND, **kwargs):
+def syn_uniform_delay_section(source, target, low=DELAY_LOWBOUND, high=DELAY_UPBOUND, **kwargs):
     return rng.uniform(low, high)

@@ -26,7 +26,7 @@ from bmtool.singlecell import Passive, run_and_plot
 import matplotlib.pyplot as plt
 
 # Create a Passive simulation object
-sim = Passive('Cell_Cf', inj_amp=-100., inj_delay=1500., inj_dur=1000., 
+sim = Passive('Cell_Cf', inj_amp=-100., inj_delay=1500., inj_dur=1000.,
               tstop=2500., method='exp2')
 
 # Run the simulation and plot the results
@@ -61,7 +61,7 @@ from bmtool.singlecell import CurrentClamp, run_and_plot
 import matplotlib.pyplot as plt
 
 # Create a CurrentClamp simulation object
-sim = CurrentClamp('Cell_Cf', inj_amp=350., inj_delay=1500., inj_dur=1000., 
+sim = CurrentClamp('Cell_Cf', inj_amp=350., inj_delay=1500., inj_dur=1000.,
                    tstop=3000., threshold=-15.)
 
 # Run the simulation and plot the results
@@ -79,11 +79,11 @@ from bmtool.singlecell import FI, run_and_plot
 import matplotlib.pyplot as plt
 
 # Create an FI simulation object
-sim = FI('Cell_Cf', i_start=0., i_stop=1000., i_increment=50., 
+sim = FI('Cell_Cf', i_start=0., i_stop=1000., i_increment=50.,
           tstart=1500., threshold=-15.)
 
 # Run the simulation and plot the results
-X, Y = run_and_plot(sim, title='FI Curve', xlabel='Injection (nA)', 
+X, Y = run_and_plot(sim, title='FI Curve', xlabel='Injection (nA)',
                     ylabel='# Spikes')
 plt.show()
 ```
@@ -126,4 +126,4 @@ bmtool util cell tune --builder
 
 # VHalf Segregation
 bmtool util cell vhseg
-``` 
+```

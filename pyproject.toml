@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+# Python version compatibility
+target-version = "py310"
+# Line length
+line-length = 100
+# Exclude directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+# Enable a smaller subset of rules for initial setup
+select = ["E", "F", "I"]
+# Ignore specific rules that are too noisy for initial setup
+ignore = ["E501", "F841", "E722"]
+# Allow autofix for all enabled rules (when `--fix`) is provided
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bmtool"]
+
+[tool.pyright]
+# Pyright configuration
+include = ["bmtool"]
+exclude = [
+    "**/__pycache__",
+    "build",
+    "dist",
+]
+reportMissingImports = true
+reportMissingTypeStubs = false
+pythonVersion = "3.8"
+pythonPlatform = "All"

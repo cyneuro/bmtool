@@ -15,4 +15,4 @@ document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.arithmatex').forEach(function(element) {
     element.classList.add('mathjax_process');
   });
-}); 
+});

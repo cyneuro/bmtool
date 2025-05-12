@@ -116,3 +116,6 @@ venv.bak/
 # mypy
 .mypy_cache/
 .DS_Store
+
+# Ruff
+.ruff_cache/

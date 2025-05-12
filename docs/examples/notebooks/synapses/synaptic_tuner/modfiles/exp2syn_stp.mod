@@ -11,7 +11,7 @@ The solution of A->G->bath with rate constants 1/tau1 and 1/tau2 is
 If tau2-tau1 is very small compared to tau1, this is an alphasynapse with time constant tau2.
 If tau1/tau2 is very small, this is single exponential decay with time constant tau2.
 
-The factor is evaluated in the initial block 
+The factor is evaluated in the initial block
 such that an event of weight 1 generates a
 peak conductance of 1.
 
@@ -29,7 +29,7 @@ ENDCOMMENT
 
 NEURON {
 	THREADSAFE
-	
+
 	POINT_PROCESS Exp2Syn_STP
 	RANGE initW     : synaptic scaler for large scale networks
 	RANGE tau1, tau2, e, i
@@ -134,7 +134,7 @@ NET_RECEIVE(weight (uS)) {
 		Pr = u * R			: Pr is calculated as R * u (running value of Use)
 		R  = R - u * R		: update R as per Eq. 3 in Fuhrmann et al.
 	} else {
-		Pr = u 
+		Pr = u
 	}
 
 	tsyn = t

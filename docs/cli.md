@@ -107,4 +107,4 @@ The `debug` command provides debug utilities:
 
 ```bash
 bmtool debug --help
-``` 
+```

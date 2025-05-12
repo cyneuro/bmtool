@@ -20,7 +20,7 @@ THEORY
   coefficients and Ft is a gaussian white noise of unit standard deviation.
 
   g_e and g_i are described by an Ornstein-Uhlenbeck (OU) stochastic process
-  where tau_e and tau_i represent the "correlation" (if tau_e and tau_i are 
+  where tau_e and tau_i represent the "correlation" (if tau_e and tau_i are
   zero, g_e and g_i are white noise).  The estimation of OU parameters can
   be made from the power spectrum:
 
@@ -33,9 +33,9 @@ THEORY
 
 NUMERICAL RESOLUTION
 
-  The numerical scheme for integration of OU processes takes advantage 
+  The numerical scheme for integration of OU processes takes advantage
   of the fact that these processes are gaussian, which led to an exact
-  update rule independent of the time step dt (see Gillespie DT, Am J Phys 
+  update rule independent of the time step dt (see Gillespie DT, Am J Phys
   64: 225, 1996):
 
      x(t+dt) = x(t) * exp(-dt/tau) + A * N(0,1)
@@ -72,7 +72,7 @@ Gfluct3: conductance cannot be negative
 
 REFERENCE
 
-  Destexhe, A., Rudolph, M., Fellous, J-M. and Sejnowski, T.J.  
+  Destexhe, A., Rudolph, M., Fellous, J-M. and Sejnowski, T.J.
   Fluctuating synaptic conductances recreate in-vivo--like activity in
   neocortical neurons. Neuroscience 107: 13-24 (2001).
 
@@ -93,13 +93,13 @@ NEURON {
 	RANGE g_e, g_i, E_e, E_i, g_e0, g_i0, g_e1, g_i1
 	RANGE std_e, std_i, tau_e, tau_i, D_e, D_i
 	NONSPECIFIC_CURRENT i_exc, i_inh
-        
+
         THREADSAFE : only true if every instance has its own distinct Random
         BBCOREPOINTER donotuse
 }
 
 UNITS {
-	(nA) = (nanoamp) 
+	(nA) = (nanoamp)
 	(mV) = (millivolt)
 	(umho) = (micromho)
 }

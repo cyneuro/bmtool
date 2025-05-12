@@ -133,7 +133,7 @@ NET_RECEIVE (weight, R, u, tsyn (ms)){
         Pr = u * R                      :Pr is calculated as R * u (running value of Use)
         R  = R - u * R                  :update R as per Eq. 3 in Fuhrmann et al.
     } else {
-        Pr = u 
+        Pr = u
     }
 
     record_use = u

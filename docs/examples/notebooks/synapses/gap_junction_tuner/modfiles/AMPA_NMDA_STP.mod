@@ -169,7 +169,7 @@ NET_RECEIVE (weight, weight_AMPA, weight_NMDA, R, Pr, u, tsyn (ms), nc_type){
         Pr = u * R                      :Pr is calculated as R * u (running value of Use)
         R  = R - u * R                  :update R as per Eq. 3 in Fuhrmann et al.
     } else {
-        Pr = u 
+        Pr = u
     }
 
     record_use = u

@@ -2,7 +2,7 @@
 
 A collection of modules to make developing [Neuron](https://www.neuron.yale.edu/neuron/) and [BMTK](https://alleninstitute.github.io/bmtk/) models easier.
 
-[![license](https://img.shields.io/github/license/mashape/apistatus.svg?maxAge=2592000)](https://github.com/cyneuro/bmtool/blob/master/LICENSE) 
+[![license](https://img.shields.io/github/license/mashape/apistatus.svg?maxAge=2592000)](https://github.com/cyneuro/bmtool/blob/master/LICENSE)
 
 ## Overview
 
@@ -47,4 +47,4 @@ BMTool provides a CLI for accessing functionality directly from the command line
 bmtool --help
 ```
 
-See the [CLI documentation](cli.md) for more details. 
+See the [CLI documentation](cli.md) for more details.

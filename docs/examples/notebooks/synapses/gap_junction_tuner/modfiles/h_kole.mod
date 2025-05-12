@@ -1,7 +1,7 @@
 TITLE Ih-current
 : modified from http://senselab.med.yale.edu/ModelDB/showmodel.cshtml?model=64195&file=%5cStochastic%5cStochastic_Na%5cih.mod
 : /u/samn/papers/jnsci_26_1677.pdf
-: 
+:
 : @article{kole2006single,
 :  title={Single Ih channels in pyramidal neuron dendrites: properties, distribution, and impact on action potential output},
 :  author={Kole, M.H.P. and Hallermann, S. and Stuart, G.J.},
@@ -25,8 +25,8 @@ UNITS {
 
 PARAMETER {
   v (mV)
-  erev=-45  		(mV) 	:ih-reversal potential			       
-  gbar=0.00015 	(S/cm2)	:default Ih conductance; exponential distribution is set in Ri18init.hoc 
+  erev=-45  		(mV) 	:ih-reversal potential
+  gbar=0.00015 	(S/cm2)	:default Ih conductance; exponential distribution is set in Ri18init.hoc
   q10 = 2.2
   ascale = 0.00643
   bscale = 0.193
@@ -63,7 +63,7 @@ BREAKPOINT {
 
 : tau = 1 / (alpha + beta)
 FUNCTION alpha(v(mV)) {
-  alpha = ascale*(v+ashift)/(exp((v+ashift)/aslope)-1)  
+  alpha = ascale*(v+ashift)/(exp((v+ashift)/aslope)-1)
   :parameters are estimated by direct fitting of HH model to activation time constants and voltage activation curve recorded at 34C
 }
 

@@ -30,7 +30,7 @@ STATE {
 
 ASSIGNED {
 	ina (mA/cm2)
-	minf hinf 
+	minf hinf
 	mtau (ms)
 	htau (ms)
 	gna (mho/cm2)
@@ -62,7 +62,7 @@ FUNCTION malf(v(mV)) {
 
 FUNCTION mbet(v(mV)) {
 	mbet = mtau_inv*exp(-(v-mv_05)/27)
-}	
+}
 
 FUNCTION half(v(mV)) {
 	half = htau_inv*exp(-(v-hv_05)/33)
@@ -75,11 +75,11 @@ FUNCTION hbet(v(mV)) {
 PROCEDURE rate(v(mV)) { LOCAL msum, hsum, ma, mb, ha, hb
 
 	ma = malf(v) mb = mbet(v) ha = half(v) hb = hbet(v)
-	
+
 	msum = ma+mb
 	minf = ma/msum
 	mtau = 1/(msum)
-	
+
 	hsum = ha+hb
 	hinf = ha/hsum
 	htau = 1/(hsum)

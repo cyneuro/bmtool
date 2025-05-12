@@ -8,7 +8,7 @@ The Single Cell module provides tools for analyzing and tuning biophysical cell 
 - **Current Injection**: Run current clamp simulations to observe spiking behavior
 - **FI Curves**: Generate frequency-current curves to characterize neuronal excitability
 - **ZAP Protocol**: Analyze frequency response characteristics using chirp current injections
-- **Cell Tuning**: Interactive interface for tuning cell parameters 
+- **Cell Tuning**: Interactive interface for tuning cell parameters
 - **VHalf Segregation**: Simplify channel tuning by separating channel activation based on Alturki et al. (2016)
 
 ## Getting Started
@@ -35,7 +35,7 @@ Calculate passive membrane properties (V-rest, input resistance, and time consta
 from bmtool.singlecell import Passive, run_and_plot
 import matplotlib.pyplot as plt
 
-sim = Passive('Cell_Cf', inj_amp=-100., inj_delay=1500., inj_dur=1000., 
+sim = Passive('Cell_Cf', inj_amp=-100., inj_delay=1500., inj_dur=1000.,
               tstop=2500., method='exp2')
 title = 'Passive Cell Current Injection'
 xlabel = 'Time (ms)'
@@ -52,7 +52,7 @@ Run a current clamp simulation:
 
 ```python
 from bmtool.singlecell import CurrentClamp
-sim = CurrentClamp('Cell_Cf', inj_amp=350., inj_delay=1500., inj_dur=1000., 
+sim = CurrentClamp('Cell_Cf', inj_amp=350., inj_delay=1500., inj_dur=1000.,
                    tstop=3000., threshold=-15.)
 X, Y = run_and_plot(sim, title='Current Injection', xlabel='Time (ms)',
                     ylabel='Membrane Potential (mV)', plot_injection_only=True)
@@ -65,9 +65,9 @@ Generate a frequency-current (FI) curve:
 
 ```python
 from bmtool.singlecell import FI
-sim = FI('Cell_Cf', i_start=0., i_stop=1000., i_increment=50., 
+sim = FI('Cell_Cf', i_start=0., i_stop=1000., i_increment=50.,
           tstart=1500., threshold=-15.)
-X, Y = run_and_plot(sim, title='FI Curve', xlabel='Injection (nA)', 
+X, Y = run_and_plot(sim, title='FI Curve', xlabel='Injection (nA)',
                     ylabel='# Spikes')
 plt.show()
 ```
@@ -113,4 +113,4 @@ For building simple models:
 ```bash
 bmtool util cell --hoc cell_template.hoc vhsegbuild --build
 bmtool util cell --hoc segmented_template.hoc vhsegbuild
-``` 
+```

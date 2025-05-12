@@ -68,31 +68,31 @@ nav:
       - Graphs: modules/graphs.md
   - CLI: cli.md
   - Examples:
-      - Single Cell: 
+      - Single Cell:
           - Overview: examples/single-cell.md
           - Allen Database Tutorial: examples/notebooks/single_cell/Allen_tutorial/singleCellTutorial.ipynb
           - Neuron Hoc Tutorial: examples/notebooks/single_cell/Neuron_hoc/Single-Cell-Tuning.ipynb
-      - Synapses: 
+      - Synapses:
           - Overview: examples/synapses.md
           - Chemical Synapse Tuner: examples/notebooks/synapses/synaptic_tuner/synaptic_tuner.ipynb
           - Gap Junction Tuner: examples/notebooks/synapses/gap_junction_tuner/gap_junction_tuner.ipynb
-      - Connectors: 
+      - Connectors:
           - Overview: examples/connectors.md
           - Connectors Tutorial: examples/notebooks/connectors/connectors.ipynb
-      - BMPlot: 
+      - BMPlot:
           - Overview: examples/bmplot.md
           - BMPlot Tutorial: examples/notebooks/bmplot/bmplot.ipynb
-      - Analysis: 
+      - Analysis:
           - Overview: examples/analysis.md
           - Spikes Module: examples/notebooks/analysis/spiking/using_spikes.ipynb
           - Plot Spectrogram: examples/notebooks/analysis/spectrogram/spectrogram_with_bmtool.ipynb
           - Phase Locking: examples/notebooks/analysis/phase_locking_value/spike_phase_entrainment.ipynb
           - Synapse Report: examples/notebooks/analysis/netcon_report/netcon_example.ipynb
-      - SLURM: 
+      - SLURM:
           - Overview: examples/slurm.md
           - Block Runner: examples/notebooks/SLURM/using_BlockRunner.ipynb
   - Contributing: contributing.md
-  - API Reference: 
+  - API Reference:
       - Single Cell: api/singlecell.md
       - Synapses: api/synapses.md
       - Connectors: api/connectors.md
@@ -104,12 +104,12 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/cyneuro/bmtool 
+      link: https://github.com/cyneuro/bmtool
 
 extra_css:
-  - stylesheets/extra.css 
+  - stylesheets/extra.css
 
 extra_javascript:
-  - javascripts/notebook-download.js 
+  - javascripts/notebook-download.js
   - javascripts/mathjax.js
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js

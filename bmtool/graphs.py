@@ -1,13 +1,13 @@
 import networkx as nx
 import pandas as pd
+
 import bmtool.util.util as u
-import pandas as pd
 
 
 def generate_graph(config, source, target):
     """
     Generate a NetworkX graph from BMTK network configuration.
-    
+
     Parameters:
     -----------
     config : str
@@ -16,14 +16,14 @@ def generate_graph(config, source, target):
         Network name for source nodes.
     target : str
         Network name for target nodes.
-        
+
     Returns:
     --------
     nx.DiGraph
-        A directed graph representing the network with nodes containing 
+        A directed graph representing the network with nodes containing
         position and population information.
     """
-    nodes,edges = u.load_nodes_edges_from_config(config)
+    nodes, edges = u.load_nodes_edges_from_config(config)
     nodes_source = nodes[source]
     nodes_target = nodes[target]
     if source != target:
@@ -31,7 +31,7 @@ def generate_graph(config, source, target):
         nodes = pd.concat([nodes_source, nodes_target])
     else:
         nodes = nodes[source]
-    edge_to_grap = source+"_to_"+target
+    edge_to_grap = source + "_to_" + target
     edges = edges[edge_to_grap]
 
     # Create an empty graph
@@ -39,13 +39,18 @@ def generate_graph(config, source, target):
 
     # Add nodes to the graph with their positions and labels
     for index, node_data in nodes.iterrows():
-        G.add_node(index, pos=(node_data['pos_x'], node_data['pos_y'], node_data['pos_z']), label=node_data['pop_name'])
+        G.add_node(
+            index,
+            pos=(node_data["pos_x"], node_data["pos_y"], node_data["pos_z"]),
+            label=node_data["pop_name"],
+        )
 
     # Add edges to the graph
     for _, row in edges.iterrows():
-        G.add_edge(row['source_node_id'], row['target_node_id'])
+        G.add_edge(row["source_node_id"], row["target_node_id"])
 
     return G
+
 
 # import plotly.graph_objects as go
 # def plot_graph(Graph=None,show_edges = False,title = None):
@@ -54,7 +59,7 @@ def generate_graph(config, source, target):
 #     Graph: A Graph object
 #     show_edges: Boolean to show edges in graph plot
 #     title: A string for the title of the graph
-    
+
 #     """
 
 #     # Extract node positions
@@ -120,7 +125,7 @@ def generate_graph(config, source, target):
 
 #     if title == None:
 #         title = '3D plot'
-    
+
 #     fig = go.Figure(data=graph_prop,
 #                     layout=go.Layout(
 #                         title=title,
@@ -144,19 +149,19 @@ def generate_graph(config, source, target):
 def export_node_connections_to_csv(Graph, filename):
     """
     Generate a CSV file with node type and all incoming connections that node has.
-    
+
     Parameters:
     -----------
     Graph : nx.DiGraph
         A directed graph object from NetworkX.
     filename : str
         Path and filename for the output CSV file (must end in .csv).
-        
+
     Returns:
     --------
     None
         The function saves the results to the specified CSV file.
-        
+
     Notes:
     ------
     The resulting CSV file will have the node label as the first column,
@@ -169,18 +174,20 @@ def export_node_connections_to_csv(Graph, filename):
     for node in Graph.nodes():
         # Initialize a dictionary to store the outgoing connections for the current node
         connections = {}
-        node_label = Graph.nodes[node]['label']
+        node_label = Graph.nodes[node]["label"]
 
         # Iterate over each presuccessor (ingoing neighbor) of the current node
         for successor in Graph.predecessors(node):
             # Get the label of the successor node
-            successor_label = Graph.nodes[successor]['label']
+            successor_label = Graph.nodes[successor]["label"]
 
             # Increment the connection count for the current node and successor label
-            connections[f'{successor_label} incoming Connections'] = connections.get(f'{successor_label} incoming Connections', 0) + 1
+            connections[f"{successor_label} incoming Connections"] = (
+                connections.get(f"{successor_label} incoming Connections", 0) + 1
+            )
 
         # Add the connections information for the current node to the dictionary
-        connections['Node Label'] = node_label
+        connections["Node Label"] = node_label
         node_connections[node] = connections
 
     # Convert the dictionary to a DataFrame
@@ -188,7 +195,7 @@ def export_node_connections_to_csv(Graph, filename):
 
     # Reorder columns so that 'Node Label' is the leftmost column
     cols = df.columns.tolist()
-    cols = ['Node Label'] + [col for col in cols if col != 'Node Label']
+    cols = ["Node Label"] + [col for col in cols if col != "Node Label"]
     df = df[cols]
 
     # Write the DataFrame to a CSV file

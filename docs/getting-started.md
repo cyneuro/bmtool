@@ -66,4 +66,4 @@ from bmtool.connectors import UnidirectionConnector, ReciprocalConnector
 
 - Check out the [module documentation](modules/singlecell.md) for details on specific modules
 - Explore the [examples](examples/single-cell.md) to learn how to use BMTool features
-- Read the [API reference](api/singlecell.md) for detailed function and class documentation 
+- Read the [API reference](api/singlecell.md) for detailed function and class documentation

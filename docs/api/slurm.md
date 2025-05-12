@@ -74,4 +74,4 @@ This page provides API reference documentation for the SLURM module, which conta
       members:
         - __init__
         - submit_blocks_sequentially
-        - submit_blocks_parallel 
+        - submit_blocks_parallel

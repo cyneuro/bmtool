@@ -21,6 +21,6 @@ ASSIGNED {
 	il (mA/cm2)
 }
 
-BREAKPOINT { 
+BREAKPOINT {
 	il = glbar*(v - el)
-}	
+}
