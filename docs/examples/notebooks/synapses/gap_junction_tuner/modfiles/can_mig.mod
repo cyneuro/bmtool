@@ -26,7 +26,7 @@ PARAMETER {
 	a0m =0.03
 	zetam = 2
 	vhalfm = -14
-	gmm=0.1	
+	gmm=0.1
         USEGHK=1
         erev = 100
 }
@@ -34,18 +34,18 @@ PARAMETER {
 NEURON {
 	SUFFIX can
 	USEION ca READ cai,cao WRITE ica
-        RANGE gcanbar, ica, gcan       
+        RANGE gcanbar, ica, gcan
         RANGE hinf,minf,taum,tauh
         GLOBAL USEGHK
 }
 
 STATE {
-	m h 
+	m h
 }
 
 ASSIGNED {
 	ica (mA/cm2)
-        gcan  (mho/cm2) 
+        gcan  (mho/cm2)
         minf
         hinf
         taum
@@ -112,11 +112,11 @@ FUNCTION betm(v(mV)) {
 }
 
 FUNCTION alpmt(v(mV)) {
-  alpmt = exp(0.0378*zetam*(v-vhalfm)) 
+  alpmt = exp(0.0378*zetam*(v-vhalfm))
 }
 
 FUNCTION betmt(v(mV)) {
-  betmt = exp(0.0378*zetam*gmm*(v-vhalfm)) 
+  betmt = exp(0.0378*zetam*gmm*(v-vhalfm))
 }
 
 UNITSON

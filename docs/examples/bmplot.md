@@ -23,7 +23,7 @@ connections.total_connection_matrix(config='config.json')
 # Generate a table showing the percent connectivity
 connections.percent_connection_matrix(config='config.json')
 
-# Generate a table showing the mean convergence 
+# Generate a table showing the mean convergence
 connections.convergence_connection_matrix(config='config.json')
 
 # Generate a table showing the mean divergence

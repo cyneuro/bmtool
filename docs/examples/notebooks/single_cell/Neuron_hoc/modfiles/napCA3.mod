@@ -8,54 +8,54 @@ ENDCOMMENT
 
 INDEPENDENT { t FROM 0 TO 1 WITH 1 (ms) }
 
-UNITS { 
-	(mV) = (millivolt) 
-	(mA) = (milliamp) 
-} 
-NEURON { 
+UNITS {
+	(mV) = (millivolt)
+	(mA) = (milliamp)
+}
+NEURON {
 	SUFFIX napCA3
 	USEION na READ ena WRITE ina
 	RANGE i, minf, mtau, gnap, gbar :, vhalf, k
 	RANGE mseg, vhalf
 }
 
-PARAMETER { 
+PARAMETER {
 	gbar = 3e-4 :1e-4 	(mho/cm2)
-	v ena 		(mV)  
+	v ena 		(mV)
 	k = 5      (mV)
 	vhalf = -48 :-48 (mV)
-	mseg = -999 
-} 
-ASSIGNED { 
-	ina 		(mA/cm2) 
+	mseg = -999
+}
+ASSIGNED {
+	ina 		(mA/cm2)
 	i   		(mA/cm2)
 	minf 		(1)
-	mtau 		(ms) 
+	mtau 		(ms)
 	gnap		(mho/cm2)
-} 
+}
 STATE {
 	m
 }
 
-BREAKPOINT { 
+BREAKPOINT {
 	SOLVE states METHOD cnexp
 	gnap = gbar * m
-	ina = gnap * ( v - ena ) 
+	ina = gnap * ( v - ena )
 	i = ina
-} 
+}
 
-INITIAL { 
+INITIAL {
 	rate(v)
 	segment(v)
 	m = minf
-} 
+}
 
-DERIVATIVE states { 
+DERIVATIVE states {
 	rate(v)
-	m' = ( minf - m ) / mtau 
+	m' = ( minf - m ) / mtau
 }
 UNITSOFF
- 
+
 PROCEDURE rate(v (mV)) {
 	if (v < -59 ) { :-67.5
 	minf = 0

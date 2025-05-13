@@ -106,4 +106,4 @@ Please follow these guidelines for code style:
 - Use 4 spaces for indentation (not tabs)
 - Follow PEP 8 style guidelines where possible
 - Use meaningful variable and function names
-- Add docstrings for functions and classes 
+- Add docstrings for functions and classes

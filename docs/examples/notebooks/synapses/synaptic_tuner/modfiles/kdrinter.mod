@@ -50,22 +50,22 @@ DERIVATIVE states {
 
 UNITSOFF
 
-FUNCTION alf(v(mV)) { 
+FUNCTION alf(v(mV)) {
 	alf = tau_inv*exp((v-v_05)/10.67)
 }
 
 FUNCTION bet(v(mV)) {
 	bet = tau_inv*exp(-(v-v_05)/42.68)
-}	
+}
 
 PROCEDURE rate(v(mV)) { LOCAL sum, nalf, nbet
-	
+
 	nalf = alf(v)
-	nbet = bet(v) 
-	
+	nbet = bet(v)
+
 	sum = nalf+nbet
 	inf = nalf/sum
 	tau = 1/(sum)
 }
 
-UNITSON	
+UNITSON

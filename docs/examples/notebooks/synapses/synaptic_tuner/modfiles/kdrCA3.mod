@@ -58,11 +58,11 @@ INITIAL {
 
 
 FUNCTION alpn(v(mV)) {
-  alpn = exp(1.e-3*(-3)*(v-vhalfn)*9.648e4/(8.315*(273.16+celsius))) 
+  alpn = exp(1.e-3*(-3)*(v-vhalfn)*9.648e4/(8.315*(273.16+celsius)))
 }
 
 FUNCTION betn(v(mV)) {
-  betn = exp(1.e-3*(-3)*(0.7)*(v-vhalfn)*9.648e4/(8.315*(273.16+celsius))) 
+  betn = exp(1.e-3*(-3)*(0.7)*(v-vhalfn)*9.648e4/(8.315*(273.16+celsius)))
 }
 
 DERIVATIVE states {     : exact when v held constant; integrates over dt step
@@ -82,4 +82,3 @@ PROCEDURE rates(v (mV)) { :callable from hoc
 		taun = betn(v)/(qt*(0.08)*(1+a))
 	if (taun<nmax) {taun=nmax}
 }
-		

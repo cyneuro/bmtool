@@ -115,4 +115,4 @@ test = SynapseTest(
 # Run the test and plot results
 test.run()
 test.plot_comparison()
-``` 
+```

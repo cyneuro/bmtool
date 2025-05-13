@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-import os, sys
+import sys
+
 from bmtk.simulator import bionet
 
 
@@ -13,8 +14,8 @@ def run(config_file):
     bionet.nrn.quit_execution()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if __file__ != sys.argv[-1]:
         run(sys.argv[-1])
     else:
-        run('${CONFIG}')
+        run("${CONFIG}")

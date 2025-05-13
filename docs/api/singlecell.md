@@ -89,4 +89,4 @@ This page provides API reference documentation for the Single Cell module, which
 ::: bmtool.singlecell.run_and_plot
     options:
       show_root_heading: true
-      heading_level: 3 
+      heading_level: 3

@@ -19,7 +19,7 @@ import bmtool.bmplot.connections as connections
 
 # Default - all connections
 connections.total_connection_matrix(
-    config='config.json', 
+    config='config.json',
     title='Total Connection Matrix',
     sources=None,  # Use all sources (default)
     targets=None,  # Use all targets (default)
@@ -28,7 +28,7 @@ connections.total_connection_matrix(
 
 # Specific source/target populations
 connections.total_connection_matrix(
-    config='config.json', 
+    config='config.json',
     sources='LA',
     targets='LA'
 )
@@ -47,13 +47,13 @@ connections.percent_connection_matrix(
 
 # Only unidirectional connections
 connections.percent_connection_matrix(
-    config='config.json', 
+    config='config.json',
     method='unidirectional'
 )
 
 # Only bidirectional connections
 connections.percent_connection_matrix(
-    config='config.json', 
+    config='config.json',
     method='bidirectional'
 )
 ```
@@ -71,19 +71,19 @@ connections.convergence_connection_matrix(
 
 # Maximum convergence
 connections.convergence_connection_matrix(
-    config='config.json', 
+    config='config.json',
     method='max'
 )
 
 # Minimum convergence
 connections.convergence_connection_matrix(
-    config='config.json', 
+    config='config.json',
     method='min'
 )
 
 # Standard deviation of convergence
 connections.convergence_connection_matrix(
-    config='config.json', 
+    config='config.json',
     method='std'
 )
 ```
@@ -101,19 +101,19 @@ connections.divergence_connection_matrix(
 
 # Maximum divergence
 connections.divergence_connection_matrix(
-    config='config.json', 
+    config='config.json',
     method='max'
 )
 
 # Minimum divergence
 connections.divergence_connection_matrix(
-    config='config.json', 
+    config='config.json',
     method='min'
 )
 
 # Standard deviation of divergence
 connections.divergence_connection_matrix(
-    config='config.json', 
+    config='config.json',
     method='std'
 )
 ```
@@ -217,7 +217,7 @@ import bmtool.bmplot.connections as connections
 connections.plot_network_graph(
     config='config.json',
     sources='LA',
-    targets='LA', 
+    targets='LA',
     tids='pop_name',
     sids='pop_name',
     no_prepend_pop=True  # Whether to prepend population name to node labels

@@ -150,4 +150,4 @@ This page provides API reference documentation for the Connectors module, which 
 ::: bmtool.connectors.syn_uniform_delay_section
     options:
       show_root_heading: true
-      heading_level: 3 
+      heading_level: 3

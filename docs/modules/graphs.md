@@ -115,4 +115,4 @@ for u, v, attrs in graph.edges(data=True):
     edge_type = attrs.get('edge_type', 'unknown')
     edge_types[edge_type] = edge_types.get(edge_type, 0) + 1
 print("Edge types:", edge_types)
-``` 
+```

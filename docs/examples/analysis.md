@@ -105,4 +105,4 @@ plt.legend()
 plt.show()
 ```
 
-For more advanced examples and detailed usage, please refer to the Jupyter notebook tutorials above. 
+For more advanced examples and detailed usage, please refer to the Jupyter notebook tutorials above.

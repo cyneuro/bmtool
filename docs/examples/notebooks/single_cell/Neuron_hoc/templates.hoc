@@ -19,7 +19,7 @@ begintemplate CP_Cell
 	objref all, somatic, axonal, basal, apical
 
 	proc init() {
-		type = "CP_Cell"	
+		type = "CP_Cell"
 
 		/////// parameters ///////
 		Vrest = -65 // resting potential
@@ -52,7 +52,7 @@ begintemplate CP_Cell
 		// Na, K reversal potentials calculated from BenS internal/external solutions via Nernst eq.
 		p_ek = -104.0 // these reversal potentials for in vitro conditions
 		p_ena = 42.0
-		
+
 		// d-current
 		kdmc_gbar = 0.000404311891107
 		kdmc_gbar_axonm = 20
@@ -342,7 +342,7 @@ begintemplate FSI_Cell
 			gkdrbar_kdrinter = 0.003 // (siemens/cm2)
 		}
 
-		define_shape() // builtin fcn: fill in 3d info for sections defined by only L and diam, translate 3d points for consistency with their connections	
+		define_shape() // builtin fcn: fill in 3d info for sections defined by only L and diam, translate 3d points for consistency with their connections
 	}
 
 	proc insert_mechs(){

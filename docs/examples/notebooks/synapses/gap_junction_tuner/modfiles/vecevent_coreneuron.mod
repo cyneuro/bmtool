@@ -6,7 +6,7 @@ events at times that are specified in a Vector.
 
 CORE NEURON COMPATIBLE
 See:
-https://www.neuron.yale.edu/phpBB/viewtopic.php?t=2147&start=15 
+https://www.neuron.yale.edu/phpBB/viewtopic.php?t=2147&start=15
 https://github.com/neuronsimulator/nrn/blob/master/share/examples/nrniv/netcon/vecevent.mod
 
 HOC Example:
@@ -72,7 +72,7 @@ NET_RECEIVE (w) {
 DESTRUCTOR {
 VERBATIM
 #if !NRNBBCORE
-	void* vv = (void*)(_p_ptr);  
+	void* vv = (void*)(_p_ptr);
         if (vv) {
 		hoc_obj_unref(*vector_pobj(vv));
 	}
@@ -81,7 +81,7 @@ ENDVERBATIM
 }
 
 PROCEDURE element() {
-VERBATIM	
+VERBATIM
   { void* vv; int i, size; double* px;
 	i = (int)index;
 	if (i >= 0) {

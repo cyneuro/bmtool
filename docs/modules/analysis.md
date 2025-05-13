@@ -112,8 +112,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import xarray as xr
 from bmtool.analysis.lfp import (
-    load_ecp_to_xarray, 
-    ecp_to_lfp, 
+    load_ecp_to_xarray,
+    ecp_to_lfp,
     slice_time_series,
     cwt_spectrogram_xarray,
     plot_spectrogram,
@@ -202,7 +202,7 @@ ppc = calculate_ppc(
     lfp_signal=filtered_lfp,
     spike_fs=1000,
     lfp_fs=fs,
-    fmin=4, 
+    fmin=4,
     fmax=8
 )
 print(f"Pairwise phase consistency: {ppc}")
@@ -260,4 +260,4 @@ resid_spectra, idx_freqs = generate_resd_from_fooof(fooof_model)
 # Calculate signal-to-noise ratio in a specific frequency band
 snr = calculate_SNR(fooof_model, freq_band=(30, 80))
 print(f"Signal-to-noise ratio in gamma band: {snr}")
-``` 
+```

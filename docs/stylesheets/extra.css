@@ -193,7 +193,7 @@
 }
 
 /* Controls paragraph text in Jupyter notebooks */
-.jp-RenderedHTMLCommon p, 
+.jp-RenderedHTMLCommon p,
 .jp-RenderedMarkdown p,
 .jupyter-wrapper p {
   font-size: inherit !important;   /* Inherits font size from parent */

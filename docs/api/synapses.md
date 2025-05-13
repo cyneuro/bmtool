@@ -75,4 +75,4 @@ This page provides API reference documentation for the Synapses module, which co
         - _objective_function
         - optimize_resistance
         - plot_optimization_results
-        - parameter_sweep 
+        - parameter_sweep

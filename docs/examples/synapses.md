@@ -72,4 +72,4 @@ optimal_resistance = tuner.optimize(target_cc=0.05)
 print(f"Optimal gap junction resistance: {optimal_resistance} MOhm")
 ```
 
-For more advanced usage, please refer to the Jupyter notebook tutorials above. 
+For more advanced usage, please refer to the Jupyter notebook tutorials above.

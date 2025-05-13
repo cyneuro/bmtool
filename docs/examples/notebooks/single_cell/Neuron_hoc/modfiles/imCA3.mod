@@ -62,8 +62,8 @@ FUNCTION bet(v (mV)) (/ms) {
 PROCEDURE rate(v (mV)) {
 	LOCAL sum, aa, ab
 	UNITSOFF
-	aa=alf(v) ab=bet(v) 
-	
+	aa=alf(v) ab=bet(v)
+
 	sum = aa+ab
 	if (v < -59 ) {					:-67.5
 	ninf = 0
