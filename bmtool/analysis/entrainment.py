@@ -8,11 +8,41 @@ import numba
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
+import xarray as xr
 from numba import cuda
 from scipy import signal
 from tqdm.notebook import tqdm
 
 from .lfp import butter_bandpass_filter, get_lfp_phase, get_lfp_power, wavelet_filter
+
+
+def align_spike_times_with_lfp(lfp: xr.DataArray, timestamps: np.ndarray) -> np.ndarray:
+    """the lfp xarray should have a time axis. use that to align the spike times since the lfp can start at a
+    non-zero time after sliced. Both need to be on same fs for this to be correct.
+
+    Parameters
+    ----------
+    lfp : xarray.DataArray
+        LFP data with time coordinates
+    timestamps : np.ndarray
+        Array of spike timestamps
+
+    Returns
+    -------
+    np.ndarray
+        Copy of timestamps with adjusted timestamps to align with lfp.
+    """
+    # print("Pairing LFP and Spike Times")
+    # print(lfp.time.values)
+    # print(f"LFP starts at {lfp.time.values[0]}ms")
+    # need to make sure lfp and spikes have the same time axis
+    # align spikes with lfp
+    timestamps = timestamps[
+        (timestamps >= lfp.time.values[0]) & (timestamps <= lfp.time.values[-1])
+    ].copy()
+    # set the time axis of the spikes to match the lfp
+    timestamps = timestamps - lfp.time.values[0]
+    return timestamps
 
 
 def calculate_signal_signal_plv(
@@ -99,7 +129,7 @@ def calculate_signal_signal_plv(
 
 def calculate_spike_lfp_plv(
     spike_times: np.ndarray = None,
-    lfp_data: np.ndarray = None,
+    lfp_data=None,
     spike_fs: float = None,
     lfp_fs: float = None,
     filter_method: str = "butter",
@@ -150,10 +180,7 @@ def calculate_spike_lfp_plv(
     spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
 
     # Filter indices to ensure they're within bounds of the LFP signal
-    if filtered_lfp_phase is not None:
-        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
-    else:
-        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
+    valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
 
     if len(valid_indices) <= 1:
         return 0
@@ -173,7 +200,7 @@ def calculate_spike_lfp_plv(
         instantaneous_phase = filtered_lfp_phase
 
     # Get phases at spike times
-    spike_phases = instantaneous_phase[valid_indices]
+    spike_phases = instantaneous_phase.sel(time=valid_indices).values
 
     # Number of spikes
     N = len(spike_phases)
@@ -230,7 +257,7 @@ def _ppc_gpu(spike_phases):
 
 def calculate_ppc(
     spike_times: np.ndarray = None,
-    lfp_data: np.ndarray = None,
+    lfp_data=None,
     spike_fs: float = None,
     lfp_fs: float = None,
     filter_method: str = "wavelet",
@@ -285,9 +312,9 @@ def calculate_ppc(
 
     # Filter indices to ensure they're within bounds of the LFP signal
     if filtered_lfp_phase is not None:
-        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
+        valid_indices = align_spike_times_with_lfp(lfp=filtered_lfp_phase, timestamps=spike_indices)
     else:
-        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
+        valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
 
     if len(valid_indices) <= 1:
         return 0
@@ -307,7 +334,7 @@ def calculate_ppc(
         instantaneous_phase = filtered_lfp_phase
 
     # Get phases at spike times
-    spike_phases = instantaneous_phase[valid_indices]
+    spike_phases = instantaneous_phase.sel(time=valid_indices).values
 
     n_spikes = len(spike_phases)
 
@@ -333,7 +360,7 @@ def calculate_ppc(
 
 def calculate_ppc2(
     spike_times: np.ndarray = None,
-    lfp_data: np.ndarray = None,
+    lfp_data=None,
     spike_fs: float = None,
     lfp_fs: float = None,
     filter_method: str = "wavelet",
@@ -392,9 +419,9 @@ def calculate_ppc2(
 
     # Filter indices to ensure they're within bounds of the LFP signal
     if filtered_lfp_phase is not None:
-        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
+        valid_indices = align_spike_times_with_lfp(lfp=filtered_lfp_phase, timestamps=spike_indices)
     else:
-        valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
+        valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
 
     if len(valid_indices) <= 1:
         return 0
@@ -414,8 +441,7 @@ def calculate_ppc2(
         instantaneous_phase = filtered_lfp_phase
 
     # Get phases at spike times
-    spike_phases = instantaneous_phase[valid_indices]
-
+    spike_phases = instantaneous_phase.sel(time=valid_indices).values
     # Calculate PPC2 according to Vinck et al. (2010), Equation 6
     n = len(spike_phases)
 

@@ -1404,7 +1404,8 @@ class CellTunerGUI:
         ret = []
         for i in dir(h):
             try:
-                if type(getattr(neuron.h, i)) == neuron.hoc.HocObject:
+                # update to use is and is not comparison
+                if isinstance(getattr(neuron.h, i), neuron.hoc.HocObject):
                     ret.append(i)
             except Exception as e:
                 pass

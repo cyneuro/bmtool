@@ -408,22 +408,23 @@ def butter_bandpass_filter(
 
 
 def get_lfp_power(
-    lfp_data: np.ndarray,
-    freq: float,
+    lfp_data,
+    freq_of_interest: float,
     fs: float,
     filter_method: str = "wavelet",
     lowcut: float = None,
     highcut: float = None,
     bandwidth: float = 1.0,
-) -> np.ndarray:
+):
     """
-    Compute the power of the raw LFP signal in a specified frequency band.
+    Compute the power of the raw LFP signal in a specified frequency band,
+    preserving xarray structure if input is xarray.
 
     Parameters
     ----------
-    lfp_data : np.ndarray
+    lfp_data : np.ndarray or xr.DataArray
         Raw local field potential (LFP) time series data
-    freq : float
+    freq_of_interest : float
         Center frequency (Hz) for wavelet filtering method
     fs : float
         Sampling frequency (Hz) of the input data
@@ -438,33 +439,67 @@ def get_lfp_power(
 
     Returns
     -------
-    np.ndarray
-        Power of the filtered signal (magnitude squared)
+    np.ndarray or xr.DataArray
+        Power of the filtered signal (magnitude squared) with same structure as input
 
     Notes
     -----
     - The 'wavelet' method uses a complex Morlet wavelet centered at the specified frequency
     - The 'butter' method uses a Butterworth bandpass filter with the specified cutoff frequencies
     - When using the 'butter' method, both lowcut and highcut must be provided
+    - If input is an xarray DataArray, the output will preserve the same structure with coordinates
     """
+    import xarray as xr
+
+    # Check if input is xarray
+    is_xarray = isinstance(lfp_data, xr.DataArray)
+
+    if is_xarray:
+        # Get the raw data from xarray
+        raw_data = lfp_data.values
+        # Check if 'fs' attribute exists in the xarray and override if necessary
+        if "fs" in lfp_data.attrs and fs is None:
+            fs = lfp_data.attrs["fs"]
+    else:
+        raw_data = lfp_data
+
     if filter_method == "wavelet":
-        filtered_signal = wavelet_filter(lfp_data, freq, fs, bandwidth)
+        filtered_signal = wavelet_filter(raw_data, freq_of_interest, fs, bandwidth)
     elif filter_method == "butter":
         if lowcut is None or highcut is None:
             raise ValueError(
                 "Both lowcut and highcut must be specified when using 'butter' method."
             )
-        filtered_signal = butter_bandpass_filter(lfp_data, lowcut, highcut, fs)
+        filtered_signal = butter_bandpass_filter(raw_data, lowcut, highcut, fs)
     else:
         raise ValueError("Invalid method. Choose 'wavelet' or 'butter'.")
 
     # Calculate power (magnitude squared of filtered signal)
     power = np.abs(filtered_signal) ** 2
+
+    # If the input was an xarray, return an xarray with the same coordinates
+    if is_xarray:
+        power_xarray = xr.DataArray(
+            power,
+            coords=lfp_data.coords,
+            dims=lfp_data.dims,
+            attrs={
+                **lfp_data.attrs,
+                "filter_method": filter_method,
+                "frequency_of_interest": freq_of_interest,
+                "bandwidth": bandwidth,
+                "lowcut": lowcut,
+                "highcut": highcut,
+                "power_type": "magnitude_squared",
+            },
+        )
+        return power_xarray
+
     return power
 
 
 def get_lfp_phase(
-    lfp_data: np.ndarray,
+    lfp_data,
     freq_of_interest: float,
     fs: float,
     filter_method: str = "wavelet",
@@ -473,16 +508,16 @@ def get_lfp_phase(
     bandwidth: float = 1.0,
 ) -> np.ndarray:
     """
-    Calculate the phase of the filtered signal.
+    Calculate the phase of the filtered signal, preserving xarray structure if input is xarray.
 
     Parameters
     ----------
-    lfp_data : np.ndarray
+    lfp_data : np.ndarray or xr.DataArray
         Input LFP data
+    freq_of_interest : float
+        Frequency of interest (Hz)
     fs : float
         Sampling frequency (Hz)
-    freq : float
-        Frequency of interest (Hz)
     filter_method : str, optional
         Method for filtering the signal ('wavelet' or 'butter')
     bandwidth : float, optional
@@ -494,8 +529,8 @@ def get_lfp_phase(
 
     Returns
     -------
-    np.ndarray
-        Phase of the filtered signal
+    np.ndarray or xr.DataArray
+        Phase of the filtered signal with same structure as input
 
     Notes
     -----
@@ -503,12 +538,27 @@ def get_lfp_phase(
     - The 'butter' method uses a Butterworth bandpass filter with the specified cutoff frequencies
       followed by Hilbert transform to extract the phase
     - When using the 'butter' method, both lowcut and highcut must be provided
+    - If input is an xarray DataArray, the output will preserve the same structure with coordinates
     """
+    import xarray as xr
+
+    # Check if input is xarray
+    is_xarray = isinstance(lfp_data, xr.DataArray)
+
+    if is_xarray:
+        # Get the raw data from xarray
+        raw_data = lfp_data.values
+        # Check if 'fs' attribute exists in the xarray and override if necessary
+        if "fs" in lfp_data.attrs and fs is None:
+            fs = lfp_data.attrs["fs"]
+    else:
+        raw_data = lfp_data
+
     if filter_method == "wavelet":
         if freq_of_interest is None:
             raise ValueError("freq_of_interest must be provided for the wavelet method.")
         # Wavelet filter returns complex values directly
-        filtered_signal = wavelet_filter(lfp_data, freq_of_interest, fs, bandwidth)
+        filtered_signal = wavelet_filter(raw_data, freq_of_interest, fs, bandwidth)
         # Phase is the angle of the complex signal
         phase = np.angle(filtered_signal)
     elif filter_method == "butter":
@@ -517,13 +567,30 @@ def get_lfp_phase(
                 "Both lowcut and highcut must be specified when using 'butter' method."
             )
         # Butterworth filter returns real values
-        filtered_signal = butter_bandpass_filter(lfp_data, lowcut, highcut, fs)
+        filtered_signal = butter_bandpass_filter(raw_data, lowcut, highcut, fs)
         # Apply Hilbert transform to get analytic signal (complex)
         analytic_signal = signal.hilbert(filtered_signal)
         # Phase is the angle of the analytic signal
         phase = np.angle(analytic_signal)
     else:
         raise ValueError(f"Invalid method {filter_method}. Choose 'wavelet' or 'butter'.")
+
+    # If the input was an xarray, return an xarray with the same coordinates
+    if is_xarray:
+        phase_xarray = xr.DataArray(
+            phase,
+            coords=lfp_data.coords,
+            dims=lfp_data.dims,
+            attrs={
+                **lfp_data.attrs,
+                "filter_method": filter_method,
+                "freq_of_interest": freq_of_interest,
+                "bandwidth": bandwidth,
+                "lowcut": lowcut,
+                "highcut": highcut,
+            },
+        )
+        return phase_xarray
 
     return phase
 
