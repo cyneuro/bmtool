@@ -712,3 +712,55 @@ def calculate_spike_rate_power_correlation(
             correlation_results[pop][freq] = {"correlation": corr, "p_value": p_val}
 
     return correlation_results, frequencies
+
+
+def get_spikes_in_cycle(spike_df, lfp_data, spike_fs=1000, lfp_fs=400, band=(30, 80)):
+    """
+    Analyze spike timing relative to oscillation phases.
+
+    Parameters:
+    -----------
+    spike_df : pd.DataFrame
+    lfp_data : np.array
+        Raw LFP signal
+    fs : float
+        Sampling frequency of LFP in Hz
+    gamma_band : tuple
+        Lower and upper bounds of gamma frequency band in Hz
+
+    Returns:
+    --------
+    phase_data : dict
+        Dictionary containing phase values for each spike and neuron population
+    """
+    filtered_lfp = butter_bandpass_filter(lfp_data, band[0], band[1], lfp_fs)
+
+    # Calculate phase using Hilbert transform
+    analytic_signal = signal.hilbert(filtered_lfp)
+    phase = np.angle(analytic_signal)
+    amplitude = np.abs(analytic_signal)
+
+    # Get unique neuron populations
+    neuron_pops = spike_df["pop_name"].unique()
+
+    # Get the phase at each spike time for each neuron population
+    phase_data = {}
+
+    for pop in neuron_pops:
+        # Get spike times for this population
+        pop_spikes = spike_df[spike_df["pop_name"] == pop]["timestamps"].values
+
+        # Convert spike times to sample indices
+        spike_times_seconds = pop_spikes / spike_fs
+
+        # Then convert from seconds to samples at the new sampling rate
+        spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
+
+        # Ensure spike times are within LFP data range
+        valid_indices = (spike_indices >= 0) & (spike_indices < len(phase))
+
+        if np.any(valid_indices):
+            valid_samples = spike_indices[valid_indices]
+            phase_data[pop] = phase[valid_samples]
+
+    return phase_data, filtered_lfp, phase, amplitude

@@ -75,12 +75,11 @@ Or on specific files:
 pre-commit run --files path/to/file1.py path/to/file2.py
 ```
 
-### Ruff and Pyright
+### Ruff
 
-BMTool uses two main code quality tools:
+BMTool uses Ruff as a code quality tool:
 
 1. **Ruff**: A fast Python linter and formatter
-2. **Pyright**: A static type checker for Python
 
 To install these tools in your development environment:
 
