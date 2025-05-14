@@ -2,7 +2,7 @@
 Module for entrainment analysis
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
 
 import numba
 import numpy as np
@@ -41,7 +41,7 @@ def align_spike_times_with_lfp(lfp: xr.DataArray, timestamps: np.ndarray) -> np.
         (timestamps >= lfp.time.values[0]) & (timestamps <= lfp.time.values[-1])
     ].copy()
     # set the time axis of the spikes to match the lfp
-    timestamps = timestamps - lfp.time.values[0]
+    # timestamps = timestamps - lfp.time.values[0]
     return timestamps
 
 
@@ -127,6 +127,95 @@ def calculate_signal_signal_plv(
     return plv
 
 
+def _get_spike_phases(
+    spike_times: np.ndarray,
+    lfp_data: Union[np.ndarray, xr.DataArray],
+    spike_fs: float,
+    lfp_fs: float,
+    filter_method: str = "wavelet",
+    freq_of_interest: Optional[float] = None,
+    lowcut: Optional[float] = None,
+    highcut: Optional[float] = None,
+    bandwidth: float = 2.0,
+    filtered_lfp_phase: Optional[Union[np.ndarray, xr.DataArray]] = None,
+) -> np.ndarray:
+    """
+    Helper function to get spike phases from LFP data.
+
+    Parameters
+    ----------
+    spike_times : np.ndarray
+        Array of spike times
+    lfp_data : Union[np.ndarray, xr.DataArray]
+        Local field potential time series data. Not required if filtered_lfp_phase is provided.
+    spike_fs : float
+        Sampling frequency in Hz of the spike times
+    lfp_fs : float
+        Sampling frequency in Hz of the LFP data
+    filter_method : str, optional
+        Method to use for filtering, either 'wavelet' or 'butter' (default: 'wavelet')
+    freq_of_interest : float, optional
+        Desired frequency for wavelet phase extraction, required if filter_method='wavelet'
+    lowcut : float, optional
+        Lower frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
+    highcut : float, optional
+        Upper frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
+    bandwidth : float, optional
+        Bandwidth parameter for wavelet filter when method='wavelet' (default: 2.0)
+    filtered_lfp_phase : np.ndarray, optional
+        Pre-computed instantaneous phase of the filtered LFP. If provided, the function will skip the filtering step.
+
+    Returns
+    -------
+    np.ndarray
+        Array of phases at spike times
+    """
+    # Convert spike times to sample indices
+    spike_times_seconds = spike_times / spike_fs
+
+    # Then convert from seconds to samples at the new sampling rate
+    spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
+
+    # Filter indices to ensure they're within bounds of the LFP signal
+    if isinstance(lfp_data, xr.DataArray):
+        if filtered_lfp_phase is not None:
+            valid_indices = align_spike_times_with_lfp(
+                lfp=filtered_lfp_phase, timestamps=spike_indices
+            )
+        else:
+            valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
+    elif isinstance(lfp_data, np.ndarray):
+        if filtered_lfp_phase is not None:
+            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
+        else:
+            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
+
+    if len(valid_indices) <= 1:
+        return np.array([])
+
+    # Get instantaneous phase
+    if filtered_lfp_phase is None:
+        instantaneous_phase = get_lfp_phase(
+            lfp_data=lfp_data,
+            filter_method=filter_method,
+            freq_of_interest=freq_of_interest,
+            lowcut=lowcut,
+            highcut=highcut,
+            bandwidth=bandwidth,
+            fs=lfp_fs,
+        )
+    else:
+        instantaneous_phase = filtered_lfp_phase
+
+    # Get phases at spike times
+    if isinstance(instantaneous_phase, xr.DataArray):
+        spike_phases = instantaneous_phase.sel(time=valid_indices, method="nearest").values
+    else:
+        spike_phases = instantaneous_phase[valid_indices]
+
+    return spike_phases
+
+
 def calculate_spike_lfp_plv(
     spike_times: np.ndarray = None,
     lfp_data=None,
@@ -171,50 +260,21 @@ def calculate_spike_lfp_plv(
         Phase Locking Value (unbiased)
     """
 
-    if spike_fs is None:
-        spike_fs = lfp_fs
-    # Convert spike times to sample indices
-    spike_times_seconds = spike_times / spike_fs
+    spike_phases = _get_spike_phases(
+        spike_times=spike_times,
+        lfp_data=lfp_data,
+        spike_fs=spike_fs,
+        lfp_fs=lfp_fs,
+        filter_method=filter_method,
+        freq_of_interest=freq_of_interest,
+        lowcut=lowcut,
+        highcut=highcut,
+        bandwidth=bandwidth,
+        filtered_lfp_phase=filtered_lfp_phase,
+    )
 
-    # Then convert from seconds to samples at the new sampling rate
-    spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
-
-    # Filter indices to ensure they're within bounds of the LFP signal
-    if isinstance(lfp_data, xr.DataArray):
-        if filtered_lfp_phase is not None:
-            valid_indices = align_spike_times_with_lfp(
-                lfp=filtered_lfp_phase, timestamps=spike_indices
-            )
-        else:
-            valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
-    elif isinstance(lfp_data, np.ndarray):
-        if filtered_lfp_phase is not None:
-            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
-        else:
-            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
-
-    if len(valid_indices) <= 1:
+    if len(spike_phases) <= 1:
         return 0
-
-    # Get instantaneous phase
-    if filtered_lfp_phase is None:
-        instantaneous_phase = get_lfp_phase(
-            lfp_data=lfp_data,
-            filter_method=filter_method,
-            freq_of_interest=freq_of_interest,
-            lowcut=lowcut,
-            highcut=highcut,
-            bandwidth=bandwidth,
-            fs=lfp_fs,
-        )
-    else:
-        instantaneous_phase = filtered_lfp_phase
-
-    # Get phases at spike times
-    if isinstance(instantaneous_phase, xr.DataArray):
-        spike_phases = instantaneous_phase.sel(time=valid_indices).values
-    else:
-        spike_phases = instantaneous_phase[valid_indices]
 
     # Number of spikes
     N = len(spike_phases)
@@ -316,57 +376,26 @@ def calculate_ppc(
     float
         Pairwise Phase Consistency value
     """
-    if spike_fs is None:
-        spike_fs = lfp_fs
-    # Convert spike times to sample indices
-    spike_times_seconds = spike_times / spike_fs
 
-    # Then convert from seconds to samples at the new sampling rate
-    spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
+    spike_phases = _get_spike_phases(
+        spike_times=spike_times,
+        lfp_data=lfp_data,
+        spike_fs=spike_fs,
+        lfp_fs=lfp_fs,
+        filter_method=filter_method,
+        freq_of_interest=freq_of_interest,
+        lowcut=lowcut,
+        highcut=highcut,
+        bandwidth=bandwidth,
+        filtered_lfp_phase=filtered_lfp_phase,
+    )
 
-    # Filter indices to ensure they're within bounds of the LFP signal
-    if isinstance(lfp_data, xr.DataArray):
-        if filtered_lfp_phase is not None:
-            valid_indices = align_spike_times_with_lfp(
-                lfp=filtered_lfp_phase, timestamps=spike_indices
-            )
-        else:
-            valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
-    elif isinstance(lfp_data, np.ndarray):
-        if filtered_lfp_phase is not None:
-            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
-        else:
-            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
-
-    if len(valid_indices) <= 1:
+    if len(spike_phases) <= 1:
         return 0
-
-    # Get instantaneous phase
-    if filtered_lfp_phase is None:
-        instantaneous_phase = get_lfp_phase(
-            lfp_data=lfp_data,
-            filter_method=filter_method,
-            freq_of_interest=freq_of_interest,
-            lowcut=lowcut,
-            highcut=highcut,
-            bandwidth=bandwidth,
-            fs=lfp_fs,
-        )
-    else:
-        instantaneous_phase = filtered_lfp_phase
-
-    # Get phases at spike times
-    if isinstance(instantaneous_phase, xr.DataArray):
-        spike_phases = instantaneous_phase.sel(time=valid_indices).values
-    else:
-        spike_phases = instantaneous_phase[valid_indices]
 
     n_spikes = len(spike_phases)
 
     # Calculate PPC (Pairwise Phase Consistency)
-    if n_spikes <= 1:
-        return 0
-
     # Explicit calculation of pairwise phase consistency
     # Vectorized computation for efficiency
     if ppc_method == "numpy":
@@ -434,55 +463,24 @@ def calculate_ppc2(
         Pairwise Phase Consistency 2 (PPC2) value
     """
 
-    if spike_fs is None:
-        spike_fs = lfp_fs
-    # Convert spike times to sample indices
-    spike_times_seconds = spike_times / spike_fs
+    spike_phases = _get_spike_phases(
+        spike_times=spike_times,
+        lfp_data=lfp_data,
+        spike_fs=spike_fs,
+        lfp_fs=lfp_fs,
+        filter_method=filter_method,
+        freq_of_interest=freq_of_interest,
+        lowcut=lowcut,
+        highcut=highcut,
+        bandwidth=bandwidth,
+        filtered_lfp_phase=filtered_lfp_phase,
+    )
 
-    # Then convert from seconds to samples at the new sampling rate
-    spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
-
-    # Filter indices to ensure they're within bounds of the LFP signal
-    if isinstance(lfp_data, xr.DataArray):
-        if filtered_lfp_phase is not None:
-            valid_indices = align_spike_times_with_lfp(
-                lfp=filtered_lfp_phase, timestamps=spike_indices
-            )
-        else:
-            valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
-    elif isinstance(lfp_data, np.ndarray):
-        if filtered_lfp_phase is not None:
-            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
-        else:
-            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
-
-    if len(valid_indices) <= 1:
+    if len(spike_phases) <= 1:
         return 0
 
-    # Get instantaneous phase
-    if filtered_lfp_phase is None:
-        instantaneous_phase = get_lfp_phase(
-            lfp_data=lfp_data,
-            filter_method=filter_method,
-            freq_of_interest=freq_of_interest,
-            lowcut=lowcut,
-            highcut=highcut,
-            bandwidth=bandwidth,
-            fs=lfp_fs,
-        )
-    else:
-        instantaneous_phase = filtered_lfp_phase
-
-    # Get phases at spike times
-    if isinstance(instantaneous_phase, xr.DataArray):
-        spike_phases = instantaneous_phase.sel(time=valid_indices).values
-    else:
-        spike_phases = instantaneous_phase[valid_indices]
     # Calculate PPC2 according to Vinck et al. (2010), Equation 6
     n = len(spike_phases)
-
-    if n <= 1:
-        return 0
 
     # Convert phases to unit vectors in the complex plane
     unit_vectors = np.exp(1j * spike_phases)
@@ -575,7 +573,7 @@ def calculate_entrainment_per_cell(
     for pop in pop_names:
         skip_count = 0
         pop_spikes = spike_df[spike_df["pop_name"] == pop]
-        nodes = pop_spikes["node_ids"].unique()
+        nodes = sorted(pop_spikes["node_ids"].unique())  # sort so all nodes are processed in order
         entrainment_dict[pop] = {}
         print(f"Processing {pop} population")
         for node in tqdm(nodes):
