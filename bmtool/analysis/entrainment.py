@@ -180,7 +180,18 @@ def calculate_spike_lfp_plv(
     spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
 
     # Filter indices to ensure they're within bounds of the LFP signal
-    valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
+    if isinstance(lfp_data, xr.DataArray):
+        if filtered_lfp_phase is not None:
+            valid_indices = align_spike_times_with_lfp(
+                lfp=filtered_lfp_phase, timestamps=spike_indices
+            )
+        else:
+            valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
+    elif isinstance(lfp_data, np.ndarray):
+        if filtered_lfp_phase is not None:
+            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
+        else:
+            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
 
     if len(valid_indices) <= 1:
         return 0
@@ -200,7 +211,10 @@ def calculate_spike_lfp_plv(
         instantaneous_phase = filtered_lfp_phase
 
     # Get phases at spike times
-    spike_phases = instantaneous_phase.sel(time=valid_indices).values
+    if isinstance(instantaneous_phase, xr.DataArray):
+        spike_phases = instantaneous_phase.sel(time=valid_indices).values
+    else:
+        spike_phases = instantaneous_phase[valid_indices]
 
     # Number of spikes
     N = len(spike_phases)
@@ -311,10 +325,18 @@ def calculate_ppc(
     spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
 
     # Filter indices to ensure they're within bounds of the LFP signal
-    if filtered_lfp_phase is not None:
-        valid_indices = align_spike_times_with_lfp(lfp=filtered_lfp_phase, timestamps=spike_indices)
-    else:
-        valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
+    if isinstance(lfp_data, xr.DataArray):
+        if filtered_lfp_phase is not None:
+            valid_indices = align_spike_times_with_lfp(
+                lfp=filtered_lfp_phase, timestamps=spike_indices
+            )
+        else:
+            valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
+    elif isinstance(lfp_data, np.ndarray):
+        if filtered_lfp_phase is not None:
+            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
+        else:
+            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
 
     if len(valid_indices) <= 1:
         return 0
@@ -334,7 +356,10 @@ def calculate_ppc(
         instantaneous_phase = filtered_lfp_phase
 
     # Get phases at spike times
-    spike_phases = instantaneous_phase.sel(time=valid_indices).values
+    if isinstance(instantaneous_phase, xr.DataArray):
+        spike_phases = instantaneous_phase.sel(time=valid_indices).values
+    else:
+        spike_phases = instantaneous_phase[valid_indices]
 
     n_spikes = len(spike_phases)
 
@@ -418,10 +443,18 @@ def calculate_ppc2(
     spike_indices = np.round(spike_times_seconds * lfp_fs).astype(int)
 
     # Filter indices to ensure they're within bounds of the LFP signal
-    if filtered_lfp_phase is not None:
-        valid_indices = align_spike_times_with_lfp(lfp=filtered_lfp_phase, timestamps=spike_indices)
-    else:
-        valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
+    if isinstance(lfp_data, xr.DataArray):
+        if filtered_lfp_phase is not None:
+            valid_indices = align_spike_times_with_lfp(
+                lfp=filtered_lfp_phase, timestamps=spike_indices
+            )
+        else:
+            valid_indices = align_spike_times_with_lfp(lfp=lfp_data, timestamps=spike_indices)
+    elif isinstance(lfp_data, np.ndarray):
+        if filtered_lfp_phase is not None:
+            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(filtered_lfp_phase)]
+        else:
+            valid_indices = [idx for idx in spike_indices if 0 <= idx < len(lfp_data)]
 
     if len(valid_indices) <= 1:
         return 0
@@ -441,7 +474,10 @@ def calculate_ppc2(
         instantaneous_phase = filtered_lfp_phase
 
     # Get phases at spike times
-    spike_phases = instantaneous_phase.sel(time=valid_indices).values
+    if isinstance(instantaneous_phase, xr.DataArray):
+        spike_phases = instantaneous_phase.sel(time=valid_indices).values
+    else:
+        spike_phases = instantaneous_phase[valid_indices]
     # Calculate PPC2 according to Vinck et al. (2010), Equation 6
     n = len(spike_phases)
 
