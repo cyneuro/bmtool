@@ -437,8 +437,8 @@ def find_bursting_cells(
     burst_cells = pd.merge(burst_cells, df, on="node_ids")
 
     # Create a mask for burst cells that don't already have "_bursters" in their name
-    burst_mask = (burst_cells["is_burst"] is True) & (
-        ~burst_cells["pop_name"].str.contains("_bursters")
+    burst_mask = burst_cells["is_burst"] & ~burst_cells["pop_name"].str.contains(
+        "_bursters", na=False
     )
 
     # Add "_bursters" suffix only to those cells
