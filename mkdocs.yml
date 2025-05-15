@@ -62,7 +62,12 @@ nav:
       - Single Cell: modules/singlecell.md
       - Synapses: modules/synapses.md
       - Connectors: modules/connectors.md
-      - BMPlot: modules/bmplot.md
+      - BMPlot:
+          - Overview: modules/bmplot.md
+          - Connection Plotting: modules/bmplot/connections.md
+          - Spike Plotting: modules/bmplot/spikes.md
+          - LFP/ECP Plotting: modules/bmplot/lfp.md
+          - Entrainment Plotting: modules/bmplot/entrainment.md
       - Analysis:
           - Overview: modules/analysis.md
           - Spike Analysis: modules/analysis/spikes.md
@@ -101,7 +106,12 @@ nav:
       - Single Cell: api/singlecell.md
       - Synapses: api/synapses.md
       - Connectors: api/connectors.md
-      - BMPlot: api/bmplot.md
+      - BMPlot:
+          - Overview: api/bmplot.md
+          - Connection Plotting: api/bmplot/connections.md
+          - Spike Plotting: api/bmplot/spikes.md
+          - LFP/ECP Plotting: api/bmplot/lfp.md
+          - Entrainment Plotting: api/bmplot/entrainment.md
       - Analysis:
           - Overview: api/analysis.md
           - Spike Analysis: api/analysis/spikes.md
