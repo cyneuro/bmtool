@@ -97,6 +97,7 @@ nav:
           - Spikes Module: examples/notebooks/analysis/spiking/using_spikes.ipynb
           - Plot Spectrogram: examples/notebooks/analysis/spectrogram/spectrogram_with_bmtool.ipynb
           - Phase Locking: examples/notebooks/analysis/phase_locking_value/spike_phase_entrainment.ipynb
+          - Phase Locking (Dev): examples/notebooks/analysis/phase_locking_value/phase_locking_value.ipynb
           - Synapse Report: examples/notebooks/analysis/netcon_report/netcon_example.ipynb
       - SLURM:
           - Overview: examples/slurm.md
