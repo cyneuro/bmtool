@@ -714,7 +714,17 @@ def calculate_spike_rate_power_correlation(
     return correlation_results, frequencies
 
 
-def get_spikes_in_cycle(spike_df, lfp_data, spike_fs=1000, lfp_fs=400, band=(30, 80)):
+def get_spikes_in_cycle(
+    spike_df,
+    lfp_data,
+    spike_fs=1000,
+    lfp_fs=400,
+    filter_method="butter",
+    lowcut=None,
+    highcut=None,
+    bandwidth=2.0,
+    freq_of_interest=None,
+):
     """
     Analyze spike timing relative to oscillation phases.
 
@@ -733,12 +743,15 @@ def get_spikes_in_cycle(spike_df, lfp_data, spike_fs=1000, lfp_fs=400, band=(30,
     phase_data : dict
         Dictionary containing phase values for each spike and neuron population
     """
-    filtered_lfp = butter_bandpass_filter(lfp_data, band[0], band[1], lfp_fs)
-
-    # Calculate phase using Hilbert transform
-    analytic_signal = signal.hilbert(filtered_lfp)
-    phase = np.angle(analytic_signal)
-    amplitude = np.abs(analytic_signal)
+    phase = get_lfp_phase(
+        lfp_data=lfp_data,
+        fs=lfp_fs,
+        filter_method=filter_method,
+        lowcut=lowcut,
+        highcut=highcut,
+        bandwidth=bandwidth,
+        freq_of_interest=freq_of_interest,
+    )
 
     # Get unique neuron populations
     neuron_pops = spike_df["pop_name"].unique()
@@ -763,4 +776,4 @@ def get_spikes_in_cycle(spike_df, lfp_data, spike_fs=1000, lfp_fs=400, band=(30,
             valid_samples = spike_indices[valid_indices]
             phase_data[pop] = phase[valid_samples]
 
-    return phase_data, filtered_lfp, phase, amplitude
+    return phase_data

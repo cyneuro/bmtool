@@ -1,13 +1,32 @@
 # Analysis Module
 
-The Analysis module provides tools for processing and analyzing simulation results from BMTK models, including spike data and LFP/ECP data.
+The Analysis module provides a comprehensive suite of tools for processing and analyzing simulation results from BMTK models. It is organized into several submodules, each focusing on specific aspects of neural data analysis.
 
-## Features
+## Overview
 
-- **Spike Data Processing**: Load, filter, and analyze spike data
-- **Population Analysis**: Calculate population statistics and metrics
-- **LFP/ECP Analysis**: Process and analyze local field potentials and extracellular potentials
-- **Signal Processing**: Filter, transform, and analyze time series data
+### [Spike Analysis](analysis/spikes.md)
+- Loading and processing spike data
+- Computing firing rate statistics
+- Population spike rate analysis
+- Spike train analysis tools
+
+### [LFP/ECP Analysis](analysis/lfp.md)
+- Loading and processing LFP/ECP data
+- Spectral analysis and filtering
+- Time-frequency analysis
+- Signal quality metrics
+
+### [Entrainment Analysis](analysis/entrainment.md)
+- Phase-locking analysis
+- Spike-field coherence
+- Population entrainment metrics
+- Cross-frequency coupling
+
+### [Network Connectivity](analysis/netcon_reports.md)
+- Connection statistics
+- Network topology analysis
+- Synaptic weight distributions
+- Connectivity visualization
 
 ## Spike Analysis
 

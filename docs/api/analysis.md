@@ -1,106 +1,32 @@
 # Analysis API Reference
 
-This page provides API reference documentation for the Analysis module.
+This page provides an overview of the Analysis module, which contains several submodules for different types of neural data analysis.
 
-The Analysis module provides tools for processing and analyzing simulation results from BMTK models, including spike data and LFP/ECP data.
+The Analysis module provides tools for processing and analyzing simulation results from BMTK models, including:
 
-## Spikes
+## [Spike Analysis](analysis/spikes.md)
 
-The `spikes` module provides functions for loading and analyzing spike data from simulations.
+The `spikes` module provides functions for loading and analyzing spike data from simulations, including:
+- Loading spike data into pandas DataFrames
+- Computing firing rate statistics
+- Calculating population spike rates
 
-::: bmtool.analysis.spikes.load_spikes_to_df
-    options:
-      show_root_heading: true
-      heading_level: 3
+## [LFP/ECP Analysis](analysis/lfp.md)
 
-::: bmtool.analysis.spikes.compute_firing_rate_stats
-    options:
-      show_root_heading: true
-      heading_level: 3
+The `lfp` module provides tools for analyzing local field potentials (LFP) and extracellular potentials (ECP), including:
+- Loading and processing ECP/LFP data
+- Time series analysis and filtering
+- Spectral analysis and wavelet transforms
+- Signal-to-noise ratio calculations
 
-::: bmtool.analysis.spikes._pop_spike_rate
-    options:
-      show_root_heading: true
-      heading_level: 3
+## [Entrainment Analysis](analysis/entrainment.md)
 
-::: bmtool.analysis.spikes.get_population_spike_rate
-    options:
-      show_root_heading: true
-      heading_level: 3
+The `entrainment` module provides tools for analyzing the relationship between spikes and LFP signals, including:
+- Phase-locking value (PLV) calculations
+- Pairwise phase consistency (PPC) analysis
+- Spike-LFP entrainment metrics
+- Spike rate and LFP power correlations
 
-## LFP/ECP Analysis
+## [Network Connectivity Analysis](analysis/netcon_reports.md)
 
-The `lfp` module provides tools for analyzing local field potentials (LFP) and extracellular potentials (ECP).
-
-::: bmtool.analysis.lfp.load_ecp_to_xarray
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.ecp_to_lfp
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.slice_time_series
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.fit_fooof
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.generate_resd_from_fooof
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.calculate_SNR
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.wavelet_filter
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.butter_bandpass_filter
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.cwt_spectrogram
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.lfp.cwt_spectrogram_xarray
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-## Entrainment Analysis
-
-The `entrainment` module provides tools for analyzing the entrainment of spikes and lfp
-::: bmtool.analysis.entrainment.calculate_signal_signal_plv
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.entrainment.calculate_spike_lfp_plv
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.entrainment.calculate_ppc
-    options:
-      show_root_heading: true
-      heading_level: 3
-
-::: bmtool.analysis.entrainment.calculate_ppc2
-    options:
-      show_root_heading: true
-      heading_level: 3
+The `netcon_reports` module provides tools for analyzing and reporting network connectivity statistics.

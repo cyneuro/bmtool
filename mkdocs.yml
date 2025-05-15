@@ -63,7 +63,12 @@ nav:
       - Synapses: modules/synapses.md
       - Connectors: modules/connectors.md
       - BMPlot: modules/bmplot.md
-      - Analysis: modules/analysis.md
+      - Analysis:
+          - Overview: modules/analysis.md
+          - Spike Analysis: modules/analysis/spikes.md
+          - LFP/ECP Analysis: modules/analysis/lfp.md
+          - Entrainment Analysis: modules/analysis/entrainment.md
+          - Network Connectivity: modules/analysis/netcon_reports.md
       - SLURM: modules/slurm.md
       - Graphs: modules/graphs.md
   - CLI: cli.md
@@ -97,7 +102,12 @@ nav:
       - Synapses: api/synapses.md
       - Connectors: api/connectors.md
       - BMPlot: api/bmplot.md
-      - Analysis: api/analysis.md
+      - Analysis:
+          - Overview: api/analysis.md
+          - Spike Analysis: api/analysis/spikes.md
+          - LFP/ECP Analysis: api/analysis/lfp.md
+          - Entrainment Analysis: api/analysis/entrainment.md
+          - Network Connectivity: api/analysis/netcon_reports.md
       - SLURM: api/slurm.md
       - Graphs: api/graphs.md
 

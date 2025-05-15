@@ -401,7 +401,7 @@ def compare_firing_over_times(
 
 
 def find_bursting_cells(
-    df: pd.DataFrame, burst_threshold: float = 10, rename_bursting_cells: bool = False
+    df: pd.DataFrame, isi_threshold: float = 10, burst_count_threshold: int = 1
 ) -> pd.DataFrame:
     """
     Finds bursting cells in a population based on a time difference threshold.
@@ -410,10 +410,10 @@ def find_bursting_cells(
     ----------
     df : pd.DataFrame
         DataFrame containing spike data with columns for timestamps, node_ids, and pop_name
-    burst_threshold : float, optional
+    isi_threshold : float, optional
         Time difference threshold in milliseconds to identify bursts
-    rename_bursting_cells : bool, optional
-        If True, returns a DataFrame with bursting cells renamed in their pop_name column
+    burst_count_threshold : int, optional
+        Number of bursts required to identify a bursting cell
 
     Returns
     -------
@@ -425,10 +425,11 @@ def find_bursting_cells(
     diff_df["time_diff"] = df.groupby("node_ids")["timestamps"].diff()
 
     # Create a column indicating whether each time difference is a burst
-    diff_df["is_burst_instance"] = diff_df["time_diff"] < burst_threshold
+    diff_df["is_burst_instance"] = diff_df["time_diff"] < isi_threshold
 
     # Group by node_ids and check if any row has a burst instance
-    burst_summary = diff_df.groupby("node_ids")["is_burst_instance"].any()
+    # check if there are enough bursts
+    burst_summary = diff_df.groupby("node_ids")["is_burst_instance"].sum() >= burst_count_threshold
 
     # Convert to a DataFrame with reset index
     burst_cells = burst_summary.reset_index(name="is_burst")
@@ -442,14 +443,11 @@ def find_bursting_cells(
     )
 
     # Add "_bursters" suffix only to those cells
-    if rename_bursting_cells:
-        burst_cells.loc[burst_mask, "pop_name"] = (
-            burst_cells.loc[burst_mask, "pop_name"] + "_bursters"
-        )
+    burst_cells.loc[burst_mask, "pop_name"] = burst_cells.loc[burst_mask, "pop_name"] + "_bursters"
 
-    for pop in burst_cells["pop_name"].unique():
+    for pop in sorted(burst_cells["pop_name"].unique()):
         print(
-            f"Number of bursters in {pop}: {burst_cells[burst_cells['pop_name'] == pop]['node_ids'].nunique()}"
+            f"Number of cells in {pop}: {burst_cells[burst_cells['pop_name'] == pop]['node_ids'].nunique()}"
         )
 
     return burst_cells
