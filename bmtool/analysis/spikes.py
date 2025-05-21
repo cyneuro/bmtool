@@ -282,9 +282,11 @@ def get_population_spike_rate(
 
     if config is None:
         print(
-            "Note: Node number is obtained by counting unique node spikes in the network.\nIf the network did not run for a sufficient duration, and not all cells fired, this count might be incorrect."
+            "Note: Node number is obtained by counting unique node spikes in the network.\nIf the network did not run for a sufficient duration, or not all cells fired,\nthen this count will not include all nodes so the firing rate will not be of the whole population!"
         )
-        print("You can provide a config to calculate the correct amount of nodes!")
+        print(
+            "You can provide a config to calculate the correct amount of nodes! for a true population rate."
+        )
 
     if config:
         if not network_name:
