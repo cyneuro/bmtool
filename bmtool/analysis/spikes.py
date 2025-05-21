@@ -3,11 +3,12 @@ Module for processing BMTK spikes output.
 """
 
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import h5py
 import numpy as np
 import pandas as pd
+import xarray as xr
 from scipy.stats import mannwhitneyu
 
 from bmtool.util.util import load_nodes_from_config
@@ -213,9 +214,11 @@ def get_population_spike_rate(
     save: bool = False,
     save_path: Optional[str] = None,
     normalize: bool = False,
-) -> Dict[str, np.ndarray]:
+    smooth_window: int = 50,  # Window size for smoothing (in time bins)
+    smooth_method: str = "gaussian",  # Smoothing method: 'gaussian', 'boxcar', or 'exponential'
+) -> xr.DataArray:
     """
-    Calculate the population spike rate for each population in the given spike data, with an option to normalize.
+    Calculate the population spike rate for each population in the given spike data.
 
     Parameters
     ----------
@@ -239,23 +242,41 @@ def get_population_spike_rate(
         Directory path where the file should be saved if `save` is True (default: None)
     normalize : bool, optional
         Whether to normalize the spike rates for each population to a range of [0, 1] (default: False)
+    smooth_window : int, optional
+        Window size for smoothing in number of time bins (default: 50)
+    smooth_method : str, optional
+        Smoothing method to use: 'gaussian', 'boxcar', or 'exponential' (default: 'gaussian')
 
     Returns
     -------
-    Dict[str, np.ndarray]
-        A dictionary where keys are population names, and values are arrays representing the spike rate over time for each population.
-        If `normalize` is True, each population's spike rate is scaled to [0, 1].
+    xr.DataArray
+        An xarray DataArray containing the spike rates with dimensions of time, population, and type.
+        The 'type' dimension includes 'raw' and 'smoothed' values.
+        The DataArray includes sampling frequency (fs) as an attribute.
+        If normalize is True, each population's spike rate is scaled to [0, 1].
 
     Raises
     ------
     ValueError
         If `save` is True but `save_path` is not provided.
+        If an invalid smooth_method is specified.
 
     Notes
     -----
-    - If `config` is None, the function assumes all cells in each population have fired at least once; otherwise, the node count may be inaccurate.
-    - If normalization is enabled, each population's spike rate is scaled using Min-Max normalization based on its own minimum and maximum values.
+    - If `config` is None, the function assumes all cells in each population have fired at least once;
+      otherwise, the node count may be inaccurate.
+    - If normalization is enabled, each population's spike rate is scaled using Min-Max normalization.
+    - Smoothing is applied using scipy.ndimage's filters based on the specified method.
     """
+    import numpy as np
+    from scipy import ndimage
+
+    # Validate smoothing method
+    if smooth_method not in ["gaussian", "boxcar", "exponential"]:
+        raise ValueError(
+            f"Invalid smooth_method: {smooth_method}. Choose from 'gaussian', 'boxcar', or 'exponential'."
+        )
+
     pop_spikes = {}
     node_number = {}
 
@@ -271,7 +292,13 @@ def get_population_spike_rate(
                 "Grabbing first network; specify a network name to ensure correct node population is selected."
             )
 
-    for pop_name in spike_data["pop_name"].unique():
+    # Get t_stop if not provided
+    if t_stop is None:
+        t_stop = spike_data["timestamps"].max()
+
+    # Get population names and prepare data
+    populations = spike_data["pop_name"].unique()
+    for pop_name in populations:
         ps = spike_data[spike_data["pop_name"] == pop_name]
 
         if config:
@@ -282,11 +309,9 @@ def get_population_spike_rate(
                 nodes = list(nodes.values())[0] if nodes else {}
             nodes = nodes[nodes["pop_name"] == pop_name]
             node_number[pop_name] = nodes.index.nunique()
+
         else:
             node_number[pop_name] = ps["node_ids"].nunique()
-
-        if t_stop is None:
-            t_stop = spike_data["timestamps"].max()
 
         filtered_spikes = spike_data[
             (spike_data["pop_name"] == pop_name)
@@ -295,29 +320,153 @@ def get_population_spike_rate(
         ]
         pop_spikes[pop_name] = filtered_spikes
 
-    time = np.array([t_start, t_stop, 1000 / fs])
-    pop_rspk = {p: _pop_spike_rate(spk["timestamps"], time) for p, spk in pop_spikes.items()}
-    spike_rate = {p: fs / node_number[p] * pop_rspk[p] for p in pop_rspk}
+    # Calculate time points
+    time = np.arange(t_start, t_stop, 1000 / fs)  # Convert sampling frequency to time steps
 
-    # Normalize each spike rate series if normalize=True
+    # Calculate spike rates for each population
+    spike_rates = []
+    for p in populations:
+        raw_rate = _pop_spike_rate(pop_spikes[p]["timestamps"], (t_start, t_stop, 1000 / fs))
+        rate = fs / node_number[p] * raw_rate
+        spike_rates.append(rate)
+
+    spike_rates_array = np.array(spike_rates).T  # Transpose to have time as first dimension
+
+    # Calculate smoothed version for each population
+    smoothed_rates = []
+
+    for i in range(spike_rates_array.shape[1]):
+        pop_rate = spike_rates_array[:, i]
+
+        if smooth_method == "gaussian":
+            # Gaussian smoothing (sigma is approximately window/6 for a Gaussian filter)
+            sigma = smooth_window / 6
+            smoothed_pop_rate = ndimage.gaussian_filter1d(pop_rate, sigma=sigma)
+        elif smooth_method == "boxcar":
+            # Boxcar/uniform smoothing
+            kernel = np.ones(smooth_window) / smooth_window
+            smoothed_pop_rate = ndimage.convolve1d(pop_rate, kernel, mode="nearest")
+        elif smooth_method == "exponential":
+            # Exponential smoothing
+            alpha = 2 / (smooth_window + 1)  # Equivalent to window size in exponential smoothing
+            smoothed_pop_rate = np.zeros_like(pop_rate)
+            smoothed_pop_rate[0] = pop_rate[0]
+            for t in range(1, len(pop_rate)):
+                smoothed_pop_rate[t] = alpha * pop_rate[t] + (1 - alpha) * smoothed_pop_rate[t - 1]
+
+        smoothed_rates.append(smoothed_pop_rate)
+
+    smoothed_rates_array = np.array(smoothed_rates).T  # Transpose to have time as first dimension
+
+    # Stack raw and smoothed data
+    combined_data = np.stack([spike_rates_array, smoothed_rates_array], axis=2)
+
+    # Create DataArray with the additional 'type' dimension
+    spike_rate_array = xr.DataArray(
+        combined_data,
+        coords={"time": time, "population": populations, "type": ["raw", "smoothed"]},
+        dims=["time", "population", "type"],
+        attrs={
+            "fs": fs,
+            "normalized": False,
+            "smooth_method": smooth_method,
+            "smooth_window": smooth_window,
+        },
+    )
+
+    # Normalize if requested
     if normalize:
-        spike_rate = {p: (sr - sr.min()) / (sr.max() - sr.min()) for p, sr in spike_rate.items()}
+        # Apply normalization for each population and each type (raw/smoothed)
+        for pop_idx in range(len(populations)):
+            for type_idx, type_name in enumerate(["raw", "smoothed"]):
+                pop_data = spike_rate_array.sel(population=populations[pop_idx], type=type_name)
+                min_val = pop_data.min(dim="time")
+                max_val = pop_data.max(dim="time")
 
+                # Handle case where min == max (constant signal)
+                if max_val != min_val:
+                    spike_rate_array.loc[:, populations[pop_idx], type_name] = (
+                        pop_data - min_val
+                    ) / (max_val - min_val)
+
+        spike_rate_array.attrs["normalized"] = True
+
+    # Save if requested
     if save:
         if save_path is None:
             raise ValueError("save_path must be provided if save is True.")
 
         os.makedirs(save_path, exist_ok=True)
-
         save_file = os.path.join(save_path, "spike_rate.h5")
-        with h5py.File(save_file, "w") as f:
-            f.create_dataset("time", data=time)
-            grp = f.create_group("populations")
-            for p, rspk in spike_rate.items():
-                pop_grp = grp.create_group(p)
-                pop_grp.create_dataset("data", data=rspk)
+        spike_rate_array.to_netcdf(save_file)
 
-    return spike_rate
+    return spike_rate_array
+
+
+def average_spike_rate_over_windows(
+    spike_rate: xr.DataArray, windows: List[Tuple[float, float]]
+) -> xr.DataArray:
+    """
+    Calculate the average spike rate over multiple time windows.
+
+    Parameters
+    ----------
+    spike_rate : xr.DataArray
+        The spike rate data array with dimensions (time, population, type)
+        where 'type' can be 'raw' or 'smoothed'
+    windows : List[Tuple[float, float]]
+        List of (start, end) times in milliseconds defining the windows to average over
+
+    Returns
+    -------
+    xr.DataArray
+        Averaged spike rate with time normalized to start at 0,
+        preserving all original dimensions (time, population, type)
+    """
+    # Check if the DataArray has a 'type' dimension (compatible with new format)
+    has_type_dim = "type" in spike_rate.dims
+
+    # Initialize list to store data from each window
+    window_data = []
+
+    # Get data for each window
+    for start, end in windows:
+        # Select data points within the window
+        window = spike_rate.sel(time=slice(start, end))
+
+        # Normalize time to start at 0 for this window
+        window = window.assign_coords(time=window.time - start)
+        window_data.append(window)
+
+    # Align and average windows
+    # First window determines the time coordinates
+    aligned_data = xr.concat(window_data, dim="window")
+    averaged_data = aligned_data.mean(dim="window")
+
+    # Create new DataArray with the averaged data
+    if has_type_dim:
+        # Create result with time, population, and type dimensions
+        result = xr.DataArray(
+            averaged_data.values,
+            coords={
+                "time": averaged_data.time.values,
+                "population": averaged_data.population,
+                "type": averaged_data.type,
+            },
+            dims=["time", "population", "type"],
+        )
+    else:
+        # Handle older format without 'type' dimension (for backward compatibility)
+        result = xr.DataArray(
+            averaged_data.values,
+            coords={"time": averaged_data.time.values, "population": averaged_data.population},
+            dims=["time", "population"],
+        )
+
+    # Preserve attributes
+    result.attrs = spike_rate.attrs
+
+    return result
 
 
 def compare_firing_over_times(

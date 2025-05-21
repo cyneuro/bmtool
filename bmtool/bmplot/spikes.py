@@ -1,3 +1,5 @@
+"""Plotting functions for neural spikes and firing rates."""
+
 from typing import Dict, List, Optional, Union
 
 import matplotlib.pyplot as plt
