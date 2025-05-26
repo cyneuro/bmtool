@@ -636,26 +636,26 @@ def calculate_entrainment_per_cell(
 
 
 def calculate_spike_rate_power_correlation(
-    spike_rate,
-    lfp_data,
-    fs,
-    pop_names,
-    filter_method="wavelet",
-    bandwidth=2.0,
-    lowcut=None,
-    highcut=None,
-    freq_range=(10, 100),
-    freq_step=5,
+    spike_rate: xr.DataArray,
+    lfp_data: np.ndarray,
+    fs: float,
+    pop_names: list,
+    filter_method: str = "wavelet",
+    bandwidth: float = 2.0,
+    lowcut: float = None,
+    highcut: float = None,
+    freq_range: tuple = (10, 100),
+    freq_step: float = 5,
+    type_name: str = "raw",  # 'raw' or 'smoothed'
 ):
     """
-    Calculate correlation between population spike rates and LFP power across frequencies
-    using wavelet filtering. This function assumes the fs of the spike_rate and lfp are the same.
+    Calculate correlation between population spike rates (xarray) and LFP power across frequencies.
 
-    Parameters:
-    -----------
-    spike_rate : DataFrame
-        Pre-calculated population spike rates at the same fs as lfp
-    lfp_data : np.array
+    Parameters
+    ----------
+    spike_rate : xr.DataArray
+        Population spike rates with dimensions (time, population[, type])
+    lfp_data : np.ndarray
         LFP data
     fs : float
         Sampling frequency
@@ -673,19 +673,17 @@ def calculate_spike_rate_power_correlation(
         Min and max frequency to analyze (default: (10, 100))
     freq_step : float, optional
         Step size for frequency analysis (default: 5)
+    type_name : str, optional
+        Which type of spike rate to use if 'type' dimension exists (default: 'raw')
 
-    Returns:
-    --------
+    Returns
+    -------
     correlation_results : dict
         Dictionary with correlation results for each population and frequency
     frequencies : array
         Array of frequencies analyzed
     """
-
-    # Define frequency bands to analyze
     frequencies = np.arange(freq_range[0], freq_range[1] + 1, freq_step)
-
-    # Dictionary to store results
     correlation_results = {pop: {} for pop in pop_names}
 
     # Calculate power at each frequency band using specified filter
@@ -695,20 +693,22 @@ def calculate_spike_rate_power_correlation(
             lfp_data, freq, fs, filter_method, lowcut=lowcut, highcut=highcut, bandwidth=bandwidth
         )
 
-    # Calculate correlation for each population
+    # For each population, extract the correct spike rate
     for pop in pop_names:
-        # Extract spike rate for this population
-        pop_rate = spike_rate[pop]
+        # If 'type' dimension exists, select the type
+        if "type" in spike_rate.dims:
+            pop_rate = spike_rate.sel(population=pop, type=type_name).values
+        else:
+            pop_rate = spike_rate.sel(population=pop).values
 
         # Calculate correlation with power at each frequency
         for freq in frequencies:
-            # Make sure the lengths match
-            if len(pop_rate) != len(power_by_freq[freq]):
-                raise ValueError(
-                    f"Mismatched lengths for {pop} at {freq} Hz len(pop_rate): {len(pop_rate)}, len(power_by_freq): {len(power_by_freq[freq])}"
-                )
-            # use spearman for non-parametric correlation
-            corr, p_val = stats.spearmanr(pop_rate, power_by_freq[freq])
+            lfp_power = power_by_freq[freq]
+            # Ensure lengths match
+            min_len = min(len(pop_rate), len(lfp_power))
+            if len(pop_rate) != len(lfp_power):
+                print(f"Warning: Length mismatch for {pop} at {freq} Hz, truncating to {min_len}")
+            corr, p_val = stats.spearmanr(pop_rate[:min_len], lfp_power[:min_len])
             correlation_results[pop][freq] = {"correlation": corr, "p_value": p_val}
 
     return correlation_results, frequencies

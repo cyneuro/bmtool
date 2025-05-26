@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import seaborn as sns
 from matplotlib.gridspec import GridSpec
 from scipy import stats
@@ -55,7 +56,7 @@ def plot_spike_power_correlation(correlation_results, frequencies, pop_names):
 
 def plot_cycle_with_spike_histograms(phase_data, bins=36, pop_name=None):
     """
-    Plot an idealized gamma cycle with spike histograms for different neuron populations.
+    Plot an idealized cycle with spike histograms for different neuron populations.
 
     Parameters:
     -----------
@@ -120,7 +121,7 @@ def plot_cycle_with_spike_histograms(phase_data, bins=36, pop_name=None):
     plt.show()
 
 
-def plot_ppc_by_population(ppc_dict, pop_names, freqs, figsize=(15, 8), title=None):
+def plot_entrainment_by_population(ppc_dict, pop_names, freqs, figsize=(15, 8), title=None):
     """
     Plot PPC for all node populations on one graph with mean and standard error.
 
@@ -199,4 +200,169 @@ def plot_ppc_by_population(ppc_dict, pop_names, freqs, figsize=(15, 8), title=No
 
     # Adjust layout and save
     plt.tight_layout()
+    plt.show()
+
+
+def plot_entrainment_swarm_plot(ppc_dict, pop_names, freq, save_path=None, title=None):
+    """
+    Plot a swarm plot of the entrainment for different populations at a single frequency.
+
+    Parameters:
+    -----------
+    ppc_dict : dict
+        Dictionary containing PPC values organized by population, node, and frequency
+    pop_names : list
+        List of population names to include in the plot
+    freq : float or int
+        The specific frequency to plot
+    save_path : str, optional
+        Path to save the figure. If None, figure is just displayed.
+
+    Returns:
+    --------
+    matplotlib.figure.Figure
+        The figure object for further customization if needed
+    """
+    # Set the style
+    sns.set_style("whitegrid")
+
+    # Prepare data for the swarm plot
+    data_list = []
+
+    for pop in pop_names:
+        values = []
+        node_ids = []
+
+        for node in ppc_dict[pop]:
+            if freq in ppc_dict[pop][node] and ppc_dict[pop][node][freq] is not None:
+                data_list.append(
+                    {"Population": pop, "Node": node, "PPC Difference": ppc_dict[pop][node][freq]}
+                )
+
+    # Create DataFrame in long format
+    df = pd.DataFrame(data_list)
+
+    if df.empty:
+        print(f"No data available for frequency {freq}.")
+        return None
+
+    # Print mean PPC change for each population)
+    for pop in pop_names:
+        subset = df[df["Population"] == pop]
+        if not subset.empty:
+            mean_val = subset["PPC Difference"].mean()
+            std_val = subset["PPC Difference"].std()
+            n = len(subset)
+            sem_val = std_val / np.sqrt(n)  # Standard error of the mean
+            print(f"{pop}: {mean_val:.4f} ± {sem_val:.4f} (n={n})")
+
+    # Create figure
+    plt.figure(figsize=(max(8, len(pop_names) * 1.5), 8))
+
+    # Create swarm plot
+    ax = sns.swarmplot(
+        x="Population",
+        y="PPC Difference",
+        data=df,
+        size=3,
+        # palette='Set2'
+    )
+
+    # Add sample size annotations
+    for i, pop in enumerate(pop_names):
+        subset = df[df["Population"] == pop]
+        if not subset.empty:
+            n = len(subset)
+            y_min = subset["PPC Difference"].min()
+            y_max = subset["PPC Difference"].max()
+
+            # Position annotation below the lowest point
+            plt.annotate(
+                f"n={n}", (i, y_min - 0.05 * (y_max - y_min) - 0.05), ha="center", fontsize=10
+            )
+
+    # Add reference line at y=0
+    plt.axhline(y=0, color="black", linestyle="-", linewidth=0.5, alpha=0.7)
+
+    # Add horizontal lines for mean values
+    for i, pop in enumerate(pop_names):
+        subset = df[df["Population"] == pop]
+        if not subset.empty:
+            mean_val = subset["PPC Difference"].mean()
+            plt.plot([i - 0.25, i + 0.25], [mean_val, mean_val], "r-", linewidth=2)
+
+    # Calculate and display statistics
+    if len(pop_names) > 1:
+        # Print statistical test results
+        print(f"\nMann-Whitney U Test Results at {freq} Hz:")
+        print("-" * 60)
+
+        # Add p-values for pairwise comparisons
+        y_max = df["PPC Difference"].max()
+        y_min = df["PPC Difference"].min()
+        y_range = y_max - y_min
+
+        # Perform t-tests between populations if there are at least 2
+        for i in range(len(pop_names)):
+            for j in range(i + 1, len(pop_names)):
+                pop1 = pop_names[i]
+                pop2 = pop_names[j]
+
+                vals1 = df[df["Population"] == pop1]["PPC Difference"].values
+                vals2 = df[df["Population"] == pop2]["PPC Difference"].values
+
+                if len(vals1) > 1 and len(vals2) > 1:
+                    # Perform Mann-Whitney U test (non-parametric)
+                    u_stat, p_val = stats.mannwhitneyu(vals1, vals2, alternative="two-sided")
+
+                    # Add significance markers
+                    sig_str = "ns"
+                    if p_val < 0.05:
+                        sig_str = "*"
+                    if p_val < 0.01:
+                        sig_str = "**"
+                    if p_val < 0.001:
+                        sig_str = "***"
+
+                    # Position the significance bar
+                    bar_height = y_max + 0.1 * y_range * (1 + (j - i - 1) * 0.5)
+
+                    # Draw the bar
+                    plt.plot([i, j], [bar_height, bar_height], "k-")
+                    plt.plot([i, i], [bar_height - 0.02 * y_range, bar_height], "k-")
+                    plt.plot([j, j], [bar_height - 0.02 * y_range, bar_height], "k-")
+
+                    # Add significance marker
+                    plt.text(
+                        (i + j) / 2,
+                        bar_height + 0.01 * y_range,
+                        sig_str,
+                        ha="center",
+                        va="bottom",
+                        fontsize=12,
+                    )
+
+                    # Print the statistical comparison
+                    print(f"{pop1} vs {pop2}: U={u_stat:.1f}, p={p_val:.4f} {sig_str}")
+
+    # Add labels and title
+    plt.xlabel("Population", fontsize=14)
+    plt.ylabel("PPC", fontsize=14)
+    if title:
+        plt.title(title, fontsize=16)
+
+    # Adjust y-axis limits to make room for annotations
+    y_min, y_max = plt.ylim()
+    plt.ylim(y_min - 0.15 * (y_max - y_min), y_max + 0.25 * (y_max - y_min))
+
+    # Add gridlines
+    plt.grid(True, linestyle="--", alpha=0.7, axis="y")
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Save figure if path is provided
+    if save_path:
+        plt.savefig(f"{save_path}/ppc_change_swarm_plot_{freq}Hz.png", dpi=300, bbox_inches="tight")
+
     plt.show()

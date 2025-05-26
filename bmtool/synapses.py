@@ -18,15 +18,18 @@ from scipy.optimize import curve_fit, minimize, minimize_scalar
 from scipy.signal import find_peaks
 from tqdm.notebook import tqdm
 
+from bmtool.util.util import load_mechanisms_from_config, load_templates_from_config
+
 
 class SynapseTuner:
     def __init__(
         self,
-        mechanisms_dir: str,
-        templates_dir: str,
-        conn_type_settings: dict,
-        connection: str,
-        general_settings: dict,
+        mechanisms_dir: str = None,
+        templates_dir: str = None,
+        config: str = None,
+        conn_type_settings: dict = None,
+        connection: str = None,
+        general_settings: dict = None,
         json_folder_path: str = None,
         current_name: str = "i",
         other_vars_to_record: list = None,
@@ -57,8 +60,18 @@ class SynapseTuner:
             List of synaptic variables you would like sliders set up for the STP sliders method by default will use all parameters in spec_syn_param.
 
         """
-        neuron.load_mechanisms(mechanisms_dir)
-        h.load_file(templates_dir)
+        if config is None and (mechanisms_dir is None or templates_dir is None):
+            raise ValueError(
+                "Either a config file or both mechanisms_dir and templates_dir must be provided."
+            )
+
+        if config is None:
+            neuron.load_mechanisms(mechanisms_dir)
+            h.load_file(templates_dir)
+        else:
+            load_mechanisms_from_config(config)
+            load_templates_from_config(config)
+
         self.conn_type_settings = conn_type_settings
         if json_folder_path:
             print(f"updating settings from json path {json_folder_path}")
@@ -939,10 +952,11 @@ class SynapseTuner:
 class GapJunctionTuner:
     def __init__(
         self,
-        mechanisms_dir: str,
-        templates_dir: str,
-        general_settings: dict,
-        conn_type_settings: dict,
+        mechanisms_dir: str = None,
+        templates_dir: str = None,
+        config: str = None,
+        general_settings: dict = None,
+        conn_type_settings: dict = None,
     ):
         """
         Initialize the GapJunctionTuner class.
@@ -953,13 +967,24 @@ class GapJunctionTuner:
             Directory path containing the compiled mod files needed for NEURON mechanisms.
         templates_dir : str
             Directory path containing cell template files (.hoc or .py) loaded into NEURON.
+        config : str
+            Path to a BMTK config.json file. Can be used to load mechanisms, templates, and other settings.
         general_settings : dict
             General settings dictionary including parameters like simulation time step, duration, and temperature.
         conn_type_settings : dict
             A dictionary containing connection-specific settings for gap junctions.
         """
-        neuron.load_mechanisms(mechanisms_dir)
-        h.load_file(templates_dir)
+        if config is None and (mechanisms_dir is None or templates_dir is None):
+            raise ValueError(
+                "Either a config file or both mechanisms_dir and templates_dir must be provided."
+            )
+
+        if config is None:
+            neuron.load_mechanisms(mechanisms_dir)
+            h.load_file(templates_dir)
+        else:
+            load_mechanisms_from_config(config)
+            load_templates_from_config(config)
 
         self.general_settings = general_settings
         self.conn_type_settings = conn_type_settings
@@ -1049,7 +1074,6 @@ class GapJunctionTuner:
         plt.xlabel("Time (ms)")
         plt.ylabel("Membrane Voltage (mV)")
         plt.legend()
-        plt.show()
 
     def coupling_coefficient(self, t, v1, v2, t_start, t_end, dt=h.dt):
         """
@@ -1085,28 +1109,55 @@ class GapJunctionTuner:
 
     def InteractiveTuner(self):
         w_run = widgets.Button(description="Run", icon="history", button_style="primary")
-        values = [i * 10**-4 for i in range(1, 101)]  # From 1e-4 to 1e-2
+        values = [i * 10**-4 for i in range(1, 1001)]  # From 1e-4 to 1e-1
 
         # Create the SelectionSlider widget with appropriate formatting
-        resistance = widgets.SelectionSlider(
-            options=[("%g" % i, i) for i in values],  # Use scientific notation for display
-            value=10**-3,  # Default value
+        resistance = widgets.FloatLogSlider(
+            value=0.001,
+            base=10,
+            min=-4,  # max exponent of base
+            max=-1,  # min exponent of base
+            step=0.1,  # exponent step
             description="Resistance: ",
             continuous_update=True,
         )
 
         ui = VBox([w_run, resistance])
+
+        # Create an output widget to control what gets cleared
+        output = widgets.Output()
+
         display(ui)
+        display(output)
 
         def on_button(*args):
-            clear_output()
-            display(ui)
-            resistance_for_gap = resistance.value
-            self.model(resistance_for_gap)
-            self.plot_model()
-            cc = self.coupling_coefficient(self.t_vec, self.soma_v_1, self.soma_v_2, 500, 1000)
-            print(f"coupling_coefficient is {cc:0.4f}")
+            with output:
+                # Clear only the output widget, not the entire cell
+                output.clear_output(wait=True)
 
+                resistance_for_gap = resistance.value
+                print(f"Running simulation with resistance: {resistance_for_gap}")
+
+                try:
+                    self.model(resistance_for_gap)
+                    self.plot_model()
+
+                    # Convert NEURON vectors to numpy arrays
+                    t_array = np.array(self.t_vec)
+                    v1_array = np.array(self.soma_v_1)
+                    v2_array = np.array(self.soma_v_2)
+
+                    cc = self.coupling_coefficient(t_array, v1_array, v2_array, 500, 1000)
+                    print(f"coupling_coefficient is {cc:0.4f}")
+                    plt.show()
+
+                except Exception as e:
+                    print(f"Error during simulation or analysis: {e}")
+                    import traceback
+
+                    traceback.print_exc()
+
+        # Run once initially
         on_button()
         w_run.on_click(on_button)
 
