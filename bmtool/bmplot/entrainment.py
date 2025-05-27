@@ -1,9 +1,14 @@
+from typing import List, Tuple, Union
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.gridspec import GridSpec
 from scipy import stats
+
+from bmtool.analysis import entrainment as bmentr
+from bmtool.analysis import spikes as bmspikes
 
 
 def plot_spike_power_correlation(correlation_results, frequencies, pop_names):
@@ -366,3 +371,239 @@ def plot_entrainment_swarm_plot(ppc_dict, pop_names, freq, save_path=None, title
         plt.savefig(f"{save_path}/ppc_change_swarm_plot_{freq}Hz.png", dpi=300, bbox_inches="tight")
 
     plt.show()
+
+
+def plot_trial_avg_entrainment(
+    spike_df: pd.DataFrame,
+    lfp,
+    pulse_times: List[Tuple[float, float]],
+    entrainment_method: str,
+    pop_names: List[str],
+    freqs: Union[List[float], np.ndarray],
+    firing_quantile: float,
+) -> None:
+    """
+    Plot trial-averaged entrainment for specified population names.
+
+    Parameters:
+    -----------
+    spike_df : pd.DataFrame
+        Spike data containing timestamps, node_ids, and pop_name columns
+    lfp : object
+        LFP data with .sel() method and .fs attribute
+    pulse_times : List[Tuple[float, float]]
+        List of pulse timing pairs [(start_time, end_time), ...] for each trial
+    entrainment_method : str
+        Method for entrainment calculation ('ppc' or 'plv')
+    pop_names : List[str]
+        List of population names to process (e.g., ['FSI', 'LTS'])
+    freqs : Union[List[float], np.ndarray]
+        Array of frequencies to analyze (Hz)
+    firing_quantile : float
+        Upper quantile threshold for selecting high-firing cells (e.g., 0.8 for top 20%)
+
+    Raises:
+    -------
+    ValueError
+        If entrainment_method is not 'ppc' or 'plv'
+    ValueError
+        If no spikes found for a population in a trial
+
+    Returns:
+    --------
+    None
+        Displays plot and prints summary statistics
+    """
+    sns.set_style("whitegrid")
+    # Validate inputs
+    if entrainment_method not in ["ppc", "plv"]:
+        raise ValueError("entrainment_method must be 'ppc' or 'plv'")
+
+    if not (0 < firing_quantile < 1):
+        raise ValueError("firing_quantile must be between 0 and 1")
+
+    # Convert freqs to numpy array for easier indexing
+    freqs = np.array(freqs)
+
+    # Collect all PPC/PLV values across trials for each population
+    all_plv_data = {}  # Dictionary to store results for each population
+
+    # Initialize storage for each population
+    for pop_name in pop_names:
+        all_plv_data[pop_name] = []  # Will be shape (n_trials, n_freqs)
+
+    # Loop through all pulse groups to collect data
+    for trial_idx in range(len(pulse_times)):
+        plv_lists = {}  # Store PLV lists for this trial
+
+        # Initialize PLV lists for each population
+        for pop_name in pop_names:
+            plv_lists[pop_name] = []
+
+        # Filter spikes for this trial
+        network_spikes = spike_df[
+            (spike_df["timestamps"] >= pulse_times[trial_idx][0])
+            & (spike_df["timestamps"] <= pulse_times[trial_idx][1])
+        ].copy()
+
+        # Process each population
+        pop_spike_data = {}
+        for pop_name in pop_names:
+            # Get spikes for this population
+            pop_spikes = network_spikes[network_spikes["pop_name"] == pop_name]
+
+            if len(pop_spikes) == 0:
+                print(f"Warning: No spikes found for population {pop_name} in trial {trial_idx}")
+                # Add NaN values for this trial/population
+                plv_lists[pop_name] = [np.nan] * len(freqs)
+                continue
+
+            # Filter to get the top firing cells
+            # firing_quantile of 0.8 gets the top 20% of firing cells to use
+            pop_spikes = bmspikes.find_highest_firing_cells(
+                pop_spikes, upper_quantile=firing_quantile
+            )
+
+            if len(pop_spikes) == 0:
+                print(
+                    f"Warning: No high-firing spikes found for population {pop_name} in trial {trial_idx}"
+                )
+                plv_lists[pop_name] = [np.nan] * len(freqs)
+                continue
+
+            pop_spike_data[pop_name] = pop_spikes
+
+        # Calculate PPC/PLV for each frequency and each population
+        for freq_idx, freq in enumerate(freqs):
+            for pop_name in pop_names:
+                if pop_name not in pop_spike_data:
+                    continue  # Skip if no data for this population
+
+                pop_spikes = pop_spike_data[pop_name]
+
+                try:
+                    if entrainment_method == "ppc":
+                        result = bmentr.calculate_ppc(
+                            pop_spikes["timestamps"].values,
+                            lfp.sel(channel_id=0),
+                            spike_fs=1000,
+                            lfp_fs=lfp.fs,
+                            freq_of_interest=freq,
+                            filter_method="wavelet",
+                            ppc_method="gpu",
+                        )
+                    elif entrainment_method == "plv":
+                        result = bmentr.calculate_spike_lfp_plv(
+                            pop_spikes["timestamps"].values,
+                            lfp.sel(channel_id=0),
+                            spike_fs=1000,
+                            lfp_fs=lfp.fs,
+                            freq_of_interest=freq,
+                            filter_method="wavelet",
+                        )
+
+                    plv_lists[pop_name].append(result)
+
+                except Exception as e:
+                    print(
+                        f"Warning: Error calculating {entrainment_method} for {pop_name} at {freq}Hz in trial {trial_idx}: {e}"
+                    )
+                    plv_lists[pop_name].append(np.nan)
+
+        # Store this trial's results for each population
+        for pop_name in pop_names:
+            if pop_name in plv_lists and len(plv_lists[pop_name]) == len(freqs):
+                all_plv_data[pop_name].append(plv_lists[pop_name])
+            else:
+                # Fill with NaNs if data is missing
+                all_plv_data[pop_name].append([np.nan] * len(freqs))
+
+    # Convert to numpy arrays and calculate statistics
+    mean_plv = {}
+    ci_plv = {}
+
+    for pop_name in pop_names:
+        all_plv_data[pop_name] = np.array(all_plv_data[pop_name])  # Shape: (n_trials, n_freqs)
+
+        # Calculate statistics across trials, ignoring NaN values
+        with np.errstate(invalid="ignore"):  # Suppress warnings for all-NaN slices
+            mean_plv[pop_name] = np.nanmean(all_plv_data[pop_name], axis=0)
+
+            # Calculate confidence intervals (95% CI using SEM)
+            # Use nanstd and count valid values for proper SEM calculation
+            valid_counts = np.sum(~np.isnan(all_plv_data[pop_name]), axis=0)
+            sem_plv = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1) / np.sqrt(valid_counts)
+
+            # For 95% CI, multiply SEM by appropriate t-value
+            # Use minimum valid count across frequencies for conservative t-value
+            min_valid_trials = np.min(valid_counts[valid_counts > 1])  # Avoid division by zero
+            if min_valid_trials > 1:
+                t_value = stats.t.ppf(0.975, min_valid_trials - 1)  # 95% CI, two-tailed
+                ci_plv[pop_name] = t_value * sem_plv
+            else:
+                ci_plv[pop_name] = np.full_like(sem_plv, np.nan)
+
+    # Create the combined plot
+    plt.figure(figsize=(12, 8))
+
+    # Define markers and colors for different populations
+    markers = ["o-", "s-", "^-", "D-", "v-", "<-", ">-", "p-"]
+    colors = sns.color_palette(n_colors=len(pop_names))
+
+    # Plot each population
+    for i, pop_name in enumerate(pop_names):
+        marker = markers[i % len(markers)]  # Cycle through markers if more populations than markers
+        color = colors[i]
+
+        # Only plot if we have valid data
+        valid_mask = ~np.isnan(mean_plv[pop_name])
+        if np.any(valid_mask):
+            plt.plot(
+                freqs[valid_mask],
+                mean_plv[pop_name][valid_mask],
+                marker,
+                linewidth=2,
+                label=pop_name,
+                color=color,
+                markersize=6,
+            )
+
+            # Add confidence interval if available
+            if not np.all(np.isnan(ci_plv[pop_name])):
+                plt.fill_between(
+                    freqs[valid_mask],
+                    (mean_plv[pop_name] - ci_plv[pop_name])[valid_mask],
+                    (mean_plv[pop_name] + ci_plv[pop_name])[valid_mask],
+                    alpha=0.3,
+                    color=color,
+                )
+
+    plt.xlabel("Frequency (Hz)", fontsize=12)
+    plt.ylabel(f"{entrainment_method.upper()}", fontsize=12)
+
+    # Calculate percentage for title
+    firing_percentage = int((1 - firing_quantile) * 100)
+    plt.title(
+        f"{entrainment_method.upper()} Across Trials for Top {firing_percentage}% Firing Cells",
+        fontsize=14,
+    )
+
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+    # Print summary statistics
+    n_trials = len(pulse_times)
+    print(f"\nAnalysis completed for {n_trials} trials")
+    print(f"Analyzed frequencies: {freqs[0]:.1f} - {freqs[-1]:.1f} Hz ({len(freqs)} points)")
+    print(f"Using top {firing_percentage}% firing cells (quantile threshold: {firing_quantile})")
+
+    for pop_name in pop_names:
+        valid_data = ~np.isnan(mean_plv[pop_name])
+        if np.any(valid_data):
+            min_val = np.nanmin(mean_plv[pop_name])
+            max_val = np.nanmax(mean_plv[pop_name])
+            print(f"{pop_name} {entrainment_method.upper()} range: {min_val:.4f} - {max_val:.4f}")
+        else:
+            print(f"{pop_name}: No valid data")

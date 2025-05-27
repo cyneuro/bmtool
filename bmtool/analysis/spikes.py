@@ -602,3 +602,49 @@ def find_bursting_cells(
         )
 
     return burst_cells
+
+
+def find_highest_firing_cells(
+    df: pd.DataFrame, upper_quantile: float, groupby: str = "pop_name"
+) -> pd.DataFrame:
+    """
+    Identifies and returns spikes from cells with firing rates above a specified upper quantile,
+    grouped by a population label.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing spike data with at least the following columns:
+        - 'timestamps': Time of each spike event
+        - 'node_ids': Identifier for each neuron
+        - groupby (e.g., 'pop_name'): Population labels or grouping identifiers for neurons
+
+    upper_quantile : float
+        The upper quantile threshold (between 0 and 1).
+        Cells with firing rates in the top (1 - upper_quantile) fraction are selected.
+        For example, upper_quantile=0.8 selects the top 20% of high-firing cells.
+
+    groupby : str, optional
+        The column name used to group neurons by population. Default is 'pop_name'.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing only the spikes from the high-firing cells across all groupbys.
+    """
+    df_list = []
+    for pop in df[groupby].unique():
+        pop_df = df[df[groupby] == pop]
+        _, pop_fr = compute_firing_rate_stats(pop_df, groupby=groupby)
+
+        # Identify high firing cells
+        threshold = pop_fr["firing_rate"].quantile(upper_quantile)
+        high_firing_cells = pop_fr[pop_fr["firing_rate"] >= threshold]["node_ids"]
+
+        # Filter spikes for high firing cells
+        pop_spikes = pop_df[pop_df["node_ids"].isin(high_firing_cells)]
+        df_list.append(pop_spikes)
+
+    # Combine all high firing spikes into one DataFrame
+    result_df = pd.concat(df_list, ignore_index=True)
+    return result_df

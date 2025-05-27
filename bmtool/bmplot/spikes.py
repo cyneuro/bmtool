@@ -20,6 +20,7 @@ def raster(
     tstart: Optional[float] = None,
     tstop: Optional[float] = None,
     color_map: Optional[Dict[str, str]] = None,
+    dot_size: Optional[float] = 0.3,
 ) -> Axes:
     """
     Plots a raster plot of neural spikes, with different colors for each population.
@@ -40,6 +41,8 @@ def raster(
         Stop time for filtering spikes; only spikes with timestamps less than `tstop` will be plotted.
     color_map : dict, optional
         Dictionary specifying colors for each population. Keys should be population names, and values should be color values.
+    dot_size: float, optional
+        Size of the dot to display on the scatterplot
 
     Returns:
     -------
@@ -102,15 +105,17 @@ def raster(
             raise ValueError(f"color_map is missing colors for populations: {missing_colors}")
 
     # Plot each population with its specified or generated color
+    legend_handles = []
     for pop_name, group in spikes_df.groupby(groupby):
-        ax.scatter(
-            group["timestamps"], group["node_ids"], label=pop_name, color=color_map[pop_name], s=0.5
-        )
+        ax.scatter(group["timestamps"], group["node_ids"], color=color_map[pop_name], s=dot_size)
+        # Dummy scatter for consistent legend appearance
+        handle = ax.scatter([], [], color=color_map[pop_name], label=pop_name, s=20)
+        legend_handles.append(handle)
 
     # Label axes
     ax.set_xlabel("Time")
     ax.set_ylabel("Node ID")
-    ax.legend(title="Population", loc="upper right", framealpha=0.9, markerfirst=False)
+    ax.legend(handles=legend_handles, title="Population", loc="upper right", framealpha=0.9)
 
     return ax
 
