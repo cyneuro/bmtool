@@ -7,13 +7,12 @@ from typing import Dict, List, Optional, Union
 import numba
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
 import xarray as xr
 from numba import cuda
 from scipy import signal
 from tqdm.notebook import tqdm
 
-from .lfp import butter_bandpass_filter, get_lfp_phase, get_lfp_power, wavelet_filter
+from .lfp import butter_bandpass_filter, get_lfp_phase, wavelet_filter
 
 
 def align_spike_times_with_lfp(lfp: xr.DataArray, timestamps: np.ndarray) -> np.ndarray:
@@ -633,85 +632,6 @@ def calculate_entrainment_per_cell(
         )
 
     return entrainment_dict
-
-
-def calculate_spike_rate_power_correlation(
-    spike_rate: xr.DataArray,
-    lfp_data: np.ndarray,
-    fs: float,
-    pop_names: list,
-    filter_method: str = "wavelet",
-    bandwidth: float = 2.0,
-    lowcut: float = None,
-    highcut: float = None,
-    freq_range: tuple = (10, 100),
-    freq_step: float = 5,
-    type_name: str = "raw",  # 'raw' or 'smoothed'
-):
-    """
-    Calculate correlation between population spike rates (xarray) and LFP power across frequencies.
-
-    Parameters
-    ----------
-    spike_rate : xr.DataArray
-        Population spike rates with dimensions (time, population[, type])
-    lfp_data : np.ndarray
-        LFP data
-    fs : float
-        Sampling frequency
-    pop_names : list
-        List of population names to analyze
-    filter_method : str, optional
-        Filtering method to use, either 'wavelet' or 'butter' (default: 'wavelet')
-    bandwidth : float, optional
-        Bandwidth parameter for wavelet filter when method='wavelet' (default: 2.0)
-    lowcut : float, optional
-        Lower frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
-    highcut : float, optional
-        Upper frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
-    freq_range : tuple, optional
-        Min and max frequency to analyze (default: (10, 100))
-    freq_step : float, optional
-        Step size for frequency analysis (default: 5)
-    type_name : str, optional
-        Which type of spike rate to use if 'type' dimension exists (default: 'raw')
-
-    Returns
-    -------
-    correlation_results : dict
-        Dictionary with correlation results for each population and frequency
-    frequencies : array
-        Array of frequencies analyzed
-    """
-    frequencies = np.arange(freq_range[0], freq_range[1] + 1, freq_step)
-    correlation_results = {pop: {} for pop in pop_names}
-
-    # Calculate power at each frequency band using specified filter
-    power_by_freq = {}
-    for freq in frequencies:
-        power_by_freq[freq] = get_lfp_power(
-            lfp_data, freq, fs, filter_method, lowcut=lowcut, highcut=highcut, bandwidth=bandwidth
-        )
-
-    # For each population, extract the correct spike rate
-    for pop in pop_names:
-        # If 'type' dimension exists, select the type
-        if "type" in spike_rate.dims:
-            pop_rate = spike_rate.sel(population=pop, type=type_name).values
-        else:
-            pop_rate = spike_rate.sel(population=pop).values
-
-        # Calculate correlation with power at each frequency
-        for freq in frequencies:
-            lfp_power = power_by_freq[freq]
-            # Ensure lengths match
-            min_len = min(len(pop_rate), len(lfp_power))
-            if len(pop_rate) != len(lfp_power):
-                print(f"Warning: Length mismatch for {pop} at {freq} Hz, truncating to {min_len}")
-            corr, p_val = stats.spearmanr(pop_rate[:min_len], lfp_power[:min_len])
-            correlation_results[pop][freq] = {"correlation": corr, "p_value": p_val}
-
-    return correlation_results, frequencies
 
 
 def get_spikes_in_cycle(

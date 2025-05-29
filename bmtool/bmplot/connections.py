@@ -1096,8 +1096,29 @@ def plot_connection_info(
     # Set color map
     matplotlib.rc("image", cmap="viridis")
 
+    # Calculate figure size with minimum dimensions for readability
+    # Base size per cell, with minimums to ensure readability
+    base_width_per_col = 2.0
+    base_height_per_row = 1.5
+    min_width = 6.0
+    min_height = 4.0
+    max_width = 16.0
+    max_height = 12.0
+
+    # Calculate desired size
+    desired_width = max(min_width, min(max_width, num_target * base_width_per_col))
+    desired_height = max(min_height, min(max_height, num_source * base_height_per_row))
+
+    # For very small matrices (1-2 rows/cols), use a more generous minimum
+    if num_source <= 2 and num_target <= 4:
+        desired_width = max(8.0, desired_width)
+        desired_height = max(6.0, desired_height)
+    elif num_source <= 3 and num_target <= 3:
+        desired_width = max(7.0, desired_width)
+        desired_height = max(5.0, desired_height)
+
     # Create figure and axis for the plot
-    fig1, ax1 = plt.subplots(figsize=(num_source, num_target))
+    fig1, ax1 = plt.subplots(figsize=(desired_width, desired_height))
     num = np.nan_to_num(num, nan=0)  # replace NaN with 0
     im1 = ax1.imshow(num)
 
@@ -1120,6 +1141,18 @@ def plot_connection_info(
     # Dictionary to store connection information
     graph_dict = {}
 
+    # Calculate text size based on matrix dimensions
+    if num_source * num_target <= 4:
+        text_size = 14  # Large text for very small matrices
+    elif num_source * num_target <= 16:
+        text_size = 12  # Medium text for small matrices
+    elif num_source > 20 or num_target > 20:
+        text_size = 7  # Small text for large matrices
+    elif num_source > 8 or num_target > 8:
+        text_size = 8  # Smaller text for medium-large matrices
+    else:
+        text_size = 11  # Default text size
+
     # Loop over data dimensions and create text annotations
     for i in range(num_source):
         for j in range(num_target):
@@ -1135,6 +1168,7 @@ def plot_connection_info(
 
             # Set text annotations based on syn_info type
             if syn_info == "2" or syn_info == "3":
+                # For file names, use rotation and adjusted size
                 if num_source > 8 and num_source < 20:
                     fig_text = ax1.text(
                         j,
@@ -1144,7 +1178,7 @@ def plot_connection_info(
                         va="center",
                         color="w",
                         rotation=37.5,
-                        size=8,
+                        size=max(text_size - 2, 6),
                         weight="semibold",
                     )
                 elif num_source > 20:
@@ -1156,7 +1190,7 @@ def plot_connection_info(
                         va="center",
                         color="w",
                         rotation=37.5,
-                        size=7,
+                        size=max(text_size - 3, 5),
                         weight="semibold",
                     )
                 else:
@@ -1168,18 +1202,28 @@ def plot_connection_info(
                         va="center",
                         color="w",
                         rotation=37.5,
-                        size=11,
+                        size=text_size,
                         weight="semibold",
                     )
             else:
                 fig_text = ax1.text(
-                    j, i, edge_info, ha="center", va="center", color="w", size=11, weight="semibold"
+                    j,
+                    i,
+                    edge_info,
+                    ha="center",
+                    va="center",
+                    color="w",
+                    size=text_size,
+                    weight="semibold",
                 )
 
     # Set labels and title for the plot
-    ax1.set_ylabel("Source", size=11, weight="semibold")
-    ax1.set_xlabel("Target", size=11, weight="semibold")
-    ax1.set_title(title, size=20, weight="semibold")
+    ax1.set_ylabel("Source", size=13, weight="semibold")
+    ax1.set_xlabel("Target", size=13, weight="semibold")
+    ax1.set_title(title, size=16, weight="semibold")
+
+    # Add some padding around the plot
+    plt.tight_layout(pad=2.0)
 
     # Display the plot or save it based on the environment and arguments
     notebook = is_notebook()  # Check if running in a Jupyter notebook
@@ -1187,7 +1231,7 @@ def plot_connection_info(
         fig1.show()
 
     if save_file:
-        plt.savefig(save_file)
+        plt.savefig(save_file, dpi=300, bbox_inches="tight")
 
     if return_dict:
         return graph_dict

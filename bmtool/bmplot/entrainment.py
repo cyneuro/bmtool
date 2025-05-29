@@ -4,58 +4,231 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import xarray as xr
 from matplotlib.gridspec import GridSpec
 from scipy import stats
 
 from bmtool.analysis import entrainment as bmentr
 from bmtool.analysis import spikes as bmspikes
+from bmtool.analysis.lfp import get_lfp_power
 
 
-def plot_spike_power_correlation(correlation_results, frequencies, pop_names):
+def plot_spike_power_correlation(
+    spike_rate: xr.DataArray,
+    lfp_data: xr.DataArray,
+    fs: float,
+    pop_names: list,
+    filter_method: str = "wavelet",
+    bandwidth: float = 2.0,
+    lowcut: float = None,
+    highcut: float = None,
+    freq_range: tuple = (10, 100),
+    freq_step: float = 5,
+    type_name: str = "raw",
+    time_windows: list = None,
+    confidence_level: float = 0.95,
+):
     """
-    Plot the correlation between population spike rates and LFP power.
+    Calculate and plot correlation between population spike rates and LFP power across frequencies.
+    Supports both single-signal and trial-based analysis with confidence intervals.
 
-    Parameters:
-    -----------
-    correlation_results : dict
-        Dictionary with correlation results for calculate_spike_rate_power_correlation
-    frequencies : array
-        Array of frequencies analyzed
+    Parameters
+    ----------
+    spike_rate : xr.DataArray
+        Population spike rates with dimensions (time, population[, type])
+    lfp_data : xr.DataArray
+        LFP data
+    fs : float
+        Sampling frequency
     pop_names : list
-        List of population names
+        List of population names to analyze
+    filter_method : str, optional
+        Filtering method to use, either 'wavelet' or 'butter' (default: 'wavelet')
+    bandwidth : float, optional
+        Bandwidth parameter for wavelet filter when method='wavelet' (default: 2.0)
+    lowcut : float, optional
+        Lower frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
+    highcut : float, optional
+        Upper frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
+    freq_range : tuple, optional
+        Min and max frequency to analyze (default: (10, 100))
+    freq_step : float, optional
+        Step size for frequency analysis (default: 5)
+    type_name : str, optional
+        Which type of spike rate to use if 'type' dimension exists (default: 'raw')
+    time_windows : list, optional
+        List of (start, end) time tuples for trial-based analysis. If None, analyze entire signal
+    confidence_level : float, optional
+        Confidence level for confidence interval calculation (default: 0.95)
     """
-    sns.set_style("whitegrid")
-    plt.figure(figsize=(10, 6))
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import seaborn as sns
+    from scipy import stats
 
+    # Setup
+    frequencies = np.arange(freq_range[0], freq_range[1] + 1, freq_step)
+    is_trial_based = time_windows is not None
+
+    # Pre-calculate LFP power for all frequencies
+    power_by_freq = {}
+    for freq in frequencies:
+        power_by_freq[freq] = get_lfp_power(
+            lfp_data, freq, fs, filter_method, lowcut=lowcut, highcut=highcut, bandwidth=bandwidth
+        )
+
+    # Calculate correlations
+    results = {}
     for pop in pop_names:
-        # Extract correlation values for each frequency
-        corr_values = []
-        valid_freqs = []
+        pop_spike_rate = spike_rate.sel(population=pop, type=type_name)
+        results[pop] = {}
 
         for freq in frequencies:
-            if freq in correlation_results[pop]:
-                corr_values.append(correlation_results[pop][freq]["correlation"])
-                valid_freqs.append(freq)
+            lfp_power = power_by_freq[freq]
 
-        # Plot correlation line
-        plt.plot(valid_freqs, corr_values, marker="o", label=pop, linewidth=2, markersize=6)
+            if not is_trial_based:
+                # Single signal analysis
+                if len(pop_spike_rate) != len(lfp_power):
+                    print(f"Warning: Length mismatch for {pop} at {freq} Hz")
+                    continue
 
+                corr, p_val = stats.spearmanr(pop_spike_rate, lfp_power)
+                results[pop][freq] = {
+                    "correlation": corr,
+                    "p_value": p_val,
+                }
+            else:
+                # Trial-based analysis
+                trial_correlations = []
+
+                for start_time, end_time in time_windows:
+                    trial_spike_rate = pop_spike_rate.sel(time=slice(start_time, end_time))
+                    trial_lfp_power = lfp_power.sel(time=slice(start_time, end_time))
+
+                    if len(trial_spike_rate) < 2 or len(trial_lfp_power) < 2:
+                        continue
+                    if len(trial_spike_rate) != len(trial_lfp_power):
+                        continue
+
+                    corr, _ = stats.spearmanr(trial_spike_rate, trial_lfp_power)
+                    if not np.isnan(corr):
+                        trial_correlations.append(corr)
+
+                # Calculate trial statistics
+                if len(trial_correlations) > 0:
+                    trial_correlations = np.array(trial_correlations)
+                    mean_corr = np.mean(trial_correlations)
+
+                    if len(trial_correlations) > 1:
+                        # Confidence interval and t-test
+                        alpha = 1 - confidence_level
+                        df = len(trial_correlations) - 1
+                        t_critical = stats.t.ppf(1 - alpha / 2, df)
+                        sem = stats.sem(trial_correlations)
+                        ci_lower = mean_corr - t_critical * sem
+                        ci_upper = mean_corr + t_critical * sem
+                    else:
+                        ci_lower = ci_upper = mean_corr
+
+                    results[pop][freq] = {
+                        "correlation": mean_corr,
+                        "ci_lower": ci_lower,
+                        "ci_upper": ci_upper,
+                        "n_trials": len(trial_correlations),
+                        "trial_correlations": trial_correlations,
+                    }
+                else:
+                    # No valid trials
+                    results[pop][freq] = {
+                        "correlation": np.nan,
+                        "ci_lower": np.nan,
+                        "ci_upper": np.nan,
+                        "n_trials": 0,
+                        "trial_correlations": np.array([]),
+                    }
+
+    # Plotting
+    sns.set_style("whitegrid")
+    plt.figure(figsize=(12, 8))
+
+    for i, pop in enumerate(pop_names):
+        # Extract data for plotting
+        plot_freqs = []
+        plot_corrs = []
+        plot_ci_lower = []
+        plot_ci_upper = []
+
+        for freq in frequencies:
+            if freq in results[pop] and not np.isnan(results[pop][freq]["correlation"]):
+                plot_freqs.append(freq)
+                plot_corrs.append(results[pop][freq]["correlation"])
+
+                if is_trial_based:
+                    plot_ci_lower.append(results[pop][freq]["ci_lower"])
+                    plot_ci_upper.append(results[pop][freq]["ci_upper"])
+
+        if len(plot_freqs) == 0:
+            continue
+
+        # Convert to arrays
+        plot_freqs = np.array(plot_freqs)
+        plot_corrs = np.array(plot_corrs)
+
+        # Plot main line
+        color = plt.cm.tab10(i)
+        plt.plot(
+            plot_freqs, plot_corrs, marker="o", label=pop, linewidth=2, markersize=6, color=color
+        )
+
+        # Plot confidence intervals for trial-based analysis
+        if is_trial_based and len(plot_ci_lower) > 0:
+            plot_ci_lower = np.array(plot_ci_lower)
+            plot_ci_upper = np.array(plot_ci_upper)
+            plt.fill_between(plot_freqs, plot_ci_lower, plot_ci_upper, alpha=0.2, color=color)
+
+    # Formatting
     plt.xlabel("Frequency (Hz)", fontsize=12)
-    plt.ylabel("Spike Rate-Power Correlation", fontsize=12)
-    plt.title("Spike rate LFP power correlation during stimulus", fontsize=14)
-    plt.grid(True, alpha=0.3)
-    plt.legend(fontsize=12)
-    plt.xticks(frequencies[::2])  # Display every other frequency on x-axis
+    ylabel = (
+        "Mean Spike Rate-Power Correlation" if is_trial_based else "Spike Rate-Power Correlation"
+    )
+    plt.ylabel(ylabel, fontsize=12)
 
-    # Add horizontal line at zero for reference
+    title = f"{'Trial-averaged ' if is_trial_based else ''}Spike Rate-LFP Power Correlation"
+    plt.title(title, fontsize=14)
+    plt.grid(True, alpha=0.3)
     plt.axhline(y=0, color="gray", linestyle="-", alpha=0.5)
 
-    # Set y-axis limits to make zero visible
+    # Legend
+    legend_elements = [
+        plt.Line2D([0], [0], color=plt.cm.tab10(i), marker="o", linestyle="-", label=pop)
+        for i, pop in enumerate(pop_names)
+    ]
+
+    if is_trial_based:
+        legend_elements.append(
+            plt.Line2D(
+                [0],
+                [0],
+                color="gray",
+                alpha=0.3,
+                linewidth=10,
+                label=f"{int(confidence_level*100)}% CI",
+            )
+        )
+
+    plt.legend(handles=legend_elements, fontsize=10, loc="best")
+
+    # Axis formatting
+    if len(frequencies) > 10:
+        plt.xticks(frequencies[::2])
+    else:
+        plt.xticks(frequencies)
+    plt.xlim(frequencies[0], frequencies[-1])
+
     y_min, y_max = plt.ylim()
     plt.ylim(min(y_min, -0.1), max(y_max, 0.1))
 
     plt.tight_layout()
-
     plt.show()
 
 
@@ -375,38 +548,44 @@ def plot_entrainment_swarm_plot(ppc_dict, pop_names, freq, save_path=None, title
 
 def plot_trial_avg_entrainment(
     spike_df: pd.DataFrame,
-    lfp,
-    pulse_times: List[Tuple[float, float]],
+    lfp: np.ndarray,
+    time_windows: List[Tuple[float, float]],
     entrainment_method: str,
     pop_names: List[str],
     freqs: Union[List[float], np.ndarray],
     firing_quantile: float,
+    spike_fs: float = 1000,
+    error_type: str = "ci",  # New parameter: "ci" for confidence interval, "sem" for standard error, "std" for standard deviation
 ) -> None:
     """
-    Plot trial-averaged entrainment for specified population names.
+    Plot trial-averaged entrainment for specified population names. Only supports wavelet filter current, could easily add other support
 
     Parameters:
     -----------
     spike_df : pd.DataFrame
         Spike data containing timestamps, node_ids, and pop_name columns
-    lfp : object
-        LFP data with .sel() method and .fs attribute
-    pulse_times : List[Tuple[float, float]]
-        List of pulse timing pairs [(start_time, end_time), ...] for each trial
+    spike_fs : float
+        fs for spike data. Default is 1000
+    lfp : xarray
+        Xarray for a channel of the lfp data
+    time_windows : List[Tuple[float, float]]
+        List of windows to analysis with start and stp time [(start_time, end_time), ...] for each trial
     entrainment_method : str
-        Method for entrainment calculation ('ppc' or 'plv')
+        Method for entrainment calculation ('ppc', 'ppc2' or 'plv')
     pop_names : List[str]
         List of population names to process (e.g., ['FSI', 'LTS'])
     freqs : Union[List[float], np.ndarray]
         Array of frequencies to analyze (Hz)
     firing_quantile : float
         Upper quantile threshold for selecting high-firing cells (e.g., 0.8 for top 20%)
+    error_type : str
+        Type of error bars to plot: "ci" for 95% confidence interval, "sem" for standard error, "std" for standard deviation
 
     Raises:
     -------
     ValueError
-        If entrainment_method is not 'ppc' or 'plv'
-    ValueError
+        If entrainment_method is not 'ppc', 'ppc2' or 'plv'
+        If error_type is not 'ci', 'sem', or 'std'
         If no spikes found for a population in a trial
 
     Returns:
@@ -416,8 +595,13 @@ def plot_trial_avg_entrainment(
     """
     sns.set_style("whitegrid")
     # Validate inputs
-    if entrainment_method not in ["ppc", "plv"]:
-        raise ValueError("entrainment_method must be 'ppc' or 'plv'")
+    if entrainment_method not in ["ppc", "plv", "ppc2"]:
+        raise ValueError("entrainment_method must be 'ppc', ppc2 or 'plv'")
+
+    if error_type not in ["ci", "sem", "std"]:
+        raise ValueError(
+            "error_type must be 'ci' for confidence interval, 'sem' for standard error, or 'std' for standard deviation"
+        )
 
     if not (0 < firing_quantile < 1):
         raise ValueError("firing_quantile must be between 0 and 1")
@@ -433,7 +617,7 @@ def plot_trial_avg_entrainment(
         all_plv_data[pop_name] = []  # Will be shape (n_trials, n_freqs)
 
     # Loop through all pulse groups to collect data
-    for trial_idx in range(len(pulse_times)):
+    for trial_idx in range(len(time_windows)):
         plv_lists = {}  # Store PLV lists for this trial
 
         # Initialize PLV lists for each population
@@ -442,8 +626,8 @@ def plot_trial_avg_entrainment(
 
         # Filter spikes for this trial
         network_spikes = spike_df[
-            (spike_df["timestamps"] >= pulse_times[trial_idx][0])
-            & (spike_df["timestamps"] <= pulse_times[trial_idx][1])
+            (spike_df["timestamps"] >= time_windows[trial_idx][0])
+            & (spike_df["timestamps"] <= time_windows[trial_idx][1])
         ].copy()
 
         # Process each population
@@ -485,8 +669,8 @@ def plot_trial_avg_entrainment(
                     if entrainment_method == "ppc":
                         result = bmentr.calculate_ppc(
                             pop_spikes["timestamps"].values,
-                            lfp.sel(channel_id=0),
-                            spike_fs=1000,
+                            lfp,
+                            spike_fs=spike_fs,
                             lfp_fs=lfp.fs,
                             freq_of_interest=freq,
                             filter_method="wavelet",
@@ -495,8 +679,17 @@ def plot_trial_avg_entrainment(
                     elif entrainment_method == "plv":
                         result = bmentr.calculate_spike_lfp_plv(
                             pop_spikes["timestamps"].values,
-                            lfp.sel(channel_id=0),
-                            spike_fs=1000,
+                            lfp,
+                            spike_fs=spike_fs,
+                            lfp_fs=lfp.fs,
+                            freq_of_interest=freq,
+                            filter_method="wavelet",
+                        )
+                    elif entrainment_method == "ppc2":
+                        result = bmentr.calculate_ppc2(
+                            pop_spikes["timestamps"].values,
+                            lfp,
+                            spike_fs=spike_fs,
                             lfp_fs=lfp.fs,
                             freq_of_interest=freq,
                             filter_method="wavelet",
@@ -520,7 +713,7 @@ def plot_trial_avg_entrainment(
 
     # Convert to numpy arrays and calculate statistics
     mean_plv = {}
-    ci_plv = {}
+    error_plv = {}
 
     for pop_name in pop_names:
         all_plv_data[pop_name] = np.array(all_plv_data[pop_name])  # Shape: (n_trials, n_freqs)
@@ -529,19 +722,30 @@ def plot_trial_avg_entrainment(
         with np.errstate(invalid="ignore"):  # Suppress warnings for all-NaN slices
             mean_plv[pop_name] = np.nanmean(all_plv_data[pop_name], axis=0)
 
-            # Calculate confidence intervals (95% CI using SEM)
-            # Use nanstd and count valid values for proper SEM calculation
-            valid_counts = np.sum(~np.isnan(all_plv_data[pop_name]), axis=0)
-            sem_plv = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1) / np.sqrt(valid_counts)
+            if error_type == "ci":
+                # Calculate 95% confidence intervals using SEM
+                valid_counts = np.sum(~np.isnan(all_plv_data[pop_name]), axis=0)
+                sem_plv = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1) / np.sqrt(valid_counts)
 
-            # For 95% CI, multiply SEM by appropriate t-value
-            # Use minimum valid count across frequencies for conservative t-value
-            min_valid_trials = np.min(valid_counts[valid_counts > 1])  # Avoid division by zero
-            if min_valid_trials > 1:
-                t_value = stats.t.ppf(0.975, min_valid_trials - 1)  # 95% CI, two-tailed
-                ci_plv[pop_name] = t_value * sem_plv
-            else:
-                ci_plv[pop_name] = np.full_like(sem_plv, np.nan)
+                # For 95% CI, multiply SEM by appropriate t-value
+                # Use minimum valid count across frequencies for conservative t-value
+                min_valid_trials = np.min(valid_counts[valid_counts > 1])  # Avoid division by zero
+                if min_valid_trials > 1:
+                    t_value = stats.t.ppf(0.975, min_valid_trials - 1)  # 95% CI, two-tailed
+                    error_plv[pop_name] = t_value * sem_plv
+                else:
+                    error_plv[pop_name] = np.full_like(sem_plv, np.nan)
+
+            elif error_type == "sem":
+                # Calculate standard error of the mean
+                valid_counts = np.sum(~np.isnan(all_plv_data[pop_name]), axis=0)
+                error_plv[pop_name] = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1) / np.sqrt(
+                    valid_counts
+                )
+
+            elif error_type == "std":
+                # Calculate standard deviation
+                error_plv[pop_name] = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1)
 
     # Create the combined plot
     plt.figure(figsize=(12, 8))
@@ -568,12 +772,12 @@ def plot_trial_avg_entrainment(
                 markersize=6,
             )
 
-            # Add confidence interval if available
-            if not np.all(np.isnan(ci_plv[pop_name])):
+            # Add error bars/shading if available
+            if not np.all(np.isnan(error_plv[pop_name])):
                 plt.fill_between(
                     freqs[valid_mask],
-                    (mean_plv[pop_name] - ci_plv[pop_name])[valid_mask],
-                    (mean_plv[pop_name] + ci_plv[pop_name])[valid_mask],
+                    (mean_plv[pop_name] - error_plv[pop_name])[valid_mask],
+                    (mean_plv[pop_name] + error_plv[pop_name])[valid_mask],
                     alpha=0.3,
                     color=color,
                 )
@@ -581,10 +785,12 @@ def plot_trial_avg_entrainment(
     plt.xlabel("Frequency (Hz)", fontsize=12)
     plt.ylabel(f"{entrainment_method.upper()}", fontsize=12)
 
-    # Calculate percentage for title
+    # Calculate percentage for title and update title based on error type
     firing_percentage = int((1 - firing_quantile) * 100)
+    error_labels = {"ci": "95% CI", "sem": "±SEM", "std": "±1 SD"}
+    error_label = error_labels[error_type]
     plt.title(
-        f"{entrainment_method.upper()} Across Trials for Top {firing_percentage}% Firing Cells",
+        f"{entrainment_method.upper()} Across Trials for Top {firing_percentage}% Firing Cells ({error_label})",
         fontsize=14,
     )
 
@@ -592,18 +798,3 @@ def plot_trial_avg_entrainment(
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.show()
-
-    # Print summary statistics
-    n_trials = len(pulse_times)
-    print(f"\nAnalysis completed for {n_trials} trials")
-    print(f"Analyzed frequencies: {freqs[0]:.1f} - {freqs[-1]:.1f} Hz ({len(freqs)} points)")
-    print(f"Using top {firing_percentage}% firing cells (quantile threshold: {firing_quantile})")
-
-    for pop_name in pop_names:
-        valid_data = ~np.isnan(mean_plv[pop_name])
-        if np.any(valid_data):
-            min_val = np.nanmin(mean_plv[pop_name])
-            max_val = np.nanmax(mean_plv[pop_name])
-            print(f"{pop_name} {entrainment_method.upper()} range: {min_val:.4f} - {max_val:.4f}")
-        else:
-            print(f"{pop_name}: No valid data")

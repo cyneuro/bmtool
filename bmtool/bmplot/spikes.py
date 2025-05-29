@@ -56,6 +56,7 @@ def raster(
     - If `color_map` is provided, it should contain colors for all unique `pop_name` values in `spikes_df`.
     """
     # Initialize axes if none provided
+    sns.set_style("whitegrid")
     if ax is None:
         _, ax = plt.subplots(1, 1)
 
@@ -147,6 +148,7 @@ def plot_firing_rate_pop_stats(
         Axes with the bar plot.
     """
     # Ensure groupby is a list for consistent handling
+    sns.set_style("whitegrid")
     if isinstance(groupby, str):
         groupby = [groupby]
 
@@ -239,6 +241,7 @@ def plot_firing_rate_distribution(
     matplotlib.axes.Axes
         Axes with the selected plot type(s) overlayed.
     """
+    sns.set_style("whitegrid")
     # Ensure groupby is a list for consistent handling
     if isinstance(groupby, str):
         groupby = [groupby]
@@ -292,8 +295,9 @@ def plot_firing_rate_distribution(
                 y="firing_rate",
                 ax=ax,
                 palette=color_map,
-                inner="quartile",
+                inner="box",
                 alpha=0.4,
+                cut=0,  # This prevents the KDE from extending beyond the data range
             )
         elif pt == "swarm":
             sns.swarmplot(
