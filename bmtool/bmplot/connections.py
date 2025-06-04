@@ -1088,7 +1088,6 @@ def plot_connection_info(
     Function to plot connection information as a heatmap, including handling missing source and target values.
     If there is no source or target, set the value to 0.
     """
-
     # Ensure text dimensions match num dimensions
     num_source = len(source_labels)
     num_target = len(target_labels)
@@ -1096,147 +1095,149 @@ def plot_connection_info(
     # Set color map
     matplotlib.rc("image", cmap="viridis")
 
-    # Calculate figure size with minimum dimensions for readability
-    # Base size per cell, with minimums to ensure readability
-    base_width_per_col = 2.0
-    base_height_per_row = 1.5
-    min_width = 6.0
-    min_height = 4.0
-    max_width = 16.0
-    max_height = 12.0
+    # Calculate square cell size to ensure proper aspect ratio
+    base_cell_size = 0.6  # Base size per cell
 
-    # Calculate desired size
-    desired_width = max(min_width, min(max_width, num_target * base_width_per_col))
-    desired_height = max(min_height, min(max_height, num_source * base_height_per_row))
+    # Calculate figure dimensions with proper aspect ratio
+    # Make sure width and height are proportional to the matrix dimensions
+    fig_width = max(8, num_target * base_cell_size + 4)  # Width based on columns
+    fig_height = max(6, num_source * base_cell_size + 3)  # Height based on rows
 
-    # For very small matrices (1-2 rows/cols), use a more generous minimum
-    if num_source <= 2 and num_target <= 4:
-        desired_width = max(8.0, desired_width)
-        desired_height = max(6.0, desired_height)
-    elif num_source <= 3 and num_target <= 3:
-        desired_width = max(7.0, desired_width)
-        desired_height = max(5.0, desired_height)
+    # Ensure minimum readable size
+    min_fig_size = 8
+    if fig_width < min_fig_size or fig_height < min_fig_size:
+        scale_factor = min_fig_size / min(fig_width, fig_height)
+        fig_width *= scale_factor
+        fig_height *= scale_factor
 
-    # Create figure and axis for the plot
-    fig1, ax1 = plt.subplots(figsize=(desired_width, desired_height))
-    num = np.nan_to_num(num, nan=0)  # replace NaN with 0
-    im1 = ax1.imshow(num)
+    # Create figure and axis
+    fig1, ax1 = plt.subplots(figsize=(fig_width, fig_height))
 
-    # Set ticks and labels for source and target
+    # Replace NaN with 0 and create heatmap
+    num_clean = np.nan_to_num(num, nan=0)
+    # if string is nan\nnan make it 0
+
+    # Use 'auto' aspect ratio to let matplotlib handle it properly
+    # This prevents the stretching issue
+    im1 = ax1.imshow(num_clean, aspect="auto", interpolation="nearest")
+
+    # Set ticks and labels
     ax1.set_xticks(list(np.arange(len(target_labels))))
     ax1.set_yticks(list(np.arange(len(source_labels))))
     ax1.set_xticklabels(target_labels)
-    ax1.set_yticklabels(source_labels, size=12, weight="semibold")
+    ax1.set_yticklabels(source_labels)
 
-    # Rotate the tick labels for better visibility
+    # Improved font sizing based on matrix size
+    label_font_size = max(8, min(14, 120 / max(num_source, num_target)))
+
+    # Style the tick labels
+    ax1.tick_params(axis="y", labelsize=label_font_size, pad=5)
     plt.setp(
         ax1.get_xticklabels(),
         rotation=45,
         ha="right",
         rotation_mode="anchor",
-        size=12,
-        weight="semibold",
+        fontsize=label_font_size,
     )
 
     # Dictionary to store connection information
     graph_dict = {}
 
-    # Calculate text size based on matrix dimensions
-    if num_source * num_target <= 4:
-        text_size = 14  # Large text for very small matrices
-    elif num_source * num_target <= 16:
-        text_size = 12  # Medium text for small matrices
-    elif num_source > 20 or num_target > 20:
-        text_size = 7  # Small text for large matrices
-    elif num_source > 8 or num_target > 8:
-        text_size = 8  # Smaller text for medium-large matrices
-    else:
-        text_size = 11  # Default text size
+    # Improved text size calculation - more readable for larger matrices
+    text_size = max(6, min(12, 80 / max(num_source, num_target)))
 
     # Loop over data dimensions and create text annotations
     for i in range(num_source):
         for j in range(num_target):
-            # Get the edge info, or set it to '0' if it's missing
-            edge_info = text[i, j] if text[i, j] is not None else 0
+            edge_info = text[i, j] if text[i, j] is not None else "0\n0"
 
-            # Initialize the dictionary for the source node if not already done
             if source_labels[i] not in graph_dict:
                 graph_dict[source_labels[i]] = {}
-
-            # Add edge info for the target node
             graph_dict[source_labels[i]][target_labels[j]] = edge_info
 
-            # Set text annotations based on syn_info type
-            if syn_info == "2" or syn_info == "3":
-                # For file names, use rotation and adjusted size
-                if num_source > 8 and num_source < 20:
-                    fig_text = ax1.text(
-                        j,
-                        i,
-                        edge_info,
-                        ha="center",
-                        va="center",
-                        color="w",
-                        rotation=37.5,
-                        size=max(text_size - 2, 6),
-                        weight="semibold",
-                    )
-                elif num_source > 20:
-                    fig_text = ax1.text(
-                        j,
-                        i,
-                        edge_info,
-                        ha="center",
-                        va="center",
-                        color="w",
-                        rotation=37.5,
-                        size=max(text_size - 3, 5),
-                        weight="semibold",
-                    )
+            # Skip displaying text for NaN values to reduce clutter
+            if edge_info == "nan\nnan":
+                edge_info = "0\n±0"
+
+            # Format the text display
+            if isinstance(edge_info, str) and "\n" in edge_info:
+                # For mean/std format (e.g. "15.5\n4.0")
+                parts = edge_info.split("\n")
+                if len(parts) == 2:
+                    try:
+                        mean_val = float(parts[0])
+                        std_val = float(parts[1])
+                        display_text = f"{mean_val:.1f}\n±{std_val:.1f}"
+                    except ValueError:
+                        display_text = edge_info
                 else:
-                    fig_text = ax1.text(
-                        j,
-                        i,
-                        edge_info,
-                        ha="center",
-                        va="center",
-                        color="w",
-                        rotation=37.5,
-                        size=text_size,
-                        weight="semibold",
-                    )
+                    display_text = edge_info
             else:
-                fig_text = ax1.text(
+                display_text = str(edge_info)
+
+            # Add text to plot with better contrast
+            text_color = "white" if num_clean[i, j] < (np.nanmax(num_clean) * 0.9) else "black"
+
+            if syn_info == "2" or syn_info == "3":
+                ax1.text(
                     j,
                     i,
-                    edge_info,
+                    display_text,
                     ha="center",
                     va="center",
-                    color="w",
-                    size=text_size,
-                    weight="semibold",
+                    color=text_color,
+                    rotation=37.5,
+                    fontsize=text_size,
+                    weight="bold",
+                )
+            else:
+                ax1.text(
+                    j,
+                    i,
+                    display_text,
+                    ha="center",
+                    va="center",
+                    color=text_color,
+                    fontsize=text_size,
+                    weight="bold",
                 )
 
-    # Set labels and title for the plot
-    ax1.set_ylabel("Source", size=13, weight="semibold")
-    ax1.set_xlabel("Target", size=13, weight="semibold")
-    ax1.set_title(title, size=16, weight="semibold")
+    # Set labels and title
+    title_font_size = max(12, min(18, label_font_size + 4))
+    ax1.set_ylabel("Source", fontsize=title_font_size, weight="bold", labelpad=10)
+    ax1.set_xlabel("Target", fontsize=title_font_size, weight="bold", labelpad=10)
+    ax1.set_title(title, fontsize=title_font_size + 2, weight="bold", pad=20)
 
-    # Add some padding around the plot
-    plt.tight_layout(pad=2.0)
+    # Add colorbar
+    cbar = plt.colorbar(im1, shrink=0.8)
+    cbar.ax.tick_params(labelsize=label_font_size)
 
-    # Display the plot or save it based on the environment and arguments
-    notebook = is_notebook()  # Check if running in a Jupyter notebook
+    # Adjust layout to minimize whitespace and prevent stretching
+    plt.tight_layout(pad=1.5)
+
+    # Force square cells by setting equal axis limits if needed
+    ax1.set_xlim(-0.5, num_target - 0.5)
+    ax1.set_ylim(num_source - 0.5, -0.5)  # Inverted for proper matrix orientation
+
+    # Display or save the plot
+    try:
+        # Check if running in notebook
+        from IPython import get_ipython
+
+        notebook = get_ipython() is not None
+    except ImportError:
+        notebook = False
+
     if not notebook:
-        fig1.show()
+        plt.show()
 
     if save_file:
-        plt.savefig(save_file, dpi=300, bbox_inches="tight")
+        plt.savefig(save_file, dpi=300, bbox_inches="tight", pad_inches=0.1)
 
     if return_dict:
         return graph_dict
     else:
-        return
+        return fig1, ax1
 
 
 def connector_percent_matrix(
@@ -1511,18 +1512,22 @@ def plot_3d_positions(config=None, sources=None, sid=None, title=None, save_file
     plt.title(title)
     plt.legend(handles=handles)
 
+    # Add axis labels
+    ax.set_xlabel("X Position (μm)")
+    ax.set_ylabel("Y Position (μm)")
+    ax.set_zlabel("Z Position (μm)")
+
     # Draw the plot
     plt.draw()
+    plt.tight_layout()
 
     # Save the plot if save_file is provided
     if save_file:
         plt.savefig(save_file)
 
-    # Show the plot if running outside of a notebook
-    if not is_notebook:
+    # Show if running in notebook
+    if is_notebook:
         plt.show()
-
-    return ax
 
 
 def plot_3d_cell_rotation(

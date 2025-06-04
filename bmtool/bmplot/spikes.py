@@ -317,3 +317,107 @@ def plot_firing_rate_distribution(
     ax.grid(axis="y", linestyle="--", alpha=0.7)
 
     return ax
+
+
+def plot_firing_rate_vs_node_attribute(
+    individual_stats: Optional[pd.DataFrame] = None,
+    config: Optional[str] = None,
+    nodes: Optional[pd.DataFrame] = None,
+    groupby: Optional[str] = None,
+    network_name: Optional[str] = None,
+    attribute: Optional[str] = None,
+    figsize=(12, 8),
+    dot_size: float = 3,
+) -> plt.Figure:
+    """
+    Plot firing rate vs node attribute for each group in separate subplots.
+
+    Parameters
+    ----------
+    individual_stats : pd.DataFrame, optional
+        DataFrame containing individual cell firing rates from compute_firing_rate_stats
+    config : str, optional
+        Path to configuration file for loading node data
+    nodes : pd.DataFrame, optional
+        Pre-loaded node data as alternative to loading from config
+    groupby : str, optional
+        Column name in individual_stats to group plots by
+    network_name : str, optional
+        Name of network to load from config file
+    attribute : str, optional
+        Node attribute column name to plot against firing rate
+    figsize : tuple[int, int], optional
+        Figure dimensions (width, height) in inches
+    dot_size : float, optional
+        Size of scatter plot points
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure containing the subplots
+
+    Raises
+    ------
+    ValueError
+        If neither config nor nodes is provided
+        If network_name is missing when using config
+        If attribute is not found in nodes DataFrame
+        If node_ids column is missing
+        If nodes index is not unique
+    """
+    # Input validation
+    if config is None and nodes is None:
+        raise ValueError("Must provide either config or nodes")
+    if config is not None and nodes is None:
+        if network_name is None:
+            raise ValueError("network_name required when using config")
+        nodes = load_nodes_from_config(config)
+    if attribute not in nodes.columns:
+        raise ValueError(f"Attribute '{attribute}' not found in nodes DataFrame")
+
+    # Extract node attribute data
+    node_attribute = nodes[attribute]
+
+    # Validate data structure
+    if "node_ids" not in individual_stats.columns:
+        raise ValueError("individual_stats missing required 'node_ids' column")
+    if not nodes.index.is_unique:
+        raise ValueError("nodes DataFrame must have unique index for merging")
+
+    # Merge firing rate data with node attributes
+    merged_df = individual_stats.merge(
+        node_attribute, left_on="node_ids", right_index=True, how="left"
+    )
+
+    # Setup subplot layout
+    max_groups = 15  # Maximum number of subplots to avoid overcrowding
+    unique_groups = merged_df[groupby].unique()
+    n_groups = min(len(unique_groups), max_groups)
+
+    if len(unique_groups) > max_groups:
+        print(f"Warning: Limiting display to {max_groups} groups out of {len(unique_groups)}")
+        unique_groups = unique_groups[:max_groups]
+
+    n_cols = min(3, n_groups)
+    n_rows = (n_groups + n_cols - 1) // n_cols
+
+    # Create subplots
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+    if n_groups == 1:
+        axes = np.array([axes])
+    axes = axes.flatten()
+
+    # Plot each group
+    for i, group in enumerate(unique_groups):
+        group_df = merged_df[merged_df[groupby] == group]
+        axes[i].scatter(group_df["firing_rate"], group_df[attribute], s=dot_size)
+        axes[i].set_xlabel("Firing Rate (Hz)")
+        axes[i].set_ylabel(attribute)
+        axes[i].set_title(f"{groupby}: {group}")
+
+    # Hide unused subplots
+    for j in range(i + 1, len(axes)):
+        axes[j].set_visible(False)
+
+    plt.tight_layout()
+    plt.show()
