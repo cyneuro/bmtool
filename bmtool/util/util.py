@@ -447,6 +447,9 @@ def load_mechanisms_from_config(config=None):
 
 
 def load_templates_from_config(config=None):
+    """
+    loads the neuron mechanisms and templates provided from BMTK config
+    """
     if config is None:
         config = "simulation_config.json"
     config = load_config(config)

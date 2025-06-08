@@ -281,12 +281,13 @@ def get_population_spike_rate(
     node_number = {}
 
     if config is None:
-        print(
-            "Note: Node number is obtained by counting unique node spikes in the network.\nIf the network did not run for a sufficient duration, or not all cells fired,\nthen this count will not include all nodes so the firing rate will not be of the whole population!"
-        )
-        print(
-            "You can provide a config to calculate the correct amount of nodes! for a true population rate."
-        )
+        pass
+        # print(
+        #     "Note: Node number is obtained by counting unique node spikes in the network.\nIf the network did not run for a sufficient duration, or not all cells fired,\nthen this count will not include all nodes so the firing rate will not be of the whole population!"
+        # )
+        # print(
+        #     "You can provide a config to calculate the correct amount of nodes! for a true population rate."
+        # )
 
     if config:
         if not network_name:
@@ -632,6 +633,8 @@ def find_highest_firing_cells(
     pd.DataFrame
         A DataFrame containing only the spikes from the high-firing cells across all groupbys.
     """
+    if upper_quantile == 0:
+        return df
     df_list = []
     for pop in df[groupby].unique():
         pop_df = df[df[groupby] == pop]

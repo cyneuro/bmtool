@@ -18,7 +18,7 @@ from scipy.optimize import curve_fit, minimize, minimize_scalar
 from scipy.signal import find_peaks
 from tqdm.notebook import tqdm
 
-from bmtool.util.util import load_mechanisms_from_config, load_templates_from_config
+from bmtool.util.util import load_templates_from_config
 
 
 class SynapseTuner:
@@ -69,7 +69,7 @@ class SynapseTuner:
             neuron.load_mechanisms(mechanisms_dir)
             h.load_file(templates_dir)
         else:
-            load_mechanisms_from_config(config)
+            # loads both mech and templates
             load_templates_from_config(config)
 
         self.conn_type_settings = conn_type_settings
@@ -983,7 +983,7 @@ class GapJunctionTuner:
             neuron.load_mechanisms(mechanisms_dir)
             h.load_file(templates_dir)
         else:
-            load_mechanisms_from_config(config)
+            # this will load both mechs and templates
             load_templates_from_config(config)
 
         self.general_settings = general_settings

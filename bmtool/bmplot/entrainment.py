@@ -14,8 +14,9 @@ from bmtool.analysis.lfp import get_lfp_power
 
 
 def plot_spike_power_correlation(
-    spike_rate: xr.DataArray,
+    spike_df: pd.DataFrame,
     lfp_data: xr.DataArray,
+    firing_quantile: float,
     fs: float,
     pop_names: list,
     filter_method: str = "wavelet",
@@ -26,11 +27,11 @@ def plot_spike_power_correlation(
     freq_step: float = 5,
     type_name: str = "raw",
     time_windows: list = None,
-    confidence_level: float = 0.95,
+    error_type: str = "ci",  # New parameter: "ci" for confidence interval, "sem" for standard error, "std" for standard deviation
 ):
     """
     Calculate and plot correlation between population spike rates and LFP power across frequencies.
-    Supports both single-signal and trial-based analysis with confidence intervals.
+    Supports both single-signal and trial-based analysis with error bars.
 
     Parameters
     ----------
@@ -58,17 +59,51 @@ def plot_spike_power_correlation(
         Which type of spike rate to use if 'type' dimension exists (default: 'raw')
     time_windows : list, optional
         List of (start, end) time tuples for trial-based analysis. If None, analyze entire signal
-    confidence_level : float, optional
-        Confidence level for confidence interval calculation (default: 0.95)
+    error_type : str, optional
+        Type of error bars to plot: "ci" for 95% confidence interval, "sem" for standard error, "std" for standard deviation
     """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import seaborn as sns
-    from scipy import stats
+
+    if not (0 <= firing_quantile < 1):
+        raise ValueError("firing_quantile must be between 0 and 1")
+
+    if error_type not in ["ci", "sem", "std"]:
+        raise ValueError(
+            "error_type must be 'ci' for confidence interval, 'sem' for standard error, or 'std' for standard deviation"
+        )
 
     # Setup
-    frequencies = np.arange(freq_range[0], freq_range[1] + 1, freq_step)
     is_trial_based = time_windows is not None
+
+    # Convert spike_df to spike rate with trial-based filtering of high firing cells
+    if is_trial_based:
+        # Initialize storage for trial-based spike rates
+        trial_rates = []
+
+        for start_time, end_time in time_windows:
+            # Get spikes for this trial
+            trial_spikes = spike_df[
+                (spike_df["timestamps"] >= start_time) & (spike_df["timestamps"] <= end_time)
+            ].copy()
+
+            # Filter for high firing cells within this trial
+            trial_spikes = bmspikes.find_highest_firing_cells(
+                trial_spikes, upper_quantile=firing_quantile
+            )
+            # Calculate rate for this trial's filtered spikes
+            trial_rate = bmspikes.get_population_spike_rate(
+                trial_spikes, fs=fs, t_start=start_time, t_stop=end_time
+            )
+            trial_rates.append(trial_rate)
+
+        # Combine all trial rates
+        spike_rate = xr.concat(trial_rates, dim="trial")
+    else:
+        # For non-trial analysis, proceed as before
+        spike_df = bmspikes.find_highest_firing_cells(spike_df, upper_quantile=firing_quantile)
+        spike_rate = bmspikes.get_population_spike_rate(spike_df)
+
+    # Setup frequencies for analysis
+    frequencies = np.arange(freq_range[0], freq_range[1] + 1, freq_step)
 
     # Pre-calculate LFP power for all frequencies
     power_by_freq = {}
@@ -98,21 +133,32 @@ def plot_spike_power_correlation(
                     "p_value": p_val,
                 }
             else:
-                # Trial-based analysis
+                # Trial-based analysis using pre-filtered trial rates
                 trial_correlations = []
 
-                for start_time, end_time in time_windows:
-                    trial_spike_rate = pop_spike_rate.sel(time=slice(start_time, end_time))
+                for trial_idx in range(len(time_windows)):
+                    # Get time window first
+                    start_time, end_time = time_windows[trial_idx]
+
+                    # Get the pre-filtered spike rate for this trial
+                    trial_spike_rate = pop_spike_rate.sel(trial=trial_idx)
+
+                    # Get corresponding LFP power for this trial window
                     trial_lfp_power = lfp_power.sel(time=slice(start_time, end_time))
 
-                    if len(trial_spike_rate) < 2 or len(trial_lfp_power) < 2:
-                        continue
-                    if len(trial_spike_rate) != len(trial_lfp_power):
-                        continue
+                    # Ensure both signals have same time points
+                    common_times = np.intersect1d(trial_spike_rate.time, trial_lfp_power.time)
 
-                    corr, _ = stats.spearmanr(trial_spike_rate, trial_lfp_power)
-                    if not np.isnan(corr):
-                        trial_correlations.append(corr)
+                    if len(common_times) > 0:
+                        trial_sr = trial_spike_rate.sel(time=common_times).values
+                        trial_lfp = trial_lfp_power.sel(time=common_times).values
+
+                        if (
+                            len(trial_sr) > 1 and len(trial_lfp) > 1
+                        ):  # Need at least 2 points for correlation
+                            corr, _ = stats.spearmanr(trial_sr, trial_lfp)
+                            if not np.isnan(corr):
+                                trial_correlations.append(corr)
 
                 # Calculate trial statistics
                 if len(trial_correlations) > 0:
@@ -120,20 +166,31 @@ def plot_spike_power_correlation(
                     mean_corr = np.mean(trial_correlations)
 
                     if len(trial_correlations) > 1:
-                        # Confidence interval and t-test
-                        alpha = 1 - confidence_level
-                        df = len(trial_correlations) - 1
-                        t_critical = stats.t.ppf(1 - alpha / 2, df)
-                        sem = stats.sem(trial_correlations)
-                        ci_lower = mean_corr - t_critical * sem
-                        ci_upper = mean_corr + t_critical * sem
+                        if error_type == "ci":
+                            # Calculate 95% confidence interval using t-distribution
+                            df = len(trial_correlations) - 1
+                            sem = stats.sem(trial_correlations)
+                            t_critical = stats.t.ppf(0.975, df)  # 95% CI, two-tailed
+                            error_val = t_critical * sem
+                            error_lower = mean_corr - error_val
+                            error_upper = mean_corr + error_val
+                        elif error_type == "sem":
+                            # Calculate standard error of the mean
+                            sem = stats.sem(trial_correlations)
+                            error_lower = mean_corr - sem
+                            error_upper = mean_corr + sem
+                        elif error_type == "std":
+                            # Calculate standard deviation
+                            std = np.std(trial_correlations, ddof=1)
+                            error_lower = mean_corr - std
+                            error_upper = mean_corr + std
                     else:
-                        ci_lower = ci_upper = mean_corr
+                        error_lower = error_upper = mean_corr
 
                     results[pop][freq] = {
                         "correlation": mean_corr,
-                        "ci_lower": ci_lower,
-                        "ci_upper": ci_upper,
+                        "error_lower": error_lower,
+                        "error_upper": error_upper,
                         "n_trials": len(trial_correlations),
                         "trial_correlations": trial_correlations,
                     }
@@ -141,8 +198,8 @@ def plot_spike_power_correlation(
                     # No valid trials
                     results[pop][freq] = {
                         "correlation": np.nan,
-                        "ci_lower": np.nan,
-                        "ci_upper": np.nan,
+                        "error_lower": np.nan,
+                        "error_upper": np.nan,
                         "n_trials": 0,
                         "trial_correlations": np.array([]),
                     }
@@ -164,8 +221,8 @@ def plot_spike_power_correlation(
                 plot_corrs.append(results[pop][freq]["correlation"])
 
                 if is_trial_based:
-                    plot_ci_lower.append(results[pop][freq]["ci_lower"])
-                    plot_ci_upper.append(results[pop][freq]["ci_upper"])
+                    plot_ci_lower.append(results[pop][freq]["error_lower"])
+                    plot_ci_upper.append(results[pop][freq]["error_upper"])
 
         if len(plot_freqs) == 0:
             continue
@@ -174,13 +231,16 @@ def plot_spike_power_correlation(
         plot_freqs = np.array(plot_freqs)
         plot_corrs = np.array(plot_corrs)
 
+        # Get color for this population
+        colors = plt.get_cmap("tab10")
+        color = colors(i)
+
         # Plot main line
-        color = plt.cm.tab10(i)
         plt.plot(
             plot_freqs, plot_corrs, marker="o", label=pop, linewidth=2, markersize=6, color=color
         )
 
-        # Plot confidence intervals for trial-based analysis
+        # Plot error bands for trial-based analysis
         if is_trial_based and len(plot_ci_lower) > 0:
             plot_ci_lower = np.array(plot_ci_lower)
             plot_ci_upper = np.array(plot_ci_upper)
@@ -188,32 +248,37 @@ def plot_spike_power_correlation(
 
     # Formatting
     plt.xlabel("Frequency (Hz)", fontsize=12)
-    ylabel = (
-        "Mean Spike Rate-Power Correlation" if is_trial_based else "Spike Rate-Power Correlation"
-    )
-    plt.ylabel(ylabel, fontsize=12)
+    plt.ylabel("Spike Rate-Power Correlation", fontsize=12)
 
-    title = f"{'Trial-averaged ' if is_trial_based else ''}Spike Rate-LFP Power Correlation"
+    # Calculate percentage for title
+    firing_percentage = round(float((1 - firing_quantile) * 100), 1)
+    if is_trial_based:
+        title = f"Trial-averaged Spike Rate-LFP Power Correlation\nTop {firing_percentage}% Firing Cells (95% CI)"
+    else:
+        title = f"Spike Rate-LFP Power Correlation\nTop {firing_percentage}% Firing Cells"
+
     plt.title(title, fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.axhline(y=0, color="gray", linestyle="-", alpha=0.5)
 
     # Legend
+    # Create legend elements for each population
+    from matplotlib.lines import Line2D
+
+    colors = plt.get_cmap("tab10")
     legend_elements = [
-        plt.Line2D([0], [0], color=plt.cm.tab10(i), marker="o", linestyle="-", label=pop)
+        Line2D([0], [0], color=colors(i), marker="o", linestyle="-", label=pop)
         for i, pop in enumerate(pop_names)
     ]
 
+    # Add error band legend element for trial-based analysis
     if is_trial_based:
+        # Map error type to legend label
+        error_labels = {"ci": "95% CI", "sem": "±SEM", "std": "±1 SD"}
+        error_label = error_labels[error_type]
+
         legend_elements.append(
-            plt.Line2D(
-                [0],
-                [0],
-                color="gray",
-                alpha=0.3,
-                linewidth=10,
-                label=f"{int(confidence_level*100)}% CI",
-            )
+            Line2D([0], [0], color="gray", alpha=0.3, linewidth=10, label=error_label)
         )
 
     plt.legend(handles=legend_elements, fontsize=10, loc="best")
@@ -603,7 +668,7 @@ def plot_trial_avg_entrainment(
             "error_type must be 'ci' for confidence interval, 'sem' for standard error, or 'std' for standard deviation"
         )
 
-    if not (0 < firing_quantile < 1):
+    if not (0 <= firing_quantile < 1):
         raise ValueError("firing_quantile must be between 0 and 1")
 
     # Convert freqs to numpy array for easier indexing
@@ -786,7 +851,7 @@ def plot_trial_avg_entrainment(
     plt.ylabel(f"{entrainment_method.upper()}", fontsize=12)
 
     # Calculate percentage for title and update title based on error type
-    firing_percentage = int((1 - firing_quantile) * 100)
+    firing_percentage = round(float((1 - firing_quantile) * 100), 1)
     error_labels = {"ci": "95% CI", "sem": "±SEM", "std": "±1 SD"}
     error_label = error_labels[error_type]
     plt.title(
