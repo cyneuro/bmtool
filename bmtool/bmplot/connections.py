@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from IPython import get_ipython
-from neuron import h
 
 from ..util import util
 
@@ -981,104 +980,158 @@ def distance_delay_plot(
     plt.show()
 
 
-def plot_synapse_location_histograms(config, target_model, source=None, target=None):
+def plot_synapse_location(config: str, source: str, target: str, sids: str, tids: str) -> tuple:
     """
-    generates a histogram of the positions of the synapses on a cell broken down by section
-    config: a BMTK config
-    target_model: the name of the model_template used when building the BMTK node
-    source: The source BMTK network
-    target: The target BMTK network
+    Generates a connectivity matrix showing synaptic distribution across different cell sections.
+
+    Parameters
+    ----------
+    config : str
+        Path to BMTK config file
+    source : str
+        The source BMTK network name
+    target : str
+        The target BMTK network name
+    sids : str
+        Column name in nodes file containing source population identifiers
+    tids : str
+        Column name in nodes file containing target population identifiers
+
+    Returns
+    -------
+    tuple
+        (matplotlib.figure.Figure, matplotlib.axes.Axes) containing the plot
+
+    Raises
+    ------
+    ValueError
+        If required parameters are missing or invalid
+    RuntimeError
+        If template loading or cell instantiation fails
     """
-    # Load mechanisms and template
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from neuron import h
 
-    util.load_templates_from_config(config)
+    # Validate inputs
+    if not all([config, source, target, sids, tids]):
+        raise ValueError(
+            "Missing required parameters: config, source, target, sids, and tids must be provided"
+        )
 
-    # Load node and edge data
-    nodes, edges = util.load_nodes_edges_from_config(config)
-    nodes = nodes[source]
-    edges = edges[f"{source}_to_{target}"]
+    try:
+        # Load mechanisms and template
+        util.load_templates_from_config(config)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load templates from config: {str(e)}")
 
-    # Map target_node_id to model_template
+    try:
+        # Load node and edge data
+        nodes, edges = util.load_nodes_edges_from_config(config)
+        if source not in nodes or f"{source}_to_{target}" not in edges:
+            raise ValueError(f"Source '{source}' or target '{target}' networks not found in data")
+
+        nodes = nodes[source]
+        edges = edges[f"{source}_to_{target}"]
+    except Exception as e:
+        raise RuntimeError(f"Failed to load nodes and edges: {str(e)}")
+
+    # Map identifiers while checking for missing values
     edges["target_model_template"] = edges["target_node_id"].map(nodes["model_template"])
+    edges["target_pop_name"] = edges["target_node_id"].map(nodes[tids])
+    edges["source_pop_name"] = edges["source_node_id"].map(nodes[sids])
 
-    # Map source_node_id to pop_name
-    edges["source_pop_name"] = edges["source_node_id"].map(nodes["pop_name"])
+    if edges["target_model_template"].isnull().any():
+        print("Warning: Some target nodes missing model template")
+    if edges["target_pop_name"].isnull().any():
+        print("Warning: Some target nodes missing population name")
+    if edges["source_pop_name"].isnull().any():
+        print("Warning: Some source nodes missing population name")
 
-    edges = edges[edges["target_model_template"] == target_model]
+    # Get unique populations
+    source_pops = edges["source_pop_name"].unique()
+    target_pops = edges["target_pop_name"].unique()
 
-    # Create the cell model from target model
-    cell = getattr(h, target_model.split(":")[1])()
+    # Initialize matrices
+    num_connections = np.zeros((len(source_pops), len(target_pops)))
+    text_data = np.empty((len(source_pops), len(target_pops)), dtype=object)
 
-    # Create a mapping from section index to section name
-    section_id_to_name = {}
-    for idx, sec in enumerate(cell.all):
-        section_id_to_name[idx] = sec.name()
+    # Create mappings for indices
+    source_pop_to_idx = {pop: idx for idx, pop in enumerate(source_pops)}
+    target_pop_to_idx = {pop: idx for idx, pop in enumerate(target_pops)}
 
-    # Add a new column with section names based on afferent_section_id
-    edges["afferent_section_name"] = edges["afferent_section_id"].map(section_id_to_name)
+    # Cache for section mappings to avoid recreating cells
+    section_mappings = {}
 
-    # Get unique sections and source populations
-    unique_pops = edges["source_pop_name"].unique()
+    # Calculate connectivity statistics
+    for source_pop in source_pops:
+        for target_pop in target_pops:
+            # Filter edges for this source-target pair
+            filtered_edges = edges[
+                (edges["source_pop_name"] == source_pop) & (edges["target_pop_name"] == target_pop)
+            ]
 
-    # Filter to only include sections with data
-    section_counts = edges["afferent_section_name"].value_counts()
-    sections_with_data = section_counts[section_counts > 0].index.tolist()
+            source_idx = source_pop_to_idx[source_pop]
+            target_idx = target_pop_to_idx[target_pop]
 
-    # Create a figure with subplots for each section
-    plt.figure(figsize=(8, 12))
+            if len(filtered_edges) == 0:
+                num_connections[source_idx, target_idx] = 0
+                text_data[source_idx, target_idx] = "No connections"
+                continue
 
-    # Color map for source populations
-    color_map = plt.cm.tab10(np.linspace(0, 1, len(unique_pops)))
-    pop_colors = {pop: color for pop, color in zip(unique_pops, color_map)}
+            total_connections = len(filtered_edges)
+            target_model_template = filtered_edges["target_model_template"].iloc[0]
 
-    # Create a histogram for each section
-    for i, section in enumerate(sections_with_data):
-        ax = plt.subplot(len(sections_with_data), 1, i + 1)
+            try:
+                # Get or create section mapping for this model
+                if target_model_template not in section_mappings:
+                    cell_class_name = (
+                        target_model_template.split(":")[1]
+                        if ":" in target_model_template
+                        else target_model_template
+                    )
+                    cell = getattr(h, cell_class_name)()
 
-        # Get data for this section
-        section_data = edges[edges["afferent_section_name"] == section]
+                    # Create section mapping
+                    section_mapping = {}
+                    for idx, sec in enumerate(cell.all):
+                        section_mapping[idx] = sec.name().split(".")[-1]  # Clean name
+                    section_mappings[target_model_template] = section_mapping
 
-        # Group by source population
-        for pop_name, pop_group in section_data.groupby("source_pop_name"):
-            if len(pop_group) > 0:
-                ax.hist(
-                    pop_group["afferent_section_pos"],
-                    bins=15,
-                    alpha=0.7,
-                    label=pop_name,
-                    color=pop_colors[pop_name],
-                )
+                section_mapping = section_mappings[target_model_template]
 
-        # Set title and labels
-        ax.set_title(f"{section}", fontsize=10)
-        ax.set_xlabel("Section Position", fontsize=8)
-        ax.set_ylabel("Frequency", fontsize=8)
-        ax.tick_params(labelsize=7)
-        ax.grid(True, alpha=0.3)
+                # Calculate section distribution
+                section_counts = filtered_edges["afferent_section_id"].value_counts()
+                section_percentages = (section_counts / total_connections * 100).round(1)
 
-        # Only add legend to the first plot
-        if i == 0:
-            ax.legend(fontsize=8)
+                # Format section distribution text - show all sections
+                section_display = []
+                for section_id, percentage in section_percentages.items():
+                    section_name = section_mapping.get(section_id, f"sec_{section_id}")
+                    section_display.append(f"{section_name}:{percentage}%")
 
-    plt.tight_layout()
-    plt.suptitle(
-        "Connection Distribution by Cell Section and Source Population", fontsize=16, y=1.02
+                num_connections[source_idx, target_idx] = total_connections
+                text_data[source_idx, target_idx] = "\n".join(section_display)
+
+            except Exception as e:
+                print(f"Warning: Error processing {target_model_template}: {str(e)}")
+                num_connections[source_idx, target_idx] = total_connections
+                text_data[source_idx, target_idx] = "Section info N/A"
+
+    # Create the plot
+    title = f"Synaptic Distribution by Section: {source} to {target}"
+    fig, ax = plot_connection_info(
+        text=text_data,
+        num=num_connections,
+        source_labels=list(source_pops),
+        target_labels=list(target_pops),
+        title=title,
+        syn_info="1",
     )
-    if is_notebook:
+    if is_notebook():
         plt.show()
     else:
-        pass
-
-    # Create a summary table
-    print("Summary of connections by section and source population:")
-    pivot_table = edges.pivot_table(
-        values="afferent_section_id",
-        index="afferent_section_name",
-        columns="source_pop_name",
-        aggfunc="count",
-        fill_value=0,
-    )
-    print(pivot_table)
+        return fig, ax
 
 
 def plot_connection_info(
