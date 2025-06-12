@@ -37,7 +37,7 @@
     ],
     "gap_juncs": [
       {
-        "gap_juncs_file": "/home/gjgpb9/bmtool/docs/examples/notebooks/bmplot/network/bio_net_gap_juncs.h5"
+        "gap_juncs_file": "/home/gjgpb9/cortex_modeling/bmtool/docs/examples/notebooks/bmplot/network/bio_net_gap_juncs.h5"
       }
     ]
   }

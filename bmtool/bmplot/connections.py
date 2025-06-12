@@ -132,6 +132,7 @@ def total_connection_matrix(
         title = "All Synapse .mod Files Used"
     if synaptic_info == "3":
         title = "All Synapse .json Files Used"
+    
     plot_connection_info(
         text, num, source_labels, target_labels, title, syn_info=synaptic_info, save_file=save_file
     )
@@ -983,6 +984,7 @@ def distance_delay_plot(
 def plot_synapse_location(config: str, source: str, target: str, sids: str, tids: str) -> tuple:
     """
     Generates a connectivity matrix showing synaptic distribution across different cell sections.
+    Note does exclude gap junctions since they dont have an afferent id stored in the h5 file!
 
     Parameters
     ----------
@@ -1031,15 +1033,28 @@ def plot_synapse_location(config: str, source: str, target: str, sids: str, tids
         if source not in nodes or f"{source}_to_{target}" not in edges:
             raise ValueError(f"Source '{source}' or target '{target}' networks not found in data")
 
-        nodes = nodes[source]
+        target_nodes = nodes[target]
+        source_nodes = nodes[source]
         edges = edges[f"{source}_to_{target}"]
+        # Find edges with NaN afferent_section_id
+        nan_edges = edges[edges["afferent_section_id"].isna()]
+        # Print information about removed edges
+        if not nan_edges.empty:
+            unique_indices = sorted(list(set(nan_edges.index.tolist())))
+            print(f"Removing {len(nan_edges)} edges with missing afferent_section_id")
+            print(f"Unique indices removed: {unique_indices}")
+            
+        # Filter out edges with NaN afferent_section_id
+        edges = edges[edges["afferent_section_id"].notna()]
+
+
     except Exception as e:
         raise RuntimeError(f"Failed to load nodes and edges: {str(e)}")
 
     # Map identifiers while checking for missing values
-    edges["target_model_template"] = edges["target_node_id"].map(nodes["model_template"])
-    edges["target_pop_name"] = edges["target_node_id"].map(nodes[tids])
-    edges["source_pop_name"] = edges["source_node_id"].map(nodes[sids])
+    edges["target_model_template"] = edges["target_node_id"].map(target_nodes["model_template"])
+    edges["target_pop_name"] = edges["target_node_id"].map(target_nodes[tids])
+    edges["source_pop_name"] = edges["source_node_id"].map(source_nodes[sids])
 
     if edges["target_model_template"].isnull().any():
         print("Warning: Some target nodes missing model template")
