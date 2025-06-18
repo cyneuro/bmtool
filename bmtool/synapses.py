@@ -24,16 +24,17 @@ from bmtool.util.util import load_templates_from_config
 class SynapseTuner:
     def __init__(
         self,
-        mechanisms_dir: str = None,
-        templates_dir: str = None,
-        config: str = None,
-        conn_type_settings: dict = None,
-        connection: str = None,
-        general_settings: dict = None,
-        json_folder_path: str = None,
+        mechanisms_dir: Optional[str] = None,
+        templates_dir: Optional[str] = None,
+        config: Optional[str] = None,
+        conn_type_settings: Optional[dict] = None,
+        connection: Optional[str] = None,
+        general_settings: Optional[dict] = None,
+        json_folder_path: Optional[str] = None,
         current_name: str = "i",
-        other_vars_to_record: list = None,
-        slider_vars: list = None,
+        other_vars_to_record: Optional[list] = None,
+        slider_vars: Optional[list] = None,
+        hoc_cell: Optional[object] = None,
     ) -> None:
         """
         Initialize the SynapseModule class with connection type settings, mechanisms, and template directories.
@@ -58,19 +59,24 @@ class SynapseTuner:
             List of additional synaptic variables to record during the simulation (e.g., 'Pr', 'Use').
         slider_vars : list, optional
             List of synaptic variables you would like sliders set up for the STP sliders method by default will use all parameters in spec_syn_param.
+        hoc_cell : object, optional
+            An already loaded NEURON cell object. If provided, template loading and cell setup will be skipped.
 
         """
-        if config is None and (mechanisms_dir is None or templates_dir is None):
-            raise ValueError(
-                "Either a config file or both mechanisms_dir and templates_dir must be provided."
-            )
+        self.hoc_cell = hoc_cell
 
-        if config is None:
-            neuron.load_mechanisms(mechanisms_dir)
-            h.load_file(templates_dir)
-        else:
-            # loads both mech and templates
-            load_templates_from_config(config)
+        if hoc_cell is None:
+            if config is None and (mechanisms_dir is None or templates_dir is None):
+                raise ValueError(
+                    "Either a config file, both mechanisms_dir and templates_dir, or a hoc_cell must be provided."
+                )
+
+            if config is None:
+                neuron.load_mechanisms(mechanisms_dir)
+                h.load_file(templates_dir)
+            else:
+                # loads both mech and templates
+                load_templates_from_config(config)
 
         self.conn_type_settings = conn_type_settings
         if json_folder_path:
@@ -112,7 +118,11 @@ class SynapseTuner:
         h.celsius = general_settings["celsius"]
 
         # get some stuff set up we need for both SingleEvent and Interactive Tuner
-        self._set_up_cell()
+        # Only set up cell if hoc_cell was not provided
+        if self.hoc_cell is None:
+            self._set_up_cell()
+        else:
+            self.cell = self.hoc_cell
         self._set_up_synapse()
 
         self.nstim = h.NetStim()
@@ -158,8 +168,12 @@ class SynapseTuner:
     def _set_up_cell(self):
         """
         Set up the neuron cell based on the specified connection settings.
+        This method is only called when hoc_cell is not provided.
         """
-        self.cell = getattr(h, self.conn["spec_settings"]["post_cell"])()
+        if self.hoc_cell is None:
+            self.cell = getattr(h, self.conn["spec_settings"]["post_cell"])()
+        else:
+            self.cell = self.hoc_cell
 
     def _set_up_synapse(self):
         """
@@ -952,11 +966,12 @@ class SynapseTuner:
 class GapJunctionTuner:
     def __init__(
         self,
-        mechanisms_dir: str = None,
-        templates_dir: str = None,
-        config: str = None,
-        general_settings: dict = None,
-        conn_type_settings: dict = None,
+        mechanisms_dir: Optional[str] = None,
+        templates_dir: Optional[str] = None,
+        config: Optional[str] = None,
+        general_settings: Optional[dict] = None,
+        conn_type_settings: Optional[dict] = None,
+        hoc_cell: Optional[object] = None,
     ):
         """
         Initialize the GapJunctionTuner class.
@@ -973,18 +988,23 @@ class GapJunctionTuner:
             General settings dictionary including parameters like simulation time step, duration, and temperature.
         conn_type_settings : dict
             A dictionary containing connection-specific settings for gap junctions.
+        hoc_cell : object, optional
+            An already loaded NEURON cell object. If provided, template loading and cell creation will be skipped.
         """
-        if config is None and (mechanisms_dir is None or templates_dir is None):
-            raise ValueError(
-                "Either a config file or both mechanisms_dir and templates_dir must be provided."
-            )
+        self.hoc_cell = hoc_cell
 
-        if config is None:
-            neuron.load_mechanisms(mechanisms_dir)
-            h.load_file(templates_dir)
-        else:
-            # this will load both mechs and templates
-            load_templates_from_config(config)
+        if hoc_cell is None:
+            if config is None and (mechanisms_dir is None or templates_dir is None):
+                raise ValueError(
+                    "Either a config file, both mechanisms_dir and templates_dir, or a hoc_cell must be provided."
+                )
+
+            if config is None:
+                neuron.load_mechanisms(mechanisms_dir)
+                h.load_file(templates_dir)
+            else:
+                # this will load both mechs and templates
+                load_templates_from_config(config)
 
         self.general_settings = general_settings
         self.conn_type_settings = conn_type_settings
@@ -994,13 +1014,19 @@ class GapJunctionTuner:
         h.steps_per_ms = 1 / h.dt
         h.celsius = general_settings["celsius"]
 
-        self.cell_name = conn_type_settings["cell"]
-
         # set up gap junctions
         pc = h.ParallelContext()
 
-        self.cell1 = getattr(h, self.cell_name)()
-        self.cell2 = getattr(h, self.cell_name)()
+        # Use provided hoc_cell or create new cells
+        if self.hoc_cell is not None:
+            self.cell1 = self.hoc_cell
+            # For gap junctions, we need two cells, so create a second one if using hoc_cell
+            self.cell_name = conn_type_settings["cell"]
+            self.cell2 = getattr(h, self.cell_name)()
+        else:
+            self.cell_name = conn_type_settings["cell"]
+            self.cell1 = getattr(h, self.cell_name)()
+            self.cell2 = getattr(h, self.cell_name)()
 
         self.icl = h.IClamp(self.cell1.soma[0](0.5))
         self.icl.delay = self.general_settings["tstart"]
@@ -1247,6 +1273,10 @@ class SynapseOptimizer:
             - max_amplitude: maximum synaptic response amplitude
             - rise_time: time for synaptic response to rise from 20% to 80% of peak
             - decay_time: time constant of synaptic response decay
+            - latency: synaptic response latency
+            - half_width: synaptic response half-width
+            - baseline: baseline current
+            - amp: peak amplitude from syn_props
         """
         # Set these to 0 for when we return the dict
         induction = 0
@@ -1255,11 +1285,22 @@ class SynapseOptimizer:
         amp = 0
         rise_time = 0
         decay_time = 0
+        latency = 0
+        half_width = 0
+        baseline = 0
+        syn_amp = 0
 
         if self.run_single_event:
             self.tuner.SingleEvent(plot_and_print=False)
-            rise_time = self.tuner.rise_time
-            decay_time = self.tuner.decay_time
+            # Use the attributes set by SingleEvent method
+            rise_time = getattr(self.tuner, "rise_time", 0)
+            decay_time = getattr(self.tuner, "decay_time", 0)
+            # Get additional syn_props directly
+            syn_props = self.tuner._get_syn_prop()
+            latency = syn_props.get("latency", 0)
+            half_width = syn_props.get("half_width", 0)
+            baseline = syn_props.get("baseline", 0)
+            syn_amp = syn_props.get("amp", 0)
 
         if self.run_train_input:
             self.tuner._simulate_model(self.train_frequency, self.train_delay)
@@ -1276,6 +1317,10 @@ class SynapseOptimizer:
             "max_amplitude": float(amp),
             "rise_time": float(rise_time),
             "decay_time": float(decay_time),
+            "latency": float(latency),
+            "half_width": float(half_width),
+            "baseline": float(baseline),
+            "amp": float(syn_amp),
         }
 
     def _default_cost_function(
