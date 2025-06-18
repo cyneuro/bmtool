@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 from IPython import get_ipython
 
+from neuron import h
+
 from ..util import util
 
 use_description = """
@@ -981,7 +983,7 @@ def distance_delay_plot(
     plt.show()
 
 
-def plot_synapse_location(config: str, source: str, target: str, sids: str, tids: str) -> tuple:
+def plot_synapse_location(config: str, source: str, target: str, sids: str, tids: str, syn_feature: str = 'afferent_section_id') -> tuple:
     """
     Generates a connectivity matrix showing synaptic distribution across different cell sections.
     Note does exclude gap junctions since they dont have an afferent id stored in the h5 file!
@@ -998,6 +1000,8 @@ def plot_synapse_location(config: str, source: str, target: str, sids: str, tids
         Column name in nodes file containing source population identifiers
     tids : str
         Column name in nodes file containing target population identifiers
+    syn_feature : str, default 'afferent_section_id'
+        Synaptic feature to analyze ('afferent_section_id' or 'afferent_section_pos')
 
     Returns
     -------
@@ -1011,22 +1015,22 @@ def plot_synapse_location(config: str, source: str, target: str, sids: str, tids
     RuntimeError
         If template loading or cell instantiation fails
     """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    from neuron import h
-
     # Validate inputs
     if not all([config, source, target, sids, tids]):
         raise ValueError(
             "Missing required parameters: config, source, target, sids, and tids must be provided"
         )
 
+    # Fix the validation logic - it was using 'or' instead of 'and'
+    if syn_feature not in ["afferent_section_id", "afferent_section_pos"]:
+        raise ValueError("Currently only syn features supported are afferent_section_id or afferent_section_pos")
+
     try:
         # Load mechanisms and template
         util.load_templates_from_config(config)
     except Exception as e:
         raise RuntimeError(f"Failed to load templates from config: {str(e)}")
-
+    
     try:
         # Load node and edge data
         nodes, edges = util.load_nodes_edges_from_config(config)
@@ -1036,17 +1040,17 @@ def plot_synapse_location(config: str, source: str, target: str, sids: str, tids
         target_nodes = nodes[target]
         source_nodes = nodes[source]
         edges = edges[f"{source}_to_{target}"]
-        # Find edges with NaN afferent_section_id
-        nan_edges = edges[edges["afferent_section_id"].isna()]
+        
+        # Find edges with NaN values in the specified feature
+        nan_edges = edges[edges[syn_feature].isna()]
         # Print information about removed edges
         if not nan_edges.empty:
             unique_indices = sorted(list(set(nan_edges.index.tolist())))
-            print(f"Removing {len(nan_edges)} edges with missing afferent_section_id")
+            print(f"Removing {len(nan_edges)} edges with missing {syn_feature}")
             print(f"Unique indices removed: {unique_indices}")
             
-        # Filter out edges with NaN afferent_section_id
-        edges = edges[edges["afferent_section_id"].notna()]
-
+        # Filter out edges with NaN values in the specified feature
+        edges = edges[edges[syn_feature].notna()]
 
     except Exception as e:
         raise RuntimeError(f"Failed to load nodes and edges: {str(e)}")
@@ -1116,7 +1120,7 @@ def plot_synapse_location(config: str, source: str, target: str, sids: str, tids
                 section_mapping = section_mappings[target_model_template]
 
                 # Calculate section distribution
-                section_counts = filtered_edges["afferent_section_id"].value_counts()
+                section_counts = filtered_edges[syn_feature].value_counts()
                 section_percentages = (section_counts / total_connections * 100).round(1)
 
                 # Format section distribution text - show all sections
@@ -1125,16 +1129,17 @@ def plot_synapse_location(config: str, source: str, target: str, sids: str, tids
                     section_name = section_mapping.get(section_id, f"sec_{section_id}")
                     section_display.append(f"{section_name}:{percentage}%")
 
+
                 num_connections[source_idx, target_idx] = total_connections
                 text_data[source_idx, target_idx] = "\n".join(section_display)
 
             except Exception as e:
                 print(f"Warning: Error processing {target_model_template}: {str(e)}")
                 num_connections[source_idx, target_idx] = total_connections
-                text_data[source_idx, target_idx] = "Section info N/A"
+                text_data[source_idx, target_idx] = "Feature info N/A"
 
     # Create the plot
-    title = f"Synaptic Distribution by Section: {source} to {target}"
+    title = f"Synaptic Distribution by {syn_feature.replace('_', ' ').title()}: {source} to {target}"
     fig, ax = plot_connection_info(
         text=text_data,
         num=num_connections,
