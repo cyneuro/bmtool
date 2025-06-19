@@ -32,11 +32,6 @@ The `entrainment` module provides tools for analyzing the entrainment of spikes 
       show_root_heading: true
       heading_level: 3
 
-::: bmtool.analysis.entrainment.calculate_spike_rate_power_correlation
-    options:
-      show_root_heading: true
-      heading_level: 3
-
 ::: bmtool.analysis.entrainment.get_spikes_in_cycle
     options:
       show_root_heading: true

@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-
-from bmtool.analysis.lfp import gen_aperiodic
+from fooof.sim.gen import gen_aperiodic
 
 
 def plot_spectrogram(
