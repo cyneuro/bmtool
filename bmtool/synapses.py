@@ -32,6 +32,13 @@ DEFAULT_GENERAL_SETTINGS = {
     "celsius": 20,
 }
 
+DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS = {
+    "tstart": 500.0,
+    "tdur": 500.0,
+    "dt": 0.025,
+    "celsius": 20,
+}
+
 
 class SynapseTuner:
     def __init__(
@@ -1028,13 +1035,17 @@ class GapJunctionTuner:
                 # this will load both mechs and templates
                 load_templates_from_config(config)
 
-        self.general_settings = general_settings
+        # Use default general settings if not provided, merge with user-provided
+        if general_settings is None:
+            self.general_settings: dict = DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS.copy()
+        else:
+            self.general_settings = {**DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS, **general_settings}
         self.conn_type_settings = conn_type_settings
 
-        h.tstop = general_settings["tstart"] + general_settings["tdur"] + 100.0
-        h.dt = general_settings["dt"]  # Time step (resolution) of the simulation in ms
+        h.tstop = self.general_settings["tstart"] + self.general_settings["tdur"] + 100.0
+        h.dt = self.general_settings["dt"]  # Time step (resolution) of the simulation in ms
         h.steps_per_ms = 1 / h.dt
-        h.celsius = general_settings["celsius"]
+        h.celsius = self.general_settings["celsius"]
 
         # set up gap junctions
         pc = h.ParallelContext()
