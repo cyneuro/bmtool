@@ -37,7 +37,7 @@
     ],
     "gap_juncs": [
       {
-        "gap_juncs_file": "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/bmplot/network/bio_net_gap_juncs.h5"
+        "gap_juncs_file": "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/connectors/network/bio_net_gap_juncs.h5"
       }
     ]
   }

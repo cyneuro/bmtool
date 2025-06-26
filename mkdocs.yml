@@ -54,6 +54,8 @@ plugins:
       theme: light
       kernel_name: python3
       allow_errors: false
+      include_requirejs: true
+      no_input: false
 
 nav:
   - Home: index.md

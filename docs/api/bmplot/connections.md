@@ -55,7 +55,7 @@
       show_root_heading: true
       heading_level: 3
 
-::: bmtool.bmplot.connections.plot_synapse_location_histograms
+::: bmtool.bmplot.connections.plot_synapse_location
     options:
       show_root_heading: true
       heading_level: 3
