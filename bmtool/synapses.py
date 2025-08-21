@@ -113,12 +113,20 @@ class SynapseTuner:
         else:
             # Merge defaults with user-provided
             self.general_settings = {**DEFAULT_GENERAL_SETTINGS, **general_settings}
+        
+        # Store the initial connection name and set up connection
+        self.current_connection = connection
         self.conn = self.conn_type_settings[connection]
+        self._current_cell_type = self.conn["spec_settings"]["post_cell"]
         self.synaptic_props = self.conn["spec_syn_param"]
         self.vclamp = self.general_settings["vclamp"]
         self.current_name = current_name
         self.other_vars_to_record = other_vars_to_record or []
         self.ispk = None
+        self.input_mode = False  # Add input_mode attribute
+
+        # Store original slider_vars for connection switching
+        self.original_slider_vars = slider_vars or list(self.synaptic_props.keys())
 
         if slider_vars:
             # Start by filtering based on keys in slider_vars
@@ -173,6 +181,90 @@ class SynapseTuner:
         )
 
         self._set_up_recorders()
+
+    def _switch_connection(self, new_connection: str) -> None:
+        """
+        Switch to a different connection type and update all related properties.
+        
+        Parameters:
+        -----------
+        new_connection : str
+            Name of the new connection type to switch to.
+        """
+        if new_connection not in self.conn_type_settings:
+            raise ValueError(f"Connection '{new_connection}' not found in conn_type_settings.")
+        
+        # Update current connection
+        self.current_connection = new_connection
+        self.conn = self.conn_type_settings[new_connection]
+        self.synaptic_props = self.conn["spec_syn_param"]
+        
+        # Update slider vars for new connection
+        if hasattr(self, 'original_slider_vars'):
+            # Filter slider vars based on new connection's parameters
+            self.slider_vars = {
+                key: value for key, value in self.synaptic_props.items() 
+                if key in self.original_slider_vars
+            }
+            
+            # Check for missing keys and try to get them from the synapse
+            for key in self.original_slider_vars:
+                if key not in self.synaptic_props:
+                    try:
+                        # We'll get this after recreating the synapse
+                        pass
+                    except AttributeError as e:
+                        print(f"Warning: Could not access '{key}' for connection '{new_connection}': {e}")
+        else:
+            self.slider_vars = self.synaptic_props
+        
+        # Need to recreate the cell if it's different
+        if self.hoc_cell is None:
+            # Check if we need a different cell type
+            new_cell_type = self.conn["spec_settings"]["post_cell"]
+            if not hasattr(self, '_current_cell_type') or self._current_cell_type != new_cell_type:
+                self._current_cell_type = new_cell_type
+                self._set_up_cell()
+        
+        # Recreate synapse for new connection
+        self._set_up_synapse()
+        
+        # Update any missing slider vars from the new synapse
+        if hasattr(self, 'original_slider_vars'):
+            for key in self.original_slider_vars:
+                if key not in self.synaptic_props:
+                    try:
+                        value = getattr(self.syn, key)
+                        self.slider_vars[key] = value
+                    except AttributeError as e:
+                        print(f"Warning: Could not access '{key}' for connection '{new_connection}': {e}")
+        
+        # Recreate NetCon connections with new synapse
+        self.nc = h.NetCon(
+            self.nstim,
+            self.syn,
+            self.general_settings["threshold"],
+            self.general_settings["delay"],
+            self.general_settings["weight"],
+        )
+        self.nc2 = h.NetCon(
+            self.nstim2,
+            self.syn,
+            self.general_settings["threshold"],
+            self.general_settings["delay"],
+            self.general_settings["weight"],
+        )
+        
+        # Recreate voltage clamp with potentially new cell
+        self.vcl = h.VClamp(self.cell.soma[0](0.5))
+        
+        # Recreate recorders for new synapse
+        self._set_up_recorders()
+        
+        # Reset NEURON state
+        h.finitialize()
+        
+        print(f"Successfully switched to connection: {new_connection}")
 
     def _update_spec_syn_param(self, json_folder_path: str) -> None:
         """
@@ -741,6 +833,7 @@ class SynapseTuner:
         Sets up interactive sliders for tuning short-term plasticity (STP) parameters in a Jupyter Notebook.
 
         This method creates an interactive UI with sliders for:
+        - Connection type selection dropdown
         - Input frequency
         - Delay between pulse trains
         - Duration of stimulation (for continuous input mode)
@@ -766,6 +859,15 @@ class SynapseTuner:
         duration0 = 300
         vlamp_status = self.vclamp
 
+        # Connection dropdown
+        connection_options = list(self.conn_type_settings.keys())
+        w_connection = widgets.Dropdown(
+            options=connection_options,
+            value=self.current_connection,
+            description="Connection:",
+            style={'description_width': 'initial'}
+        )
+
         w_run = widgets.Button(description="Run Train", icon="history", button_style="primary")
         w_single = widgets.Button(description="Single Event", icon="check", button_style="success")
         w_vclamp = widgets.ToggleButton(
@@ -785,28 +887,33 @@ class SynapseTuner:
             options=durations, value=duration0, description="Duration"
         )
 
+        def create_dynamic_sliders():
+            """Create sliders based on current connection's parameters"""
+            sliders = {}
+            for key, value in self.slider_vars.items():
+                if isinstance(value, (int, float)):  # Only create sliders for numeric values
+                    if hasattr(self.syn, key):
+                        if value == 0:
+                            print(
+                                f"{key} was set to zero, going to try to set a range of values, try settings the {key} to a nonzero value if you dont like the range!"
+                            )
+                            slider = widgets.FloatSlider(
+                                value=value, min=0, max=1000, step=1, description=key
+                            )
+                        else:
+                            slider = widgets.FloatSlider(
+                                value=value, min=0, max=value * 20, step=value / 5, description=key
+                            )
+                        sliders[key] = slider
+                    else:
+                        print(f"skipping slider for {key} due to not being a synaptic variable")
+            return sliders
+
         # Generate sliders dynamically based on valid numeric entries in self.slider_vars
-        self.dynamic_sliders = {}
+        self.dynamic_sliders = create_dynamic_sliders()
         print(
             "Setting up slider! The sliders ranges are set by their init value so try changing that if you dont like the slider range!"
         )
-        for key, value in self.slider_vars.items():
-            if isinstance(value, (int, float)):  # Only create sliders for numeric values
-                if hasattr(self.syn, key):
-                    if value == 0:
-                        print(
-                            f"{key} was set to zero, going to try to set a range of values, try settings the {key} to a nonzero value if you dont like the range!"
-                        )
-                        slider = widgets.FloatSlider(
-                            value=value, min=0, max=1000, step=1, description=key
-                        )
-                    else:
-                        slider = widgets.FloatSlider(
-                            value=value, min=0, max=value * 20, step=value / 5, description=key
-                        )
-                    self.dynamic_sliders[key] = slider
-                else:
-                    print(f"skipping slider for {key} due to not being a synaptic variable")
 
         def run_single_event(*args):
             clear_output()
@@ -815,6 +922,46 @@ class SynapseTuner:
             # Update synaptic properties based on slider values
             self.ispk = None
             self.SingleEvent()
+
+        def on_connection_change(*args):
+            """Handle connection dropdown change"""
+            try:
+                new_connection = w_connection.value
+                if new_connection != self.current_connection:
+                    # Switch to new connection
+                    self._switch_connection(new_connection)
+                    
+                    # Recreate dynamic sliders for new connection
+                    self.dynamic_sliders = create_dynamic_sliders()
+                    
+                    # Update UI
+                    update_ui_layout()
+                    update_ui()
+                    
+            except Exception as e:
+                print(f"Error switching connection: {e}")
+
+        def update_ui_layout():
+            """Update the UI layout with new sliders"""
+            nonlocal ui, slider_columns
+            
+            # Add the dynamic sliders to the UI
+            slider_widgets = [slider for slider in self.dynamic_sliders.values()]
+            
+            if slider_widgets:
+                half = len(slider_widgets) // 2
+                col1 = VBox(slider_widgets[:half])
+                col2 = VBox(slider_widgets[half:])
+                slider_columns = HBox([col1, col2])
+            else:
+                slider_columns = VBox([])
+            
+            # Reconstruct the UI
+            connection_row = HBox([w_connection])
+            button_row = HBox([w_run, w_single, w_vclamp, w_input_mode])
+            slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
+            
+            ui = VBox([connection_row, button_row, slider_row, slider_columns])
 
         # Function to update UI based on input mode
         def update_ui(*args):
@@ -843,7 +990,8 @@ class SynapseTuner:
                 self.w_delay.layout.display = ""  # Show delay slider
                 self.w_duration.layout.display = "none"  # Hide duration slider
 
-        # Link input mode to slider switch
+        # Link widgets to their callback functions
+        w_connection.observe(on_connection_change, names="value")
         w_input_mode.observe(switch_slider, names="value")
 
         # Hide the duration slider initially until the user selects it
@@ -852,18 +1000,10 @@ class SynapseTuner:
         w_single.on_click(run_single_event)
         w_run.on_click(update_ui)
 
-        # Add the dynamic sliders to the UI
-        slider_widgets = [slider for slider in self.dynamic_sliders.values()]
-
-        button_row = HBox([w_run, w_single, w_vclamp, w_input_mode])
-        slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
-
-        half = len(slider_widgets) // 2
-        col1 = VBox(slider_widgets[:half])
-        col2 = VBox(slider_widgets[half:])
-        slider_columns = HBox([col1, col2])
-
-        ui = VBox([button_row, slider_row, slider_columns])
+        # Initial UI setup
+        slider_columns = VBox([])
+        ui = VBox([])
+        update_ui_layout()
 
         display(ui)
         update_ui()
