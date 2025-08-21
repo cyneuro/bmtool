@@ -722,8 +722,9 @@ class SynapseTuner:
             for i in range(3):
                 self.vcl.amp[i] = self.conn["spec_settings"]["vclamp_amp"]
                 self.vcl.dur[i] = vcldur[1][i]
-            h.finitialize(self.cell.Vinit * mV)
-            h.continuerun(self.tstop * ms)
+            #h.finitialize(self.cell.Vinit * mV)
+            #h.continuerun(self.tstop * ms)
+            h.run()
         else:
             self.tstop = self.general_settings["tstart"] + self.general_settings["tdur"]
             self.nstim.interval = 1000 / input_frequency
@@ -731,8 +732,9 @@ class SynapseTuner:
             self.nstim2.number = 0
             self.tstop = self.w_duration.value + self.general_settings["tstart"]
 
-            h.finitialize(self.cell.Vinit * mV)
-            h.continuerun(self.tstop * ms)
+            #h.finitialize(self.cell.Vinit * mV)
+            #h.continuerun(self.tstop * ms)
+            h.run()
 
     def InteractiveTuner(self):
         """
