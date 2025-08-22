@@ -19,10 +19,10 @@ from scipy.optimize import curve_fit, minimize, minimize_scalar
 from scipy.signal import find_peaks
 from tqdm.notebook import tqdm
 
-from bmtool.util.util import load_templates_from_config
+from bmtool.util.util import load_templates_from_config, load_nodes_from_config, load_edges_from_config, load_config
 
 DEFAULT_GENERAL_SETTINGS = {
-    "vclamp": True,
+    "vclamp": False,
     "rise_interval": (0.1, 0.9),
     "tstart": 500.0,
     "tdur": 100.0,
@@ -55,6 +55,7 @@ class SynapseTuner:
         other_vars_to_record: Optional[List[str]] = None,
         slider_vars: Optional[List[str]] = None,
         hoc_cell: Optional[object] = None,
+        network: Optional[str] = None,
     ) -> None:
         """
         Initialize the SynapseTuner class with connection type settings, mechanisms, and template directories.
@@ -81,6 +82,9 @@ class SynapseTuner:
             List of synaptic variables you would like sliders set up for the STP sliders method by default will use all parameters in spec_syn_param.
         hoc_cell : Optional[object]
             An already loaded NEURON cell object. If provided, template loading and cell setup will be skipped.
+        network : Optional[str]
+            Name of the specific network dataset to access from the loaded edges data (e.g., 'network_to_network').
+            If not provided, will use all available networks.
         """
         self.hoc_cell = hoc_cell
         h.load_file('stdrun.hoc')
@@ -101,7 +105,7 @@ class SynapseTuner:
         if conn_type_settings is None:
             if config is not None:
                 print("Building conn_type_settings from BMTK config files...")
-                conn_type_settings = self._build_conn_type_settings_from_config(config)
+                conn_type_settings = self._build_conn_type_settings_from_config(config, network=network)
                 print(f"Found {len(conn_type_settings)} connection types: {list(conn_type_settings.keys())}")
                 
                 # If connection is not specified, use the first available connection
@@ -195,9 +199,9 @@ class SynapseTuner:
 
         self._set_up_recorders()
 
-    def _build_conn_type_settings_from_config(self, config_path: str, node_set: Optional[str] = None) -> Dict[str, dict]:
+    def _build_conn_type_settings_from_config(self, config_path: str, node_set: Optional[str] = None, network: Optional[str] = None) -> Dict[str, dict]:
         """
-        Build conn_type_settings from BMTK simulation and circuit config files.
+        Build conn_type_settings from BMTK simulation and circuit config files using the refined util.py methods.
         
         Parameters:
         -----------
@@ -205,102 +209,140 @@ class SynapseTuner:
             Path to the simulation config JSON file.
         node_set : Optional[str]
             Specific node set to filter connections for. If None, processes all connections.
+        network : Optional[str]
+            Name of the specific network dataset to access (e.g., 'network_to_network').
+            If None, processes all available networks.
             
         Returns:
         --------
         Dict[str, dict]
             Dictionary with connection names as keys and connection settings as values.
         """
-        # Load simulation config
-        with open(config_path, 'r') as f:
-            sim_config = json.load(f)
-        
-        # Get circuit config path
-        config_dir = os.path.dirname(config_path)
-        circuit_config_path = os.path.join(config_dir, sim_config['network'].replace('$BASE_DIR/', ''))
-        
-        # Load circuit config
-        with open(circuit_config_path, 'r') as f:
-            circuit_config = json.load(f)
-        
-        # Parse manifest variables
-        base_dir = config_dir
-        network_dir = os.path.join(base_dir, circuit_config['manifest']['$NETWORK_DIR'].replace('$BASE_DIR/', ''))
-        components_dir = os.path.join(base_dir, circuit_config['manifest']['$COMPONENTS_DIR'].replace('$BASE_DIR/', ''))
+        # Load configuration and get nodes and edges using util.py methods
+        config = load_config(config_path)
+        nodes = load_nodes_from_config(config_path)
+        edges = load_edges_from_config(config_path)
         
         conn_type_settings = {}
         
-        # Process each edge configuration
-        for edge_config in circuit_config['networks']['edges']:
-            edge_types_file = edge_config['edge_types_file'].replace('$NETWORK_DIR/', '').replace('$NETWORK_DIR', network_dir)
-            if not edge_types_file.startswith('/'):
-                edge_types_file = os.path.join(network_dir, edge_types_file)
+        # If a specific network is requested, only process that one
+        if network:
+            if network not in edges:
+                print(f"Warning: Network '{network}' not found in edges. Available networks: {list(edges.keys())}")
+                return conn_type_settings
+            edge_datasets = {network: edges[network]}
+        else:
+            edge_datasets = edges
+        
+        # Process each edge dataset using the util.py approach
+        for edge_dataset_name, edge_df in edge_datasets.items():
+            if edge_df.empty:
+                continue
             
-            # Skip if file doesn't exist
-            if not os.path.exists(edge_types_file):
-                print(f"Warning: Edge types file not found: {edge_types_file}")
+            # Create merged DataFrames with source and target node information like util.py does
+            source_node_df = None
+            target_node_df = None
+            
+            # Find the appropriate node datasets for this edge dataset
+            for pop_name, node_df in nodes.items():
+                if edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith('_to_' + pop_name):
+                    if source_node_df is None:
+                        source_node_df = node_df.add_prefix('source_')
+                        source_node_df.rename(columns={'source_node_type_id': 'source_node_type_id'}, inplace=True)
+                    else:
+                        target_node_df = node_df.add_prefix('target_')
+                        target_node_df.rename(columns={'target_node_type_id': 'target_node_type_id'}, inplace=True)
+            
+            # If we couldn't match by name, use the populations referenced in the edge data
+            if source_node_df is None or target_node_df is None:
+                # Get population names from the edge data
+                sample_edge = edge_df.iloc[0] if len(edge_df) > 0 else None
+                if sample_edge is not None:
+                    source_pop_name = sample_edge.get('source_population', '')
+                    target_pop_name = sample_edge.get('target_population', '')
+                    
+                    if source_pop_name in nodes:
+                        source_node_df = nodes[source_pop_name].add_prefix('source_')
+                    if target_pop_name in nodes:
+                        target_node_df = nodes[target_pop_name].add_prefix('target_')
+            
+            # If we still don't have the node data, skip this edge dataset
+            if source_node_df is None or target_node_df is None:
+                print(f"Warning: Could not find node data for edge dataset {edge_dataset_name}")
                 continue
-                
-            # Read edge types CSV (space-delimited)
-            try:
-                edge_types_df = pd.read_csv(edge_types_file, sep=' ')
-                # Clean column names (strip whitespace)
-                edge_types_df.columns = edge_types_df.columns.str.strip()
-            except Exception as e:
-                print(f"Error reading edge types file {edge_types_file}: {e}")
-                continue
+            
+            # Merge edge data with source node info
+            edges_with_source = pd.merge(
+                edge_df.reset_index(), 
+                source_node_df, 
+                how='left', 
+                left_on='source_node_id', 
+                right_index=True
+            )
+            
+            # Merge with target node info
+            edges_with_nodes = pd.merge(
+                edges_with_source, 
+                target_node_df, 
+                how='left', 
+                left_on='target_node_id', 
+                right_index=True
+            )
+            
+            # Get unique edge types from the merged dataset
+            if 'edge_type_id' in edges_with_nodes.columns:
+                edge_types = edges_with_nodes['edge_type_id'].unique()
+            else:
+                edge_types = [0]  # Single edge type
             
             # Process each edge type
-            for _, edge_row in edge_types_df.iterrows():
-                # Skip gap junctions
-                if pd.notna(edge_row.get('is_gap_junction')) and edge_row['is_gap_junction']:
+            for edge_type_id in edge_types:
+                # Filter edges for this type
+                if 'edge_type_id' in edges_with_nodes.columns:
+                    edge_type_data = edges_with_nodes[edges_with_nodes['edge_type_id'] == edge_type_id]
+                else:
+                    edge_type_data = edges_with_nodes
+                
+                if len(edge_type_data) == 0:
                     continue
                 
-                # Parse source and target queries to get connection name
-                source_query = edge_row['source_query']
-                target_query = edge_row['target_query'] 
+                # Get representative edge for this type
+                edge_info = edge_type_data.iloc[0]
                 
-                # Extract population names (simplified parsing)
-                source_pop = self._extract_pop_name(source_query)
-                target_pop = self._extract_pop_name(target_query)
+                # Skip gap junctions
+                if 'is_gap_junction' in edge_info and pd.notna(edge_info['is_gap_junction']) and edge_info['is_gap_junction']:
+                    continue
                 
+                # Get population names from the merged data (this is the key improvement!)
+                source_pop = edge_info.get('source_pop_name', '')
+                target_pop = edge_info.get('target_pop_name', '')
+                
+                # Get target cell template from the merged data
+                target_model_template = edge_info.get('target_model_template', '')
+                if target_model_template.startswith('hoc:'):
+                    target_cell_type = target_model_template.replace('hoc:', '')
+                else:
+                    target_cell_type = target_model_template
+                
+                # Create connection name using the actual population names
                 if source_pop and target_pop:
                     conn_name = f"{source_pop}2{target_pop}"
                 else:
-                    # Fallback to using edge_type_id
-                    conn_name = f"edge_type_{edge_row['edge_type_id']}"
+                    conn_name = f"{edge_dataset_name}_type_{edge_type_id}"
                 
                 # Get synaptic model template
-                model_template = edge_row.get('model_template', 'exp2syn')
+                model_template = edge_info.get('model_template', 'exp2syn')
                 
-                # Get dynamics params file
-                dynamics_params = edge_row.get('dynamics_params', '')
-                if dynamics_params:
-                    synaptic_models_dir = circuit_config['components']['synaptic_models_dir'].replace('$COMPONENTS_DIR/', '').replace('$COMPONENTS_DIR', components_dir)
-                    if not synaptic_models_dir.startswith('/'):
-                        synaptic_models_dir = os.path.join(components_dir, synaptic_models_dir)
-                    
-                    dynamics_file = os.path.join(synaptic_models_dir, dynamics_params)
-                    
-                    if os.path.exists(dynamics_file):
-                        with open(dynamics_file, 'r') as f:
-                            syn_params = json.load(f)
-                    else:
-                        print(f"Warning: Dynamics params file not found: {dynamics_file}")
-                        syn_params = {}
-                else:
-                    syn_params = {}
-                
-                # Parse target sections
-                target_sections = edge_row.get('target_sections', ['soma'])
-                if isinstance(target_sections, str):
-                    # Handle string representation of list
-                    target_sections = target_sections.strip("[]'\"").split("', '") if target_sections != "['soma']" else ['soma']
+                # Load synaptic parameters from dynamics_params file if available
+                syn_params = {}
+                dynamics_params = edge_info.get('dynamics_params', '')
+                if dynamics_params and dynamics_params != 'NULL':
+                    syn_params = self._load_synaptic_params_from_config(config, dynamics_params)
                 
                 # Build connection settings
                 conn_settings = {
                     'spec_settings': {
-                        'post_cell': target_pop + 'Cell' if target_pop else 'UnknownCell',  # Infer cell type from target pop
+                        'post_cell': target_cell_type,
                         'vclamp_amp': -70.0,  # Default voltage clamp amplitude
                         'sec_x': 0.5,  # Default location on section
                         'sec_id': 0,   # Default to soma
@@ -314,30 +356,78 @@ class SynapseTuner:
                     if key != 'level_of_detail':
                         conn_settings['spec_syn_param'][key] = value
                 
-                # Add weight from edge types if available
-                if 'syn_weight' in edge_row and pd.notna(edge_row['syn_weight']):
-                    conn_settings['spec_syn_param']['initW'] = float(edge_row['syn_weight'])
+                # Add weight from edge info if available
+                if 'syn_weight' in edge_info and pd.notna(edge_info['syn_weight']):
+                    conn_settings['spec_syn_param']['initW'] = float(edge_info['syn_weight'])
                 
+                # Handle afferent section information
+                if 'afferent_section_id' in edge_info and pd.notna(edge_info['afferent_section_id']):
+                    conn_settings['spec_settings']['sec_id'] = int(edge_info['afferent_section_id'])
+                
+                if 'afferent_section_pos' in edge_info and pd.notna(edge_info['afferent_section_pos']):
+                    conn_settings['spec_settings']['sec_x'] = float(edge_info['afferent_section_pos'])
+                
+                # Store in connection settings
                 conn_type_settings[conn_name] = conn_settings
-        
-        # Load node types to get better cell type mapping
-        self._update_cell_types_from_nodes(conn_type_settings, circuit_config, network_dir)
         
         return conn_type_settings
     
-    def _extract_pop_name(self, query: str) -> Optional[str]:
+    def _get_populations_from_queries(self, edge_info: pd.Series, nodes: Dict[str, pd.DataFrame]) -> tuple:
+        """
+        Extract source and target population names from query strings when available.
+        
+        Parameters:
+        -----------
+        edge_info : pd.Series
+            Edge information row
+        nodes : Dict[str, pd.DataFrame]  
+            Node data dictionary
+            
+        Returns:
+        --------
+        tuple
+            (source_population, target_population) names
+        """
+        source_pop = ""
+        target_pop = ""
+        
+        # Try to get population info from query columns if they exist
+        source_query = edge_info.get('source_query', '')
+        target_query = edge_info.get('target_query', '')
+        
+        if source_query and 'pop_name' in source_query:
+            source_pop = self._extract_pop_name_from_query(source_query)
+        
+        if target_query and 'pop_name' in target_query:
+            target_pop = self._extract_pop_name_from_query(target_query)
+        
+        # If still not found, try to get from node IDs
+        if not source_pop or not target_pop:
+            source_node_id = edge_info.get('source_node_id')
+            target_node_id = edge_info.get('target_node_id')
+            
+            # Search through node populations to find matching IDs
+            for pop_name, node_df in nodes.items():
+                if source_node_id is not None and source_node_id in node_df.index:
+                    source_pop = node_df.loc[source_node_id].get('pop_name', pop_name)
+                if target_node_id is not None and target_node_id in node_df.index:
+                    target_pop = node_df.loc[target_node_id].get('pop_name', pop_name)
+        
+        return source_pop, target_pop
+    
+    def _extract_pop_name_from_query(self, query: str) -> str:
         """
         Extract population name from a query string like "pop_name=='Exc'".
         
         Parameters:
         -----------
         query : str
-            Query string from edge types CSV.
+            Query string from edge types.
             
         Returns:
         --------
-        Optional[str]
-            Population name if found, None otherwise.
+        str
+            Population name if found, empty string otherwise.
         """
         if 'pop_name' in query and '==' in query:
             # Extract the value after ==
@@ -345,53 +435,84 @@ class SynapseTuner:
             if len(parts) > 1:
                 pop_name = parts[1].strip().strip("'\"")
                 return pop_name
-        return None
+        return ""
     
-    def _update_cell_types_from_nodes(self, conn_type_settings: Dict[str, dict], circuit_config: dict, network_dir: str) -> None:
+    def _get_target_cell_type(self, target_pop: str, nodes: Dict[str, pd.DataFrame]) -> str:
         """
-        Update cell types in conn_type_settings based on node types CSV files.
+        Get the target cell type from node information.
         
         Parameters:
         -----------
-        conn_type_settings : Dict[str, dict]
-            Connection type settings to update.
-        circuit_config : dict
-            Circuit configuration dictionary.
-        network_dir : str
-            Path to network directory.
-        """
-        # Process node types files to get proper cell template names
-        for node_config in circuit_config['networks']['nodes']:
-            node_types_file = node_config['node_types_file'].replace('$NETWORK_DIR/', '').replace('$NETWORK_DIR', network_dir)
-            if not node_types_file.startswith('/'):
-                node_types_file = os.path.join(network_dir, node_types_file)
+        target_pop : str
+            Target population name
+        nodes : Dict[str, pd.DataFrame]
+            Node data dictionary
             
-            if os.path.exists(node_types_file):
-                node_types_df = pd.read_csv(node_types_file, sep=' ')
+        Returns:
+        --------
+        str
+            Target cell type/template name
+        """
+        # Search through nodes to find the target population
+        for pop_name, node_df in nodes.items():
+            if 'pop_name' in node_df.columns:
+                pop_matches = node_df[node_df['pop_name'] == target_pop]
+                if not pop_matches.empty:
+                    model_template = pop_matches.iloc[0].get('model_template', '')
+                    if model_template.startswith('hoc:'):
+                        return model_template.replace('hoc:', '')
+                    return model_template
+            elif pop_name == target_pop:
+                model_template = node_df.iloc[0].get('model_template', '')
+                if model_template.startswith('hoc:'):
+                    return model_template.replace('hoc:', '')
+                return model_template
+        
+        # Fallback
+        return target_pop + 'Cell' if target_pop else 'UnknownCell'
+    
+    def _load_synaptic_params_from_config(self, config: dict, dynamics_params: str) -> dict:
+        """
+        Load synaptic parameters from dynamics params file using config information.
+        
+        Parameters:
+        -----------
+        config : dict
+            BMTK configuration dictionary
+        dynamics_params : str
+            Dynamics parameters filename
+            
+        Returns:
+        --------
+        dict
+            Synaptic parameters dictionary
+        """
+        try:
+            # Get the synaptic models directory from config
+            synaptic_models_dir = config.get('components', {}).get('synaptic_models_dir', '')
+            if synaptic_models_dir:
+                # Handle path variables
+                if synaptic_models_dir.startswith('$'):
+                    # This is a placeholder, try to resolve it
+                    config_dir = os.path.dirname(config.get('config_path', ''))
+                    synaptic_models_dir = synaptic_models_dir.replace('$COMPONENTS_DIR', 
+                                                                    os.path.join(config_dir, 'components'))
+                    synaptic_models_dir = synaptic_models_dir.replace('$BASE_DIR', config_dir)
                 
-                # Create mapping from pop_name to model_template
-                pop_to_template = {}
-                for _, row in node_types_df.iterrows():
-                    pop_name = row.get('pop_name', '')
-                    model_template = row.get('model_template', '')
-                    if pop_name and model_template:
-                        # Extract cell class name from hoc template
-                        if model_template.startswith('hoc:'):
-                            cell_class = model_template.replace('hoc:', '')
-                        else:
-                            cell_class = model_template
-                        pop_to_template[pop_name] = cell_class
+                dynamics_file = os.path.join(synaptic_models_dir, dynamics_params)
                 
-                # Update cell types in conn_type_settings
-                for conn_name, settings in conn_type_settings.items():
-                    # Try to infer target population from connection name
-                    if '2' in conn_name:
-                        target_pop = conn_name.split('2')[1]
-                        if target_pop in pop_to_template:
-                            settings['spec_settings']['post_cell'] = pop_to_template[target_pop]
+                if os.path.exists(dynamics_file):
+                    with open(dynamics_file, 'r') as f:
+                        return json.load(f)
+                else:
+                    print(f"Warning: Dynamics params file not found: {dynamics_file}")
+        except Exception as e:
+            print(f"Warning: Error loading synaptic parameters: {e}")
+        
+        return {}
     
     @classmethod
-    def list_connections_from_config(cls, config_path: str) -> Dict[str, dict]:
+    def list_connections_from_config(cls, config_path: str, network: Optional[str] = None) -> Dict[str, dict]:
         """
         Class method to list all available connections from a BMTK config file without creating a tuner.
         
@@ -399,6 +520,9 @@ class SynapseTuner:
         -----------
         config_path : str
             Path to the simulation config JSON file.
+        network : Optional[str]
+            Name of the specific network dataset to access (e.g., 'network_to_network').
+            If None, processes all available networks.
             
         Returns:
         --------
@@ -407,7 +531,7 @@ class SynapseTuner:
         """
         # Create a temporary instance just to use the parsing methods
         temp_tuner = cls.__new__(cls)  # Create without calling __init__
-        conn_type_settings = temp_tuner._build_conn_type_settings_from_config(config_path)
+        conn_type_settings = temp_tuner._build_conn_type_settings_from_config(config_path, network=network)
         
         # Create a summary of connections with key info
         connections_summary = {}
@@ -1117,6 +1241,17 @@ class SynapseTuner:
             icon="fast-backward",
             button_style="warning",
         )
+        
+        # Voltage clamp amplitude input
+        default_vclamp_amp = getattr(self.conn['spec_settings'], 'vclamp_amp', -70.0)
+        w_vclamp_amp = widgets.FloatText(
+            value=default_vclamp_amp,
+            description="V_clamp (mV):",
+            step=5.0,
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='150px')
+        )
+        
         w_input_mode = widgets.ToggleButton(
             value=False, description="Continuous input", icon="eject", button_style="info"
         )
@@ -1160,6 +1295,13 @@ class SynapseTuner:
             clear_output()
             display(ui)
             self.vclamp = w_vclamp.value
+            # Update voltage clamp amplitude if voltage clamp is enabled
+            if self.vclamp:
+                # Update the voltage clamp amplitude settings
+                self.conn['spec_settings']['vclamp_amp'] = w_vclamp_amp.value
+                # Update general settings if they exist
+                if hasattr(self, 'general_settings'):
+                    self.general_settings['vclamp_amp'] = w_vclamp_amp.value
             # Update synaptic properties based on slider values
             self.ispk = None
             self.SingleEvent()
@@ -1197,9 +1339,14 @@ class SynapseTuner:
             else:
                 slider_columns = VBox([])
             
+            # Create button row with voltage clamp controls
+            if w_vclamp.value:  # Show voltage clamp amplitude input when toggle is on
+                button_row = HBox([w_run, w_single, w_vclamp, w_vclamp_amp, w_input_mode])
+            else:  # Hide voltage clamp amplitude input when toggle is off
+                button_row = HBox([w_run, w_single, w_vclamp, w_input_mode])
+            
             # Reconstruct the UI
             connection_row = HBox([w_connection])
-            button_row = HBox([w_run, w_single, w_vclamp, w_input_mode])
             slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
             
             ui = VBox([connection_row, button_row, slider_row, slider_columns])
@@ -1209,6 +1356,12 @@ class SynapseTuner:
             clear_output()
             display(ui)
             self.vclamp = w_vclamp.value
+            # Update voltage clamp amplitude if voltage clamp is enabled
+            if self.vclamp:
+                self.conn['spec_settings']['vclamp_amp'] = w_vclamp_amp.value
+                if hasattr(self, 'general_settings'):
+                    self.general_settings['vclamp_amp'] = w_vclamp_amp.value
+            
             self.input_mode = w_input_mode.value
             syn_props = {var: slider.value for var, slider in self.dynamic_sliders.items()}
             self._set_syn_prop(**syn_props)
@@ -1231,9 +1384,17 @@ class SynapseTuner:
                 self.w_delay.layout.display = ""  # Show delay slider
                 self.w_duration.layout.display = "none"  # Hide duration slider
 
+        # Function to handle voltage clamp toggle
+        def on_vclamp_toggle(*args):
+            """Handle voltage clamp toggle changes to show/hide amplitude input"""
+            update_ui_layout()
+            clear_output()
+            display(ui)
+
         # Link widgets to their callback functions
         w_connection.observe(on_connection_change, names="value")
         w_input_mode.observe(switch_slider, names="value")
+        w_vclamp.observe(on_vclamp_toggle, names="value")
 
         # Hide the duration slider initially until the user selects it
         self.w_duration.layout.display = "none"  # Hide duration slider
