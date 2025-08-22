@@ -10,6 +10,8 @@ import pandas as pd
 from neuron import h
 from scipy.optimize import curve_fit
 
+from bmtool.util.util import load_templates_from_config, load_config
+
 
 def load_biophys1():
     """
@@ -1025,19 +1027,62 @@ class ZAP(CurrentClamp):
 
 
 class Profiler:
-    """All in one single cell profiler"""
+    """All in one single cell profiler
 
-    def __init__(self, template_dir: str = None, mechanism_dir: str = None, dt=None):
+    This Profiler now supports being initialized with either explicit
+    `template_dir` and `mechanism_dir` paths or with a BMTK `config` file
+    (which should contain `components.templates_dir` and
+    `components.mechanisms_dir`). When `config` is provided it will be used
+    to load mechanisms and templates via the utility helpers.
+    """
+
+    def __init__(self, template_dir: str = None, mechanism_dir: str = None, dt=None, config: str = None):
+        # initialize to None and then prefer config-derived paths if provided
         self.template_dir = None
         self.mechanism_dir = None
 
-        if not self.template_dir:
-            self.template_dir = template_dir
-        if not self.mechanism_dir:
-            self.mechanism_dir = mechanism_dir
-        self.templates = None
+        # If a BMTK config is provided, load mechanisms/templates from it
+        if config is not None:
+            try:
+                # load and apply the config values for directories
+                conf = load_config(config)
+                # conf behaves like a dict returned by bmtk Config.from_json
+                try:
+                    comps = conf["components"]
+                except Exception:
+                    comps = getattr(conf, "components", None)
 
-        self.load_templates()
+                if comps is not None:
+                    # support dict-like and object-like components
+                    try:
+                        self.template_dir = comps.get("templates_dir")
+                    except Exception:
+                        self.template_dir = getattr(comps, "templates_dir", None)
+                    try:
+                        self.mechanism_dir = comps.get("mechanisms_dir")
+                    except Exception:
+                        self.mechanism_dir = getattr(comps, "mechanisms_dir", None)
+
+                # actually load mechanisms and templates using the helper
+                load_templates_from_config(config)
+            except Exception:
+                # fall back to explicit dirs if config parsing/loading fails
+                pass
+
+        else:
+            # fall back to explicit args if not set by config
+            if not self.template_dir:
+                self.template_dir = template_dir
+            if not self.mechanism_dir:
+                self.mechanism_dir = mechanism_dir
+
+            # template_dir is required for loading templates later
+            if self.template_dir is None:
+                raise ValueError("Profiler requires either 'template_dir' or a 'config' containing components.templates_dir")
+
+            self.templates = None
+
+            self.load_templates()
 
         h.load_file("stdrun.hoc")
         if dt is not None:

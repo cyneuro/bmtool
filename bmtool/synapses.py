@@ -8,6 +8,7 @@ import ipywidgets as widgets
 import matplotlib.pyplot as plt
 import neuron
 import numpy as np
+import pandas as pd
 from IPython.display import clear_output, display
 from ipywidgets import HBox, VBox
 from neuron import h
@@ -43,16 +44,16 @@ DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS = {
 class SynapseTuner:
     def __init__(
         self,
+        conn_type_settings: Optional[Dict[str, dict]] = None,
+        connection: Optional[str] = None,
+        current_name: str = "i",
         mechanisms_dir: Optional[str] = None,
         templates_dir: Optional[str] = None,
         config: Optional[str] = None,
-        conn_type_settings: Optional[dict] = None,
-        connection: Optional[str] = None,
         general_settings: Optional[dict] = None,
         json_folder_path: Optional[str] = None,
-        current_name: str = "i",
-        other_vars_to_record: Optional[list] = None,
-        slider_vars: Optional[list] = None,
+        other_vars_to_record: Optional[List[str]] = None,
+        slider_vars: Optional[List[str]] = None,
         hoc_cell: Optional[object] = None,
     ) -> None:
         """
@@ -82,6 +83,7 @@ class SynapseTuner:
             An already loaded NEURON cell object. If provided, template loading and cell setup will be skipped.
         """
         self.hoc_cell = hoc_cell
+        h.load_file('stdrun.hoc')
 
         if hoc_cell is None:
             if config is None and (mechanisms_dir is None or templates_dir is None):
@@ -97,9 +99,20 @@ class SynapseTuner:
                 load_templates_from_config(config)
 
         if conn_type_settings is None:
-            raise ValueError("conn_type_settings must be provided.")
+            if config is not None:
+                print("Building conn_type_settings from BMTK config files...")
+                conn_type_settings = self._build_conn_type_settings_from_config(config)
+                print(f"Found {len(conn_type_settings)} connection types: {list(conn_type_settings.keys())}")
+                
+                # If connection is not specified, use the first available connection
+                if connection is None and conn_type_settings:
+                    connection = list(conn_type_settings.keys())[0]
+                    print(f"No connection specified, using first available: {connection}")
+            else:
+                raise ValueError("conn_type_settings must be provided if config is not specified.")
+                
         if connection is None:
-            raise ValueError("connection must be provided.")
+            raise ValueError("connection must be provided or inferable from conn_type_settings.")
         if connection not in conn_type_settings:
             raise ValueError(f"connection '{connection}' not found in conn_type_settings.")
 
@@ -181,6 +194,231 @@ class SynapseTuner:
         )
 
         self._set_up_recorders()
+
+    def _build_conn_type_settings_from_config(self, config_path: str, node_set: Optional[str] = None) -> Dict[str, dict]:
+        """
+        Build conn_type_settings from BMTK simulation and circuit config files.
+        
+        Parameters:
+        -----------
+        config_path : str
+            Path to the simulation config JSON file.
+        node_set : Optional[str]
+            Specific node set to filter connections for. If None, processes all connections.
+            
+        Returns:
+        --------
+        Dict[str, dict]
+            Dictionary with connection names as keys and connection settings as values.
+        """
+        # Load simulation config
+        with open(config_path, 'r') as f:
+            sim_config = json.load(f)
+        
+        # Get circuit config path
+        config_dir = os.path.dirname(config_path)
+        circuit_config_path = os.path.join(config_dir, sim_config['network'].replace('$BASE_DIR/', ''))
+        
+        # Load circuit config
+        with open(circuit_config_path, 'r') as f:
+            circuit_config = json.load(f)
+        
+        # Parse manifest variables
+        base_dir = config_dir
+        network_dir = os.path.join(base_dir, circuit_config['manifest']['$NETWORK_DIR'].replace('$BASE_DIR/', ''))
+        components_dir = os.path.join(base_dir, circuit_config['manifest']['$COMPONENTS_DIR'].replace('$BASE_DIR/', ''))
+        
+        conn_type_settings = {}
+        
+        # Process each edge configuration
+        for edge_config in circuit_config['networks']['edges']:
+            edge_types_file = edge_config['edge_types_file'].replace('$NETWORK_DIR/', '').replace('$NETWORK_DIR', network_dir)
+            if not edge_types_file.startswith('/'):
+                edge_types_file = os.path.join(network_dir, edge_types_file)
+            
+            # Skip if file doesn't exist
+            if not os.path.exists(edge_types_file):
+                print(f"Warning: Edge types file not found: {edge_types_file}")
+                continue
+                
+            # Read edge types CSV (space-delimited)
+            try:
+                edge_types_df = pd.read_csv(edge_types_file, sep=' ')
+                # Clean column names (strip whitespace)
+                edge_types_df.columns = edge_types_df.columns.str.strip()
+            except Exception as e:
+                print(f"Error reading edge types file {edge_types_file}: {e}")
+                continue
+            
+            # Process each edge type
+            for _, edge_row in edge_types_df.iterrows():
+                # Skip gap junctions
+                if pd.notna(edge_row.get('is_gap_junction')) and edge_row['is_gap_junction']:
+                    continue
+                
+                # Parse source and target queries to get connection name
+                source_query = edge_row['source_query']
+                target_query = edge_row['target_query'] 
+                
+                # Extract population names (simplified parsing)
+                source_pop = self._extract_pop_name(source_query)
+                target_pop = self._extract_pop_name(target_query)
+                
+                if source_pop and target_pop:
+                    conn_name = f"{source_pop}2{target_pop}"
+                else:
+                    # Fallback to using edge_type_id
+                    conn_name = f"edge_type_{edge_row['edge_type_id']}"
+                
+                # Get synaptic model template
+                model_template = edge_row.get('model_template', 'exp2syn')
+                
+                # Get dynamics params file
+                dynamics_params = edge_row.get('dynamics_params', '')
+                if dynamics_params:
+                    synaptic_models_dir = circuit_config['components']['synaptic_models_dir'].replace('$COMPONENTS_DIR/', '').replace('$COMPONENTS_DIR', components_dir)
+                    if not synaptic_models_dir.startswith('/'):
+                        synaptic_models_dir = os.path.join(components_dir, synaptic_models_dir)
+                    
+                    dynamics_file = os.path.join(synaptic_models_dir, dynamics_params)
+                    
+                    if os.path.exists(dynamics_file):
+                        with open(dynamics_file, 'r') as f:
+                            syn_params = json.load(f)
+                    else:
+                        print(f"Warning: Dynamics params file not found: {dynamics_file}")
+                        syn_params = {}
+                else:
+                    syn_params = {}
+                
+                # Parse target sections
+                target_sections = edge_row.get('target_sections', ['soma'])
+                if isinstance(target_sections, str):
+                    # Handle string representation of list
+                    target_sections = target_sections.strip("[]'\"").split("', '") if target_sections != "['soma']" else ['soma']
+                
+                # Build connection settings
+                conn_settings = {
+                    'spec_settings': {
+                        'post_cell': target_pop + 'Cell' if target_pop else 'UnknownCell',  # Infer cell type from target pop
+                        'vclamp_amp': -70.0,  # Default voltage clamp amplitude
+                        'sec_x': 0.5,  # Default location on section
+                        'sec_id': 0,   # Default to soma
+                        'level_of_detail': syn_params.get('level_of_detail', model_template),
+                    },
+                    'spec_syn_param': {}
+                }
+                
+                # Add synaptic parameters, excluding level_of_detail
+                for key, value in syn_params.items():
+                    if key != 'level_of_detail':
+                        conn_settings['spec_syn_param'][key] = value
+                
+                # Add weight from edge types if available
+                if 'syn_weight' in edge_row and pd.notna(edge_row['syn_weight']):
+                    conn_settings['spec_syn_param']['initW'] = float(edge_row['syn_weight'])
+                
+                conn_type_settings[conn_name] = conn_settings
+        
+        # Load node types to get better cell type mapping
+        self._update_cell_types_from_nodes(conn_type_settings, circuit_config, network_dir)
+        
+        return conn_type_settings
+    
+    def _extract_pop_name(self, query: str) -> Optional[str]:
+        """
+        Extract population name from a query string like "pop_name=='Exc'".
+        
+        Parameters:
+        -----------
+        query : str
+            Query string from edge types CSV.
+            
+        Returns:
+        --------
+        Optional[str]
+            Population name if found, None otherwise.
+        """
+        if 'pop_name' in query and '==' in query:
+            # Extract the value after ==
+            parts = query.split('==')
+            if len(parts) > 1:
+                pop_name = parts[1].strip().strip("'\"")
+                return pop_name
+        return None
+    
+    def _update_cell_types_from_nodes(self, conn_type_settings: Dict[str, dict], circuit_config: dict, network_dir: str) -> None:
+        """
+        Update cell types in conn_type_settings based on node types CSV files.
+        
+        Parameters:
+        -----------
+        conn_type_settings : Dict[str, dict]
+            Connection type settings to update.
+        circuit_config : dict
+            Circuit configuration dictionary.
+        network_dir : str
+            Path to network directory.
+        """
+        # Process node types files to get proper cell template names
+        for node_config in circuit_config['networks']['nodes']:
+            node_types_file = node_config['node_types_file'].replace('$NETWORK_DIR/', '').replace('$NETWORK_DIR', network_dir)
+            if not node_types_file.startswith('/'):
+                node_types_file = os.path.join(network_dir, node_types_file)
+            
+            if os.path.exists(node_types_file):
+                node_types_df = pd.read_csv(node_types_file, sep=' ')
+                
+                # Create mapping from pop_name to model_template
+                pop_to_template = {}
+                for _, row in node_types_df.iterrows():
+                    pop_name = row.get('pop_name', '')
+                    model_template = row.get('model_template', '')
+                    if pop_name and model_template:
+                        # Extract cell class name from hoc template
+                        if model_template.startswith('hoc:'):
+                            cell_class = model_template.replace('hoc:', '')
+                        else:
+                            cell_class = model_template
+                        pop_to_template[pop_name] = cell_class
+                
+                # Update cell types in conn_type_settings
+                for conn_name, settings in conn_type_settings.items():
+                    # Try to infer target population from connection name
+                    if '2' in conn_name:
+                        target_pop = conn_name.split('2')[1]
+                        if target_pop in pop_to_template:
+                            settings['spec_settings']['post_cell'] = pop_to_template[target_pop]
+    
+    @classmethod
+    def list_connections_from_config(cls, config_path: str) -> Dict[str, dict]:
+        """
+        Class method to list all available connections from a BMTK config file without creating a tuner.
+        
+        Parameters:
+        -----------
+        config_path : str
+            Path to the simulation config JSON file.
+            
+        Returns:
+        --------
+        Dict[str, dict]
+            Dictionary with connection names as keys and connection info as values.
+        """
+        # Create a temporary instance just to use the parsing methods
+        temp_tuner = cls.__new__(cls)  # Create without calling __init__
+        conn_type_settings = temp_tuner._build_conn_type_settings_from_config(config_path)
+        
+        # Create a summary of connections with key info
+        connections_summary = {}
+        for conn_name, settings in conn_type_settings.items():
+            connections_summary[conn_name] = {
+                'post_cell': settings['spec_settings']['post_cell'],
+                'synapse_type': settings['spec_settings']['level_of_detail'],
+                'parameters': list(settings['spec_syn_param'].keys())
+            }
+        
+        return connections_summary
 
     def _switch_connection(self, new_connection: str) -> None:
         """
@@ -305,11 +543,14 @@ class SynapseTuner:
         - `_set_up_cell()` should be called before setting up the synapse.
         - Synapse location, type, and properties are specified within `spec_syn_param` and `spec_settings`.
         """
-        self.syn = getattr(h, self.conn["spec_settings"]["level_of_detail"])(
-            list(self.cell.all)[self.conn["spec_settings"]["sec_id"]](
-                self.conn["spec_settings"]["sec_x"]
+        try:
+            self.syn = getattr(h, self.conn["spec_settings"]["level_of_detail"])(
+                list(self.cell.all)[self.conn["spec_settings"]["sec_id"]](
+                    self.conn["spec_settings"]["sec_x"]
+                )
             )
-        )
+        except:
+            raise Exception("Make sure the mod file exist you are trying to load check spelling!")
         for key, value in self.conn["spec_syn_param"].items():
             if isinstance(value, (int, float)):
                 if hasattr(self.syn, key):
