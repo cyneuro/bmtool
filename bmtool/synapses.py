@@ -201,7 +201,7 @@ class SynapseTuner:
 
     def _build_conn_type_settings_from_config(self, config_path: str, node_set: Optional[str] = None, network: Optional[str] = None) -> Dict[str, dict]:
         """
-        Build conn_type_settings from BMTK simulation and circuit config files using the refined util.py methods.
+        Build conn_type_settings from BMTK simulation and circuit config files using the method used by relation matrix function in util.
         
         Parameters:
         -----------
@@ -242,29 +242,38 @@ class SynapseTuner:
             # Create merged DataFrames with source and target node information like util.py does
             source_node_df = None
             target_node_df = None
-            
-            # Find the appropriate node datasets for this edge dataset
-            for pop_name, node_df in nodes.items():
-                if edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith('_to_' + pop_name):
-                    if source_node_df is None:
-                        source_node_df = node_df.add_prefix('source_')
-                        source_node_df.rename(columns={'source_node_type_id': 'source_node_type_id'}, inplace=True)
-                    else:
-                        target_node_df = node_df.add_prefix('target_')
-                        target_node_df.rename(columns={'target_node_type_id': 'target_node_type_id'}, inplace=True)
-            
-            # If we couldn't match by name, use the populations referenced in the edge data
+
+            # First, try to deterministically parse the edge_dataset_name for patterns like '<src>_to_<tgt>'
+            # e.g., 'network_to_network', 'extnet_to_network'
+            if '_to_' in edge_dataset_name:
+                parts = edge_dataset_name.split('_to_')
+                if len(parts) == 2:
+                    src_name, tgt_name = parts
+                    if src_name in nodes:
+                        source_node_df = nodes[src_name].add_prefix('source_')
+                    if tgt_name in nodes:
+                        target_node_df = nodes[tgt_name].add_prefix('target_')
+
+            # If not found by parsing name, fall back to inspecting a sample edge row which contains
+            # explicit 'source_population' and 'target_population' fields (this avoids reversing source/target)
             if source_node_df is None or target_node_df is None:
-                # Get population names from the edge data
                 sample_edge = edge_df.iloc[0] if len(edge_df) > 0 else None
                 if sample_edge is not None:
+                    # Use explicit population names from the edge entry
                     source_pop_name = sample_edge.get('source_population', '')
                     target_pop_name = sample_edge.get('target_population', '')
-                    
                     if source_pop_name in nodes:
                         source_node_df = nodes[source_pop_name].add_prefix('source_')
                     if target_pop_name in nodes:
                         target_node_df = nodes[target_pop_name].add_prefix('target_')
+
+            # As a last resort, attempt to heuristically match by prefix/suffix of the dataset name
+            if source_node_df is None or target_node_df is None:
+                for pop_name, node_df in nodes.items():
+                    if source_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
+                        source_node_df = node_df.add_prefix('source_')
+                    elif target_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
+                        target_node_df = node_df.add_prefix('target_')
             
             # If we still don't have the node data, skip this edge dataset
             if source_node_df is None or target_node_df is None:
@@ -369,107 +378,9 @@ class SynapseTuner:
                 
                 # Store in connection settings
                 conn_type_settings[conn_name] = conn_settings
-        
+
         return conn_type_settings
     
-    def _get_populations_from_queries(self, edge_info: pd.Series, nodes: Dict[str, pd.DataFrame]) -> tuple:
-        """
-        Extract source and target population names from query strings when available.
-        
-        Parameters:
-        -----------
-        edge_info : pd.Series
-            Edge information row
-        nodes : Dict[str, pd.DataFrame]  
-            Node data dictionary
-            
-        Returns:
-        --------
-        tuple
-            (source_population, target_population) names
-        """
-        source_pop = ""
-        target_pop = ""
-        
-        # Try to get population info from query columns if they exist
-        source_query = edge_info.get('source_query', '')
-        target_query = edge_info.get('target_query', '')
-        
-        if source_query and 'pop_name' in source_query:
-            source_pop = self._extract_pop_name_from_query(source_query)
-        
-        if target_query and 'pop_name' in target_query:
-            target_pop = self._extract_pop_name_from_query(target_query)
-        
-        # If still not found, try to get from node IDs
-        if not source_pop or not target_pop:
-            source_node_id = edge_info.get('source_node_id')
-            target_node_id = edge_info.get('target_node_id')
-            
-            # Search through node populations to find matching IDs
-            for pop_name, node_df in nodes.items():
-                if source_node_id is not None and source_node_id in node_df.index:
-                    source_pop = node_df.loc[source_node_id].get('pop_name', pop_name)
-                if target_node_id is not None and target_node_id in node_df.index:
-                    target_pop = node_df.loc[target_node_id].get('pop_name', pop_name)
-        
-        return source_pop, target_pop
-    
-    def _extract_pop_name_from_query(self, query: str) -> str:
-        """
-        Extract population name from a query string like "pop_name=='Exc'".
-        
-        Parameters:
-        -----------
-        query : str
-            Query string from edge types.
-            
-        Returns:
-        --------
-        str
-            Population name if found, empty string otherwise.
-        """
-        if 'pop_name' in query and '==' in query:
-            # Extract the value after ==
-            parts = query.split('==')
-            if len(parts) > 1:
-                pop_name = parts[1].strip().strip("'\"")
-                return pop_name
-        return ""
-    
-    def _get_target_cell_type(self, target_pop: str, nodes: Dict[str, pd.DataFrame]) -> str:
-        """
-        Get the target cell type from node information.
-        
-        Parameters:
-        -----------
-        target_pop : str
-            Target population name
-        nodes : Dict[str, pd.DataFrame]
-            Node data dictionary
-            
-        Returns:
-        --------
-        str
-            Target cell type/template name
-        """
-        # Search through nodes to find the target population
-        for pop_name, node_df in nodes.items():
-            if 'pop_name' in node_df.columns:
-                pop_matches = node_df[node_df['pop_name'] == target_pop]
-                if not pop_matches.empty:
-                    model_template = pop_matches.iloc[0].get('model_template', '')
-                    if model_template.startswith('hoc:'):
-                        return model_template.replace('hoc:', '')
-                    return model_template
-            elif pop_name == target_pop:
-                model_template = node_df.iloc[0].get('model_template', '')
-                if model_template.startswith('hoc:'):
-                    return model_template.replace('hoc:', '')
-                return model_template
-        
-        # Fallback
-        return target_pop + 'Cell' if target_pop else 'UnknownCell'
     
     def _load_synaptic_params_from_config(self, config: dict, dynamics_params: str) -> dict:
         """
