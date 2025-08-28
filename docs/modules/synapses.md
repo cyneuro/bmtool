@@ -9,37 +9,82 @@ The Synapses module provides tools for configuring and tuning synaptic connectio
 
 ## Synaptic Tuner
 
-The SynapticTuner aids in the tuning of chemical synapses by providing an interactive interface with sliders in a Jupyter notebook to adjust synaptic parameters and view the effects in real-time.
+The SynapseTuner provides two main usage modes: one for BMTK networks and one for pure NEURON models. It offers an interactive interface with sliders in a Jupyter notebook to adjust synaptic parameters and view the effects in real-time.
 
 ### Key Features
 
 - Interactive sliders for all synapse parameters
-- Visualization of postsynaptic potentials
-- Parameter export for use in network models
-- Support for various synapse types (Exp2Syn, AMPA, NMDA, etc.)
+- Visualization of postsynaptic responses
+- Support for BMTK network configurations
+- Support for pure NEURON model tuning
+- Parameter optimization algorithms
+- Support for various synapse types (Exp2Syn, AMPA, NMDA, STP mechanisms, etc.)
 
-### Example Usage
+### Example Usage with BMTK
 
 ```python
-from bmtool.synapses import SynapticTuner
+from bmtool.synapses import SynapseTuner
 
-# Create a tuner for an Exp2Syn synapse
-tuner = SynapticTuner(
-    synapse_type='Exp2Syn',
-    pre_template='PreCell',
-    post_template='PostCell',
-    pre_section='soma',
-    post_section='dend[0]',
-    template_dir='path/to/templates',
-    mod_dir='path/to/mechanisms'
+# Create a tuner for BMTK networks
+tuner = SynapseTuner(
+    config='simulation_config.json',  # Path to BMTK config
+    current_name='i',                 # Synaptic current to record
+    slider_vars=['initW','Dep','Fac','Use','tau1','tau2']  # Parameters for sliders
 )
 
 # Display the interactive tuner
-tuner.show()
+tuner.InteractiveTuner()
 
-# After tuning, export parameters
-params = tuner.get_parameters()
-print(params)
+# Switch between different connections in your network
+tuner._switch_connection('PV2Exc')
+```
+
+### Example Usage with Pure NEURON
+
+```python
+from bmtool.synapses import SynapseTuner
+
+# Define general and connection-specific settings
+general_settings = {
+    'vclamp': True,
+    'rise_interval': (0.1, 0.9),
+    'tstart': 500.,
+    'tdur': 100.,
+    'threshold': -15.,
+    'delay': 1.3,
+    'weight': 1.,
+    'dt': 0.025,
+    'celsius': 20
+}
+
+conn_type_settings = {
+    'Exc2FSI': {
+        'spec_settings': {
+            'post_cell': 'FSI_Cell',
+            'vclamp_amp': -70.,
+            'sec_x': 0.5,
+            'sec_id': 1,
+            "level_of_detail": "AMPA_NMDA_STP",
+        },
+        'spec_syn_param': {
+            'initW': 0.76,
+            'tau_r_AMPA': 0.45,
+            'tau_d_AMPA': 7.5,
+            'Use': 0.13,
+            'Dep': 0.,
+            'Fac': 200.
+        },
+    }
+}
+
+# Create tuner with custom settings
+tuner = SynapseTuner(
+    general_settings=general_settings,
+    conn_type_settings=conn_type_settings
+)
+
+# Display the interactive tuner
+tuner.InteractiveTuner()
 ```
 
 ## Gap Junction Tuner
@@ -76,43 +121,53 @@ print(f"Optimal gap junction resistance: {optimal_resistance} MOhm")
 
 ## Advanced Features
 
-### Custom Synaptic Mechanisms
+### Synapse Optimization
 
-You can use custom synaptic mechanisms by specifying the synapse type and required parameters:
+Use the SynapseOptimizer to automatically tune synapse parameters:
 
 ```python
-tuner = SynapticTuner(
-    synapse_type='MyCustomSynapse',
-    parameters={
-        'tau1': 0.5,
-        'tau2': 5.0,
-        'e': 0.0,
-        'custom_param': 1.0
-    },
-    pre_template='PreCell',
-    post_template='PostCell'
-)
+from bmtool.synapses import SynapseOptimizer
+
+# Create the optimizer
+optimizer = SynapseOptimizer(tuner)
+
+# Define parameter bounds
+param_bounds = {
+    'Dep': (0, 200.0),
+    'Fac': (0, 400.0),
+    'Use': (0.1, 1.0),
+    'tau1': (1, 4),
+    'tau2': (5, 20)
+}
+
+# Define target metrics
+target_metrics = {
+    'max_amp': 5.0,  # Target maximum amplitude (mV)
+    'half_width': 10.0,  # Target half-width (ms)
+    'rise_time': 2.0  # Target rise time (ms)
+}
+
+# Run optimization
+result = optimizer.optimize_parameters(param_bounds, target_metrics)
+print(result)
 ```
 
-### Multiple Connection Testing
+### Short-Term Plasticity Analysis
 
-Test multiple synaptic connections with different parameters:
+Analyze frequency response characteristics of synapses with short-term plasticity:
 
 ```python
-from bmtool.synapses import SynapseTest
-
-# Create a test for comparing different synapse configurations
-test = SynapseTest(
-    synapse_configs=[
-        {'synapse_type': 'Exp2Syn', 'tau1': 0.5, 'tau2': 5.0, 'weight': 0.001},
-        {'synapse_type': 'Exp2Syn', 'tau1': 1.0, 'tau2': 8.0, 'weight': 0.001},
-        {'synapse_type': 'AMPA', 'weight': 0.001}
-    ],
-    pre_template='PreCell',
-    post_template='PostCell'
+# Analyze STP frequency response
+frequencies, responses = tuner.stp_frequency_response(
+    frequencies=[1, 5, 10, 20, 50, 100],  # Hz
+    duration=1000  # ms
 )
 
-# Run the test and plot results
-test.run()
-test.plot_comparison()
+# Plot the results
+import matplotlib.pyplot as plt
+plt.plot(frequencies, responses)
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Steady-state Response')
+plt.title('STP Frequency Response')
+plt.show()
 ```

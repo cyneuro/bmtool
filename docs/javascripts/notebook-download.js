@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', function () {
     console.log(`Debug - Notebook Path: ${notebookPath}, Filename: ${notebookFileName}`);
 
     // Check for special cases where notebooks are in subdirectories named after the notebook
-    // For example: notebooks/synapses/synaptic_tuner/synaptic_tuner.ipynb
+    // For example: notebooks/synapses/synaptic_tuner/bmtk_chem_syn_tuner.ipynb
     if (notebookPath) {
       const pathParts = notebookPath.split('/');
       // If the last part of the path matches the filename, handle it specially

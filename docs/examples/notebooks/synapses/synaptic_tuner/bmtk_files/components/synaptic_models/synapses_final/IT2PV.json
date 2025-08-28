@@ -1,0 +1,11 @@
+{
+    "level_of_detail": "AMPA_NMDA_STP",
+    "initW": 5,
+    "oldW": 5,
+    "tau_r_AMPA": 0.812,
+    "tau_d_AMPA": 2.008,
+    "Use": 0.156,
+    "Dep": 208.043,
+    "oldDep": 408,
+    "Fac": 45.373
+}

@@ -84,9 +84,25 @@ class SynapseTuner:
             An already loaded NEURON cell object. If provided, template loading and cell setup will be skipped.
         network : Optional[str]
             Name of the specific network dataset to access from the loaded edges data (e.g., 'network_to_network').
-            If not provided, will use all available networks.
+            If not provided, will use all available networks. When a config file is provided, this enables
+            the network dropdown feature in InteractiveTuner for switching between different networks.
+
+        Network Dropdown Feature:
+        -------------------------
+        When initialized with a BMTK config file, the tuner automatically:
+        1. Loads all available network datasets from the config
+        2. Creates a network dropdown in InteractiveTuner (if multiple networks exist)
+        3. Allows dynamic switching between networks, which rebuilds connection types
+        4. Updates connection dropdown options when network is changed
+        5. Preserves current connection if it exists in the new network, otherwise selects the first available
         """
         self.hoc_cell = hoc_cell
+        # Store config and network information for network dropdown functionality
+        self.config = config  # Store config path for network dropdown functionality
+        self.available_networks = []  # Store available networks from config file
+        self.current_network = network  # Store current network selection
+        # Cache for loaded dynamics params JSON by filename to avoid repeated disk reads
+        self._syn_params_cache = {}
         h.load_file('stdrun.hoc')
 
         if hoc_cell is None:
@@ -101,11 +117,26 @@ class SynapseTuner:
             else:
                 # loads both mech and templates
                 load_templates_from_config(config)
+                # Load available networks from config for network dropdown feature
+                self._load_available_networks()
+                # Prebuild connection type settings for each available network to
+                # make network switching in the UI fast. This will make __init__ slower
+                # but dramatically speed up response when changing the network dropdown.
+                self._prebuilt_conn_type_settings = {}
+                try:
+                    for net in self.available_networks:
+                        self._prebuilt_conn_type_settings[net] = self._build_conn_type_settings_from_config(config, network=net)
+                except Exception as e:
+                    print(f"Warning: error prebuilding conn_type_settings for networks: {e}")
 
         if conn_type_settings is None:
             if config is not None:
                 print("Building conn_type_settings from BMTK config files...")
-                conn_type_settings = self._build_conn_type_settings_from_config(config, network=network)
+                # If we prebuilt per-network settings, use the one for the requested network
+                if hasattr(self, '_prebuilt_conn_type_settings') and network in getattr(self, '_prebuilt_conn_type_settings', {}):
+                    conn_type_settings = self._prebuilt_conn_type_settings[network]
+                else:
+                    conn_type_settings = self._build_conn_type_settings_from_config(config, network=network)
                 print(f"Found {len(conn_type_settings)} connection types: {list(conn_type_settings.keys())}")
                 
                 # If connection is not specified, use the first available connection
@@ -217,9 +248,19 @@ class SynapseTuner:
         --------
         Dict[str, dict]
             Dictionary with connection names as keys and connection settings as values.
+
+        NOTE: a lot of this code could probs be made a bit more simple or just removed i kinda tried a bunch of things and it works now
+        but is kinda complex and some code is probs note needed 
+            
         """
         # Load configuration and get nodes and edges using util.py methods
         config = load_config(config_path)
+        # Ensure the config dict knows its source path so path substitutions can be resolved
+        try:
+            # load_config may return a dict; store path used so callers can resolve $COMPONENTS_DIR
+            config['config_path'] = config_path
+        except Exception:
+            pass
         nodes = load_nodes_from_config(config_path)
         edges = load_edges_from_config(config_path)
         
@@ -341,29 +382,86 @@ class SynapseTuner:
                 
                 # Get synaptic model template
                 model_template = edge_info.get('model_template', 'exp2syn')
-                
-                # Load synaptic parameters from dynamics_params file if available
-                syn_params = {}
-                dynamics_params = edge_info.get('dynamics_params', '')
-                if dynamics_params and dynamics_params != 'NULL':
-                    syn_params = self._load_synaptic_params_from_config(config, dynamics_params)
-                
-                # Build connection settings
+
+                # Build connection settings early so we can attach metadata like dynamics file name
                 conn_settings = {
                     'spec_settings': {
                         'post_cell': target_cell_type,
                         'vclamp_amp': -70.0,  # Default voltage clamp amplitude
                         'sec_x': 0.5,  # Default location on section
                         'sec_id': 0,   # Default to soma
-                        'level_of_detail': syn_params.get('level_of_detail', model_template),
+                        # level_of_detail may be overridden by dynamics params below
+                        'level_of_detail': model_template,
                     },
                     'spec_syn_param': {}
                 }
-                
+
+                # Load synaptic parameters from dynamics_params file if available.
+                # NOTE: the edge DataFrame produced by load_edges_from_config/load_sonata_edges_to_dataframe
+                # already contains the 'dynamics_params' column (from the CSV) or the
+                # flattened H5 dynamics_params attributes (prefixed with 'dynamics_params/').
+                # Prefer the direct 'dynamics_params' column value from the merged DataFrame
+                # rather than performing ad-hoc string parsing here.
+                syn_params = {}
+                dynamics_file_name = None
+                # Prefer a top-level 'dynamics_params' column if present
+                if 'dynamics_params' in edge_info and pd.notna(edge_info.get('dynamics_params')):
+                    val = edge_info.get('dynamics_params')
+                    # Some CSV loaders can produce bytes or numpy types; coerce to str
+                    try:
+                        dynamics_file_name = str(val).strip()
+                    except Exception:
+                        dynamics_file_name = None
+
+                # If we found a dynamics file name, use it directly (skip token parsing)
+                if dynamics_file_name and dynamics_file_name.upper() != 'NULL':
+                    try:
+                        conn_settings['spec_settings']['dynamics_params_file'] = dynamics_file_name
+                        # use a cache to avoid re-reading the same JSON multiple times
+                        if dynamics_file_name in self._syn_params_cache:
+                            syn_params = self._syn_params_cache[dynamics_file_name]
+                        else:
+                            syn_params = self._load_synaptic_params_from_config(config, dynamics_file_name)
+                            # cache result (even if empty dict) to avoid repeated lookups
+                            self._syn_params_cache[dynamics_file_name] = syn_params
+                    except Exception as e:
+                        print(f"Warning: could not load dynamics_params file '{dynamics_file_name}' for edge {edge_dataset_name}: {e}")
+
+                # If a dynamics params JSON filename was provided, prefer using its basename
+                # as the connection name so that the UI matches the JSON definitions.
+                if dynamics_file_name:
+                    try:
+                        json_base = os.path.splitext(os.path.basename(dynamics_file_name))[0]
+                        # Ensure uniqueness in conn_type_settings
+                        if json_base in conn_type_settings:
+                            # Append edge_type_id to disambiguate
+                            json_base = f"{json_base}_type_{edge_type_id}"
+                        conn_name = json_base
+                    except Exception:
+                        pass
+
+                # If the dynamics params defined a level_of_detail, override the default
+                if isinstance(syn_params, dict) and 'level_of_detail' in syn_params:
+                    conn_settings['spec_settings']['level_of_detail'] = syn_params.get('level_of_detail', model_template)
+
                 # Add synaptic parameters, excluding level_of_detail
                 for key, value in syn_params.items():
                     if key != 'level_of_detail':
                         conn_settings['spec_syn_param'][key] = value
+                else:
+                    # Fallback: some SONATA/H5 edge files expose dynamics params as flattened
+                    # columns named like 'dynamics_params/<param>'. If no filename was given,
+                    # gather any such columns from edge_info and use them as spec_syn_param.
+                    for col in edge_info.index:
+                        if isinstance(col, str) and col.startswith('dynamics_params/'):
+                            param_key = col.split('/', 1)[1]
+                            try:
+                                val = edge_info[col]
+                                if pd.notna(val):
+                                    conn_settings['spec_syn_param'][param_key] = val
+                            except Exception:
+                                # Ignore malformed entries
+                                pass
                 
                 # Add weight from edge info if available
                 if 'syn_weight' in edge_info and pd.notna(edge_info['syn_weight']):
@@ -381,6 +479,35 @@ class SynapseTuner:
 
         return conn_type_settings
     
+    def _load_available_networks(self) -> None:
+        """
+        Load available network names from the config file for the network dropdown feature.
+        
+        This method is automatically called during initialization when a config file is provided.
+        It populates the available_networks list which enables the network dropdown in 
+        InteractiveTuner when multiple networks are available.
+        
+        Network Dropdown Behavior:
+        -------------------------
+        - If only one network exists: No network dropdown is shown
+        - If multiple networks exist: Network dropdown appears next to connection dropdown
+        - Networks are loaded from the edges data in the config file
+        - Current network defaults to the first available if not specified during init
+        """
+        if self.config is None:
+            self.available_networks = []
+            return
+            
+        try:
+            edges = load_edges_from_config(self.config)
+            self.available_networks = list(edges.keys())
+            
+            # Set current network to first available if not specified
+            if self.current_network is None and self.available_networks:
+                self.current_network = self.available_networks[0]
+        except Exception as e:
+            print(f"Warning: Could not load networks from config: {e}")
+            self.available_networks = []
     
     def _load_synaptic_params_from_config(self, config: dict, dynamics_params: str) -> dict:
         """
@@ -538,6 +665,61 @@ class SynapseTuner:
         h.finitialize()
         
         print(f"Successfully switched to connection: {new_connection}")
+
+    def _switch_network(self, new_network: str) -> None:
+        """
+        Switch to a different network and rebuild conn_type_settings for the new network.
+        
+        This method is called when the user selects a different network from the network 
+        dropdown in InteractiveTuner. It performs a complete rebuild of the connection 
+        types available for the new network.
+        
+        Parameters:
+        -----------
+        new_network : str
+            Name of the new network to switch to.
+            
+        Network Switching Process:
+        -------------------------
+        1. Validates the new network exists in available_networks
+        2. Rebuilds conn_type_settings using the new network's edge data
+        3. Updates the connection dropdown with new network's available connections
+        4. Preserves current connection if it exists in new network
+        5. Falls back to first available connection if current doesn't exist
+        6. Recreates synapses and NEURON objects for the new connection
+        7. Updates UI components to reflect the changes
+        """
+        if new_network not in self.available_networks:
+            print(f"Warning: Network '{new_network}' not found in available networks: {self.available_networks}")
+            return
+        
+        if new_network == self.current_network:
+            return  # No change needed
+        
+        # Update current network
+        self.current_network = new_network
+        
+        # Switch conn_type_settings using prebuilt data if available, otherwise build on-demand
+        if self.config:
+            print(f"Switching connections for network: {new_network}")
+            if hasattr(self, '_prebuilt_conn_type_settings') and new_network in self._prebuilt_conn_type_settings:
+                self.conn_type_settings = self._prebuilt_conn_type_settings[new_network]
+            else:
+                # Fallback: build on-demand (slower)
+                self.conn_type_settings = self._build_conn_type_settings_from_config(self.config, network=new_network)
+            
+            # Update available connections and select first one if current doesn't exist
+            available_connections = list(self.conn_type_settings.keys())
+            if self.current_connection not in available_connections and available_connections:
+                self.current_connection = available_connections[0]
+                print(f"Connection '{self.current_connection}' not available in new network. Switched to: {available_connections[0]}")
+            
+            # Switch to the (potentially new) connection
+            if self.current_connection in self.conn_type_settings:
+                self._switch_connection(self.current_connection)
+            
+            print(f"Successfully switched to network: {new_network}")
+            print(f"Available connections: {available_connections}")
 
     def _update_spec_syn_param(self, json_folder_path: str) -> None:
         """
@@ -1109,6 +1291,7 @@ class SynapseTuner:
         Sets up interactive sliders for tuning short-term plasticity (STP) parameters in a Jupyter Notebook.
 
         This method creates an interactive UI with sliders for:
+        - Network selection dropdown (if multiple networks available and config provided)
         - Connection type selection dropdown
         - Input frequency
         - Delay between pulse trains
@@ -1121,10 +1304,21 @@ class SynapseTuner:
         - Toggling voltage clamp mode
         - Switching between standard and continuous input modes
 
+        Network Dropdown Feature:
+        ------------------------
+        When the SynapseTuner is initialized with a BMTK config file containing multiple networks:
+        - A network dropdown appears next to the connection dropdown
+        - Users can dynamically switch between networks (e.g., 'network_to_network', 'external_to_network')
+        - Switching networks rebuilds available connections and updates the connection dropdown
+        - The current connection is preserved if it exists in the new network
+        - If multiple networks exist but only one is specified during init, that network is used as default
+
         Notes:
         ------
         Ideal for exploratory parameter tuning and interactive visualization of
         synapse behavior with different parameter values and stimulation protocols.
+        The network dropdown feature enables comprehensive exploration of multi-network
+        BMTK simulations without needing to reinitialize the tuner.
         """
         # Widgets setup (Sliders)
         freqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200]
@@ -1143,6 +1337,17 @@ class SynapseTuner:
             description="Connection:",
             style={'description_width': 'initial'}
         )
+
+        # Network dropdown - only shown if config was provided and multiple networks are available
+        # This enables users to switch between different network datasets dynamically
+        w_network = None
+        if self.config is not None and len(self.available_networks) > 1:
+            w_network = widgets.Dropdown(
+                options=self.available_networks,
+                value=self.current_network,
+                description="Network:",
+                style={'description_width': 'initial'}
+            )
 
         w_run = widgets.Button(description="Run Train", icon="history", button_style="primary")
         w_single = widgets.Button(description="Single Event", icon="check", button_style="success")
@@ -1202,9 +1407,14 @@ class SynapseTuner:
             "Setting up slider! The sliders ranges are set by their init value so try changing that if you dont like the slider range!"
         )
 
+        # Create output widget for displaying results
+        output_widget = widgets.Output()
+        
         def run_single_event(*args):
             clear_output()
             display(ui)
+            display(output_widget)
+            
             self.vclamp = w_vclamp.value
             # Update voltage clamp amplitude if voltage clamp is enabled
             if self.vclamp:
@@ -1215,7 +1425,11 @@ class SynapseTuner:
                     self.general_settings['vclamp_amp'] = w_vclamp_amp.value
             # Update synaptic properties based on slider values
             self.ispk = None
-            self.SingleEvent()
+            
+            # Clear previous results and run simulation
+            output_widget.clear_output()
+            with output_widget:
+                self.SingleEvent()
 
         def on_connection_change(*args):
             """Handle connection dropdown change"""
@@ -1235,8 +1449,50 @@ class SynapseTuner:
             except Exception as e:
                 print(f"Error switching connection: {e}")
 
+        def on_network_change(*args):
+            """
+            Handle network dropdown change events.
+            
+            This callback is triggered when the user selects a different network from 
+            the network dropdown. It coordinates the complete switching process:
+            1. Calls _switch_network() to rebuild connections for the new network
+            2. Updates the connection dropdown options with new network's connections
+            3. Recreates dynamic sliders for the new connection parameters
+            4. Refreshes the entire UI to reflect all changes
+            """
+            if w_network is None:
+                return
+            try:
+                new_network = w_network.value
+                if new_network != self.current_network:
+                    # Switch to new network
+                    self._switch_network(new_network)
+                    
+                    # Update connection dropdown options with new network's connections
+                    connection_options = list(self.conn_type_settings.keys())
+                    w_connection.options = connection_options
+                    if connection_options:
+                        w_connection.value = self.current_connection
+                    
+                    # Recreate dynamic sliders for new connection
+                    self.dynamic_sliders = create_dynamic_sliders()
+                    
+                    # Update UI
+                    update_ui_layout()
+                    update_ui()
+                    
+            except Exception as e:
+                print(f"Error switching network: {e}")
+
         def update_ui_layout():
-            """Update the UI layout with new sliders"""
+            """
+            Update the UI layout with new sliders and network dropdown.
+            
+            This function reconstructs the entire UI layout including:
+            - Network dropdown (if available) and connection dropdown in the top row
+            - Button controls and input mode toggles
+            - Parameter sliders arranged in columns
+            """
             nonlocal ui, slider_columns
             
             # Add the dynamic sliders to the UI
@@ -1256,8 +1512,12 @@ class SynapseTuner:
             else:  # Hide voltage clamp amplitude input when toggle is off
                 button_row = HBox([w_run, w_single, w_vclamp, w_input_mode])
             
-            # Reconstruct the UI
-            connection_row = HBox([w_connection])
+            # Construct the top row - include network dropdown if available
+            # This creates a horizontal layout with network dropdown (if present) and connection dropdown
+            if w_network is not None:
+                connection_row = HBox([w_network, w_connection])
+            else:
+                connection_row = HBox([w_connection])
             slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
             
             ui = VBox([connection_row, button_row, slider_row, slider_columns])
@@ -1266,6 +1526,8 @@ class SynapseTuner:
         def update_ui(*args):
             clear_output()
             display(ui)
+            display(output_widget)
+            
             self.vclamp = w_vclamp.value
             # Update voltage clamp amplitude if voltage clamp is enabled
             if self.vclamp:
@@ -1276,15 +1538,19 @@ class SynapseTuner:
             self.input_mode = w_input_mode.value
             syn_props = {var: slider.value for var, slider in self.dynamic_sliders.items()}
             self._set_syn_prop(**syn_props)
-            if not self.input_mode:
-                self._simulate_model(w_input_freq.value, self.w_delay.value, w_vclamp.value)
-            else:
-                self._simulate_model(w_input_freq.value, self.w_duration.value, w_vclamp.value)
-            amp = self._response_amplitude()
-            self._plot_model(
-                [self.general_settings["tstart"] - self.nstim.interval / 3, self.tstop]
-            )
-            _ = self._calc_ppr_induction_recovery(amp)
+            
+            # Clear previous results and run simulation
+            output_widget.clear_output()
+            with output_widget:
+                if not self.input_mode:
+                    self._simulate_model(w_input_freq.value, self.w_delay.value, w_vclamp.value)
+                else:
+                    self._simulate_model(w_input_freq.value, self.w_duration.value, w_vclamp.value)
+                amp = self._response_amplitude()
+                self._plot_model(
+                    [self.general_settings["tstart"] - self.nstim.interval / 3, self.tstop]
+                )
+                _ = self._calc_ppr_induction_recovery(amp)
 
         # Function to switch between delay and duration sliders
         def switch_slider(*args):
@@ -1301,9 +1567,13 @@ class SynapseTuner:
             update_ui_layout()
             clear_output()
             display(ui)
+            display(output_widget)
 
         # Link widgets to their callback functions
         w_connection.observe(on_connection_change, names="value")
+        # Link network dropdown callback only if network dropdown was created
+        if w_network is not None:
+            w_network.observe(on_network_change, names="value")
         w_input_mode.observe(switch_slider, names="value")
         w_vclamp.observe(on_vclamp_toggle, names="value")
 

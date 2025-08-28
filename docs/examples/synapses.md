@@ -9,12 +9,21 @@ The Synapses module provides tools for creating and tuning chemical and electric
 - Visualization of synaptic responses
 - Parameter fitting to match experimental data
 
-The [Synaptic Tuner](notebooks/synapses/synaptic_tuner/synaptic_tuner.ipynb) tutorial demonstrates how to use BMTool to interactively tune chemical synapses. In this notebook, you'll learn:
+The Synapses module provides two different tutorials for chemical synapse tuning:
 
-- How to set up and configure chemical synapses
-- How to adjust synapse parameters and observe responses
-- How to fit synaptic parameters to target response profiles
-- How to implement the tuned synapses in your models
+The [BMTK Chemical Synapse Tuner](notebooks/synapses/synaptic_tuner/bmtk_chem_syn_tuner.ipynb) tutorial demonstrates how to use BMTool to interactively tune chemical synapses within BMTK networks. In this notebook, you'll learn:
+
+- How to set up and configure chemical synapses in BMTK models
+- How to switch between different network connections for tuning
+- How to adjust synapse parameters and observe responses in a network context
+- How to use the optimizer to automatically fit synaptic parameters
+
+The [Neuron Chemical Synapse Tuner](notebooks/synapses/synaptic_tuner/neuron_chem_syn_tuner.ipynb) tutorial shows how to tune chemical synapses using pure NEURON models. This notebook covers:
+
+- How to set up chemical synapses with detailed configuration
+- How to manually tune synapse parameters outside of BMTK
+- How to work with different synapse types (facilitating, depressing, etc.)
+- How to implement custom synaptic mechanisms
 
 The [Gap Junction Tuner](notebooks/synapses/gap_junction_tuner/gap_junction_tuner.ipynb) tutorial shows how to configure and optimize electrical synapses. This notebook covers:
 
@@ -27,28 +36,72 @@ The [Gap Junction Tuner](notebooks/synapses/gap_junction_tuner/gap_junction_tune
 
 If you prefer to use the Synapses module directly in your code, here are some basic examples:
 
-### SynapticTuner
+### SynapseTuner with BMTK Networks
 
 ```python
-from bmtool.synapses import SynapticTuner
+from bmtool.synapses import SynapseTuner
 
-# Create a tuner for an Exp2Syn synapse
-tuner = SynapticTuner(
-    synapse_type='Exp2Syn',
-    pre_template='PyramidalCell',
-    post_template='InterneuronCell',
-    pre_section='soma',
-    post_section='dend[0]',
-    template_dir='path/to/templates',
-    mod_dir='path/to/mechanisms'
+# Create a tuner for BMTK networks
+tuner = SynapseTuner(
+    config='simulation_config.json',  # Path to BMTK config
+    current_name='i',                 # Synaptic current to record
+    slider_vars=['initW','Dep','Fac','Use','tau1','tau2']  # Parameters for sliders
 )
 
 # Display the interactive tuner
-tuner.show()
+tuner.InteractiveTuner()
 
-# After tuning, export parameters
-params = tuner.get_parameters()
-print(params)
+# Switch between different connections in your network
+tuner._switch_connection('PV2Exc')
+```
+
+### SynapseTuner with Pure NEURON Models
+
+```python
+from bmtool.synapses import SynapseTuner
+
+# Define general settings
+general_settings = {
+    'vclamp': True,
+    'rise_interval': (0.1, 0.9),
+    'tstart': 500.,
+    'tdur': 100.,
+    'threshold': -15.,
+    'delay': 1.3,
+    'weight': 1.,
+    'dt': 0.025,
+    'celsius': 20
+}
+
+# Define connection-specific settings
+conn_settings = {
+    'Exc2FSI': {
+        'spec_settings': {
+            'post_cell': 'FSI_Cell',
+            'vclamp_amp': -70.,
+            'sec_x': 0.5,
+            'sec_id': 1,
+            "level_of_detail": "AMPA_NMDA_STP",
+        },
+        'spec_syn_param': {
+            'initW': 0.76,
+            'tau_r_AMPA': 0.45,
+            'tau_d_AMPA': 7.5,
+            'Use': 0.13,
+            'Dep': 0.,
+            'Fac': 200.
+        },
+    }
+}
+
+# Create tuner with custom settings
+tuner = SynapseTuner(
+    general_settings=general_settings,
+    conn_type_settings=conn_settings
+)
+
+# Display the interactive tuner
+tuner.InteractiveTuner()
 ```
 
 ### GapJunctionTuner
