@@ -1202,7 +1202,13 @@ def connection_divergence(
             try:
                 cons = cons[~cons["is_gap_junction"]]
             except:
-                raise Exception("no gap junctions found to drop from connections")
+                pass
+        
+        if cons.empty:
+            if method == "mean+std":
+                return (0, 0)
+            else:
+                return 0
 
         if convergence:
             if method == "min":
@@ -1213,15 +1219,16 @@ def connection_divergence(
                 return round(count, 2)
             elif method == "std":
                 std = cons["target_node_id"].value_counts().std()
-                return round(std, 2)
+                return round(std, 2) if not np.isnan(std) else 0
             elif method == "mean":
                 mean = cons["target_node_id"].value_counts().mean()
-                return round(mean, 2)
+                return round(mean, 2) if not np.isnan(mean) else 0
             elif method == "mean+std":  # default is mean + std
                 mean = cons["target_node_id"].value_counts().mean()
                 std = cons["target_node_id"].value_counts().std()
-                # std = cons.apply(pd.Series.value_counts).target_node_id.dropna().std() no longer a valid way
-                return (round(mean, 2)), (round(std, 2))
+                mean = round(mean, 2) if not np.isnan(mean) else 0
+                std = round(std, 2) if not np.isnan(std) else 0
+                return (mean, std)
         else:  # divergence
             if method == "min":
                 count = cons["source_node_id"].value_counts().min()
@@ -1231,14 +1238,16 @@ def connection_divergence(
                 return round(count, 2)
             elif method == "std":
                 std = cons["source_node_id"].value_counts().std()
-                return round(std, 2)
+                return round(std, 2) if not np.isnan(std) else 0
             elif method == "mean":
                 mean = cons["source_node_id"].value_counts().mean()
-                return round(mean, 2)
+                return round(mean, 2) if not np.isnan(mean) else 0
             elif method == "mean+std":  # default is mean + std
                 mean = cons["source_node_id"].value_counts().mean()
                 std = cons["source_node_id"].value_counts().std()
-                return (round(mean, 2)), (round(std, 2))
+                mean = round(mean, 2) if not np.isnan(mean) else 0
+                std = round(std, 2) if not np.isnan(std) else 0
+                return (mean, std)
 
     return relation_matrix(
         config,
