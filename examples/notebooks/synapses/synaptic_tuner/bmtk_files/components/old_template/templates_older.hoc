@@ -1,0 +1,762 @@
+{load_file("stdrun.hoc")}
+
+/////////////////////// Pyramidal Cells //////////////////////////////
+// 4-compartment Corticospinal Cell Model Created by ZC (2023)
+// Adapted from 6-compartment Simplified Corticospinal Cell Model used in the following article:
+//  Neymotin SA, Suter BA, Dura-Bernal S, Shepherd GMGS, Migliore M, Lytton WW.
+//  Optimizing computer models of corticospinal neurons to replicate in vitro dynamics.
+//  Journal of Neurophysiology Published 19 October 2016 DOI: 10.1152/jn.00570.2016
+//  http://jn.physiology.org/content/early/2016/10/14/jn.00570.2016.abstract
+
+begintemplate CP_Cell
+	public soma, axon, dend, apic, type, Vinit, insert_mechs
+	create soma[1], axon[1], dend[1], apic[1]
+	strdef type
+
+	public noise, noiseRandObj
+	objref noise, noiseRandObj
+	public all, somatic, axonal, basal, apical
+	objref all, somatic, axonal, basal, apical
+
+	proc init() {
+		type = "CP_Cell"	
+
+		/////// parameters ///////
+		Vrest = -68. // resting potential
+		Vinit = -70.0 // initial potential (actual Vrest)
+		// celsius = 34.0 // for in vitro opt
+
+		// geometry properties
+		L_scale = 0.75 // scale length for dendrites
+		diam_scale = 0.6 // scale diameter for all compartments
+		somaL = 28.2149102762
+		somaDiam = 48.4123467666 * diam_scale
+		axonL = 594.292937602
+		axonDiam =  1.40966286462 * diam_scale
+		apicL = 785.713908009 * L_scale // =261.904636003*3 simplify 3 compartments into single
+		apicDiam = 1.5831889597 * diam_scale
+		bdendL = 299.810775175 * L_scale
+		bdendDiam = 2.2799248874 * diam_scale
+
+		// passive properties
+        RM_scale = 1. // scale membrane resistance
+		Cap_scale = 1.0 // scale membrance capacitance
+		rall = 114.510490019 // Ra all
+		axonCap =  1.01280903702 * Cap_scale // capacitance
+		somaCap =  1.78829677463 * Cap_scale
+		apicCap = 1.03418636866 * Cap_scale
+		bdendCap = 1.89771901209 * Cap_scale
+		axonRM = 3945.2107187 * RM_scale // Rm
+		somaRM = 18501.7540916 * RM_scale
+		apicRM = 10751.193413 * RM_scale
+		dendRM = 13123.00174 * RM_scale
+
+		// Na, K reversal potentials calculated from BenS internal/external solutions via Nernst eq.
+		p_ek = -104.0 // these reversal potentials for in vitro conditions
+		p_ena = 42.0
+		
+		// d-current
+		kdmc_gbar = 0.000404311891107
+		kdmc_gbar_axonm = 20
+		// spiking currents
+		nax_gbar = 0.0345117294903
+		nax_gbar_axonm = 5.0
+		kdr_gbar = 0.0131103978049
+		kdr_gbar_axonm = 5.0
+		// A few kinetic params changed vis-a-vis kdr.mod defaults:
+		kdr_vhalfn = 11.6427471384
+		kap_gbar = 0.0898600246397
+		kap_gbar_axonm = 5.0
+		// A few kinetic params changed vis-a-vis kap.mod defaults:
+		kap_vhalfn  = 32.7885075379
+		kap_vhalfl = -59.7867409796 // global!!
+		kap_tq = -52.0967985869
+
+		// h-current
+		h_scale1 = 2.5
+		h_scale2 = 2.5
+		nexusdist = 300.0 // nexus distance from soma
+		h_erev = -37.0 // global
+		h_gbar = 0.000140956438043 * h_scale1
+		h_gbar_tuft = 0.00565 * h_scale2 // mho/cm^2 (based on Harnett 2015 J Neurosci)
+		h_gbar_tuftm = h_gbar_tuft / h_gbar
+		h_lambda = nexusdist / log(h_gbar_tuftm)
+		calginc = 10.0 // middle apical dend gets more iL
+		midapic_d1 = 300.0 // start of calcium rich region
+		midapic_d2 = 400.0 // end of calcium rich region
+
+		// other ion channel parameters
+		cal_gcalbar = 4.41583533572e-06
+		can_gcanbar = 4.60717910591e-06
+		kBK_gpeak = 5.09733585163e-05
+		kBK_caVhminShift = 43.8900261407
+		kBK_caVhmin = -46.08 + kBK_caVhminShift
+		// kBK_caVhmax = 155.67
+		cadad_depth = 0.119408607923
+		cadad_taur = 99.1146852282
+
+		/////// sections ///////
+		all = new SectionList()
+		somatic = new SectionList()
+		axonal = new SectionList()
+		basal = new SectionList()
+		apical = new SectionList()
+
+		soma[0] all.append()
+		soma[0] somatic.append()
+		axon[0] all.append()
+		axon[0] axonal.append()
+		dend[0] all.append()
+		dend[0] basal.append()
+		apic[0] all.append()
+		apic[0] apical.append()
+
+		/////// topology ///////
+		connect axon[0](0), soma[0](0.5)
+		connect dend[0](0), soma[0](0)
+		connect apic[0](0), soma[0](1)
+
+		/////// geometry ///////
+		// dendrites along z axis
+		axon_L_scale = 0.1 // shorten axon to not infuence LFP much while keeping the same membrane area
+		soma[0] {
+			nseg = 1
+			diam = somaDiam
+			pt3dadd(0,0,-somaL/2,diam)
+			pt3dadd(0,0,somaL/2,diam)
+		}
+		axon[0] {
+			nseg = 1
+			diam = axonDiam/axon_L_scale
+			pt3dadd(0,0,0,diam)
+			pt3dadd(0,0,-axonL*axon_L_scale,diam)
+		}
+		dend[0] {
+			nseg = 1 // 3.
+			//Although it was originally 3, we changed it to one due to how dL works in BMTK.  
+			//when BMTK does a simulation, all segments within all sections go to 1 + 2*int(len/dL) which goes to 1 since dL is 2,000,000 in our BMTK sim configs
+			//want it to be consistent when tuning single cells.
+			diam = bdendDiam
+			pt3dadd(0,0,-somaL/2,diam)
+			pt3dadd(0,0,-somaL/2-bdendL,diam)
+		}
+		apic[0] {
+			nseg = 1 // 10. basal length constant around 1.33 times of the apical. keep roughly the same electrotonic distance per segment
+			//Although it was originally 10, we changed it to one due to how dL works in BMTK.  
+			//when BMTK does a simulation, all segments within all sections go to 1 + 2*int(len/dL) which goes to 1 since dL is 2,000,000 in our BMTK sim configs
+			//want it to be consistent when tuning single cells.
+			diam = apicDiam
+			pt3dadd(0,0,somaL/2,diam)
+			pt3dadd(0,0,somaL/2+apicL,diam)
+		}
+
+		/////// biophysics ///////
+		// insert mechanisms
+		forall {
+			insert k_ion
+			insert na_ion
+			insert pas
+			insert nax // Na current
+			insert kdr // K delayed rectifier current
+			insert kap // K-A current
+
+			// for all sections except axon
+			if (!issection(".*axon.*")) {
+				insert ih // h-current
+				insert ca_ion // calcium channels
+				insert cal // cal_mig.mod
+				insert can // can_mig.mod
+				insert cadad // cadad.mod - calcium decay
+				insert kBK // kBK.mod - ca and v dependent k channel
+			}
+		}
+		soma[0] insert kdmc // K-D current in soma & axon only
+		axon[0] insert kdmc
+
+		// common properties
+		forall {
+			Ra = rall
+			ek = p_ek // K+ current reversal potential (mV)
+			ena = p_ena // Na+ current reversal potential (mV)
+			e_pas = Vrest // passive reversal (mV)
+
+			vhalfn_kdr = kdr_vhalfn // KDR kinetics
+			vhalfn_kap = kap_vhalfn // K-A kinetics
+			vhalfl_kap = kap_vhalfl
+			tq_kap = kap_tq
+
+			// for all sections except axon
+			if (!issection(".*axon.*")) {
+				gbar_nax = nax_gbar // Na
+				gbar_kdr = kdr_gbar // KDR
+				gbar_kap = kap_gbar // K-A
+
+				gcalbar_cal = cal_gcalbar
+				gcanbar_can = can_gcanbar
+				gpeak_kBK = kBK_gpeak
+				caVhmin_kBK = kBK_caVhmin
+				depth_cadad = cadad_depth
+				taur_cadad = cadad_taur
+
+				erev_ih = h_erev // Ih
+				gbar_ih = h_gbar
+			}
+
+			v = Vinit // initial potential
+		}
+
+		// compartment specific properties
+		soma[0] {
+			cm = somaCap
+			g_pas = 1.0/somaRM
+			gbar_kdmc  = kdmc_gbar
+			distance(0, 0.5) // set soma center as origin for Ih gbar calculation
+		}
+		axon[0] {
+			cm = axonCap
+			g_pas = 1.0/axonRM
+            Ra = rall/axon_L_scale^3 // scale Ra to maintain the axial resistance
+			gbar_kdmc  = kdmc_gbar * kdmc_gbar_axonm
+			gbar_nax = nax_gbar * nax_gbar_axonm
+			gbar_kdr = kdr_gbar * kdr_gbar_axonm
+			gbar_kap = kap_gbar * kap_gbar_axonm
+		}
+		dend[0] {
+			cm = bdendCap
+			g_pas = 1.0/dendRM
+		}
+		apic[0] {
+			cm = apicCap
+			g_pas = 1.0/apicRM
+			for (x,0) {
+				d = distance(x)
+				if (d <= nexusdist) {
+					gbar_ih = h_gbar * exp(d/h_lambda)
+				} else {
+					gbar_ih = h_gbar
+				}
+				if (d>midapic_d1 && d<midapic_d2) {
+					gcalbar_cal = cal_gcalbar * calginc
+					// print d // check location of middle apical dend
+				}
+			}
+		}
+
+		define_shape() // builtin fcn: fill in 3d info for sections defined by only L and diam, translate 3d points for consistency with their connections
+	} //end init
+
+	proc insert_mechs() {
+		randseed = $1
+		soma[0]{
+			noiseRandObj=new Random()
+			noiseRandObj.Random123(randseed)
+			noiseRandObj.normal(0,1)
+
+			noise = new Gfluct2(0.5)
+			noise.g_e0 = 0.0052 //0.002
+			noise.g_i0 = 0.004 //0.021
+			noise.std_e = 0.0013 //0.001
+			noise.std_i = 0.002 //0.008
+			noise.E_i = -90.0 //-75
+			// noise.tau_e = 10.0
+			// noise.tau_i = 30.0
+
+			noise.setRandObj(noiseRandObj)
+		}
+	}
+endtemplate CP_Cell
+
+// 4-compartment Corticostriatal Cell Model Created by ZC (2023)
+// Adapted from 6-compartment Simplified Corticospinal Cell Model used in the following article:
+//  Neymotin SA, Suter BA, Dura-Bernal S, Shepherd GMGS, Migliore M, Lytton WW.
+//  Optimizing computer models of corticospinal neurons to replicate in vitro dynamics.
+//  Journal of Neurophysiology Published 19 October 2016 DOI: 10.1152/jn.00570.2016
+//  http://jn.physiology.org/content/early/2016/10/14/jn.00570.2016.abstract
+
+begintemplate CS_Cell
+	public soma, axon, dend, apic, type, Vinit, insert_mechs
+	create soma[1], axon[1], dend[1], apic[1]
+	strdef type
+
+	public noise, noiseRandObj
+	objref noise, noiseRandObj
+	public all, somatic, axonal, basal, apical
+	objref all, somatic, axonal, basal, apical
+
+	proc init() {
+		type = "CS_Cell"	
+
+		/////// parameters ///////
+		Vrest = -67. // resting potential
+		Vinit = -70.0 // initial potential (actual Vrest)
+		// celsius = 34.0 // for in vitro opt
+
+		// geometry properties
+        // roughly 3/4 of CP cell size in soma, apical; roughly same basal length
+		L_scale = 0.65 // scale length for dendrites
+		diam_scale = 0.6 // scale diameter for all compartments
+		somaL = 28.2149102762
+		somaDiam = 48.4123467666 * diam_scale
+		axonL = 594.292937602
+		axonDiam =  1.40966286462 * diam_scale
+		apicL = 785.713908009 * L_scale // =261.904636003*3 simplify 3 compartments into single
+		apicDiam = 1.5831889597 * diam_scale
+		bdendL = 299.810775175 * L_scale
+		bdendDiam = 2.2799248874 * diam_scale
+
+		// passive properties
+        RM_scale = 2.2 // scale membrane resistance
+		Cap_scale = 0.75 // scale membrance capacitance
+		rall = 114.510490019 // Ra all
+		axonCap =  1.01280903702 * Cap_scale // capacitance
+		somaCap =  1.78829677463 * Cap_scale
+		apicCap = 1.03418636866 * Cap_scale
+		bdendCap = 1.89771901209 * Cap_scale
+		axonRM = 3945.2107187 * RM_scale // Rm
+		somaRM = 18501.7540916 * RM_scale
+		apicRM = 10751.193413 * RM_scale
+		dendRM = 13123.00174 * RM_scale
+
+		// Na, K reversal potentials calculated from BenS internal/external solutions via Nernst eq.
+		p_ek = -104.0 // these reversal potentials for in vitro conditions
+		p_ena = 42.0
+		
+		// d-current
+		kdmc_gbar = 0.000404311891107
+		kdmc_gbar_axonm = 20
+		// spiking currents
+		nax_gbar = 0.0345117294903
+		nax_gbar_axonm = 5.0
+		kdr_gbar = 0.0131103978049
+		kdr_gbar_axonm = 5.0
+		// A few kinetic params changed vis-a-vis kdr.mod defaults:
+		kdr_vhalfn = 11.6427471384
+		kap_gbar = 0.0898600246397
+		kap_gbar_axonm = 5.0
+		// A few kinetic params changed vis-a-vis kap.mod defaults:
+		kap_vhalfn  = 32.7885075379
+		kap_vhalfl = -59.7867409796 // global!!
+		kap_tq = -52.0967985869
+
+		// h-current
+        h_scale1 = 0.21 // 0.27
+		h_scale2 = 0.21 // 0.0075
+		nexusdist = 250.0 // nexus distance from soma
+		h_erev = -37.0 // global
+		h_gbar = 0.000140956438043 * h_scale1
+		h_gbar_tuft = 0.00565 * h_scale2 // mho/cm^2 (based on Harnett 2015 J Neurosci)
+		h_gbar_tuftm = h_gbar_tuft / h_gbar
+		h_lambda = nexusdist / log(h_gbar_tuftm)
+		calginc = 10.0 // middle apical dend gets more iL
+		midapic_d1 = 250.0 // 240 // start of calcium rich region
+		midapic_d2 = 333.0 // 320 // end of calcium rich region
+
+		// other ion channel parameters
+		cal_gcalbar = 4.41583533572e-06
+		can_gcanbar = 4.60717910591e-06
+		kBK_gpeak = 5.09733585163e-05
+		kBK_caVhminShift = 43.8900261407
+		kBK_caVhmin = -46.08 + kBK_caVhminShift
+		// kBK_caVhmax = 155.67
+		cadad_depth = 0.119408607923
+		cadad_taur = 99.1146852282
+
+		/////// sections ///////
+		all = new SectionList()
+		somatic = new SectionList()
+		axonal = new SectionList()
+		basal = new SectionList()
+		apical = new SectionList()
+
+		soma[0] all.append()
+		soma[0] somatic.append()
+		axon[0] all.append()
+		axon[0] axonal.append()
+		dend[0] all.append()
+		dend[0] basal.append()
+		apic[0] all.append()
+		apic[0] apical.append()
+
+		/////// topology ///////
+		connect axon[0](0), soma[0](0.5)
+		connect dend[0](0), soma[0](0)
+		connect apic[0](0), soma[0](1)
+
+		/////// geometry ///////
+		// dendrites along z axis
+		axon_L_scale = 0.1 // shorten axon to not infuence LFP much while keeping the same membrane area
+		soma[0] {
+			nseg = 1
+			diam = somaDiam
+			pt3dadd(0,0,-somaL/2,diam)
+			pt3dadd(0,0,somaL/2,diam)
+		}
+		axon[0] {
+			nseg = 1
+			diam = axonDiam/axon_L_scale
+			pt3dadd(0,0,0,diam)
+			pt3dadd(0,0,-axonL*axon_L_scale,diam)
+		}
+		dend[0] {
+			nseg = 1 // 3. Although it was originally 3, we changed it to one due to how dL works in BMTK.  
+			//when BMTK does a simulation, all segments within all sections go to 1 + 2*int(len/dL) which goes to 1 since dL is 2,000,000 in our BMTK sim configs
+			//want it to be consistent when tuning single cells.
+			diam = bdendDiam
+			pt3dadd(0,0,-somaL/2,diam)
+			pt3dadd(0,0,-somaL/2-bdendL,diam)
+		}
+		apic[0] {
+			nseg = 1 // 9. basal length constant around 1.55 times of the apical. keep roughly the same electrotonic distance per segment
+			//Although it was originally 9, we changed it to one due to how dL works in BMTK.  
+			//when BMTK does a simulation, all segments within all sections go to 1 + 2*int(len/dL) which goes to 1 since dL is 2,000,000 in our BMTK sim configs
+			//want it to be consistent when tuning single cells.
+			diam = apicDiam
+			pt3dadd(0,0,somaL/2,diam)
+			pt3dadd(0,0,somaL/2+apicL,diam)
+		}
+
+		/////// biophysics ///////
+		// insert mechanisms
+		forall {
+			insert k_ion
+			insert na_ion
+			insert pas
+			insert nax // Na current
+			insert kdr // K delayed rectifier current
+			insert kap // K-A current
+
+			// for all sections except axon
+			if (!issection(".*axon.*")) {
+				insert ih // h-current
+				insert ca_ion // calcium channels
+				insert cal // cal_mig.mod
+				insert can // can_mig.mod
+				insert cadad // cadad.mod - calcium decay
+				insert kBK // kBK.mod - ca and v dependent k channel
+			}
+		}
+		soma[0] insert kdmc // K-D current in soma & axon only
+		axon[0] insert kdmc
+
+		// common properties
+		forall {
+			Ra = rall
+			ek = p_ek // K+ current reversal potential (mV)
+			ena = p_ena // Na+ current reversal potential (mV)
+			e_pas = Vrest // passive reversal (mV)
+
+			vhalfn_kdr = kdr_vhalfn // KDR kinetics
+			vhalfn_kap = kap_vhalfn // K-A kinetics
+			vhalfl_kap = kap_vhalfl
+			tq_kap = kap_tq
+
+			// for all sections except axon
+			if (!issection(".*axon.*")) {
+				gbar_nax = nax_gbar // Na
+				gbar_kdr = kdr_gbar // KDR
+				gbar_kap = kap_gbar // K-A
+
+				gcalbar_cal = cal_gcalbar
+				gcanbar_can = can_gcanbar
+				gpeak_kBK = kBK_gpeak
+				caVhmin_kBK = kBK_caVhmin
+				depth_cadad = cadad_depth
+				taur_cadad = cadad_taur
+
+				erev_ih = h_erev // Ih
+				gbar_ih = h_gbar
+			}
+
+			v = Vinit // initial potential
+		}
+
+		// compartment specific properties
+		soma[0] {
+			cm = somaCap
+			g_pas = 1.0/somaRM
+			gbar_kdmc  = kdmc_gbar
+			distance(0, 0.5) // set soma center as origin for Ih gbar calculation
+		}
+		axon[0] {
+			cm = axonCap
+			g_pas = 1.0/axonRM
+            Ra = rall/axon_L_scale^3 // scale Ra to maintain the axial resistance
+			gbar_kdmc  = kdmc_gbar * kdmc_gbar_axonm
+			gbar_nax = nax_gbar * nax_gbar_axonm
+			gbar_kdr = kdr_gbar * kdr_gbar_axonm
+			gbar_kap = kap_gbar * kap_gbar_axonm
+		}
+		dend[0] {
+			cm = bdendCap
+			g_pas = 1.0/dendRM
+		}
+		apic[0] {
+			cm = apicCap
+			g_pas = 1.0/apicRM
+			for (x,0) {
+				d = distance(x)
+				if (d <= nexusdist) {
+					gbar_ih = h_gbar * exp(d/h_lambda)
+				} else {
+					gbar_ih = h_gbar
+				}
+				if (d>midapic_d1 && d<midapic_d2) {
+					gcalbar_cal = cal_gcalbar * calginc
+					// print d // check location of middle apical dend
+				}
+			}
+		}
+
+		define_shape() // builtin fcn: fill in 3d info for sections defined by only L and diam, translate 3d points for consistency with their connections
+	} //end init
+
+	proc insert_mechs() {
+		randseed = $1
+		soma[0]{
+			noiseRandObj=new Random()
+			noiseRandObj.Random123(randseed)
+			noiseRandObj.normal(0,1)
+
+			noise = new Gfluct2(0.5)
+			noise.g_e0 = 0.0044 //0.002
+			noise.g_i0 = 0.004 //0.021
+			noise.std_e = 0.0011 //0.001
+			noise.std_i = 0.002 //0.008
+			noise.E_i = -90.0 //-75
+			// noise.tau_e = 10.0
+			// noise.tau_i = 30.0
+
+			noise.setRandObj(noiseRandObj)
+		}
+	}
+endtemplate CS_Cell
+
+
+/////////////////////// FSI_Cell //////////////////////////////
+begintemplate FSI_Cell
+	public soma, dend, type, Vinit, insert_mechs
+	create soma[1], dend[1]
+	strdef type
+
+	public noise, noiseRandObj
+	objref noise, noiseRandObj
+	public all, somatic, basal, apical, axonal
+	objref all, somatic, basal, apical, axonal
+
+	proc init() {
+		type = "FSI_Cell"
+
+		/////// parameters ///////
+		Vinit = -74 // initial potential
+		RaAll = 150
+		
+		Cap_scale = 0.75 // scale membrance capacitance
+		RM_scale = 0.25 // scale membrane resistance
+		diam_scale = 0.55 // scale diameter for all compartments
+
+		Cm = 1*Cap_scale // (microF/cm2)
+		Rm = 12000 * RM_scale // (ohm-cm2)
+		eleak = -74
+		gleak = 1/Rm
+		
+
+		/////// sections ///////
+		all = new SectionList()
+		somatic = new SectionList()
+		basal = new SectionList()
+		apical = new SectionList()
+
+		soma[0] all.append()
+		soma[0] somatic.append()
+		dend[0] all.append()
+		dend[0] basal.append()
+
+		/////// topology ////////
+		connect dend[0](0), soma[0](1)
+
+		/////// geometry ////////
+		// dendrites along z axis
+		Lsoma = 15.0
+		Ldend = 150.0 
+		soma_diam = 15.0*diam_scale
+		dend_diam = 10*diam_scale
+		soma[0] {
+			diam = soma_diam nseg = 1
+			pt3dadd(0,0,-Lsoma/2,diam)
+			pt3dadd(0,0,Lsoma/2,diam)
+		}
+		dend[0] {
+			diam = dend_diam nseg = 1
+			pt3dadd(0,0,0,diam)
+			pt3dadd(0,0,Ldend,diam)
+		}
+
+		/////// biophysics //////
+		forall {
+			cm = Cm
+			Ra = RaAll
+
+			insert leak
+			el_leak = eleak
+			glbar_leak = gleak
+			insert nainter
+			mv_05_nainter = -35.5 // -18.5
+			hv_05_nainter = -39 // -29
+			mtau_inv_nainter = 8.4 // 2.1
+			htau_inv_nainter = 0.135 // 0.045
+			insert kdrinter
+			v_05_kdrinter = -36 // -19
+			tau_inv_kdrinter = 0.45 // 0.15
+
+			ena = 45 // (mV)
+			ek = -80 // (mV)
+			v = Vinit // initial potential
+		}
+		soma[0] {
+			gnabar_nainter = 0.035 // (siemens/cm2)
+			gkdrbar_kdrinter = 0.008 // (siemens/cm2)
+		}
+		dend[0] {
+			gnabar_nainter = 0.010 // (siemens/cm2)
+			gkdrbar_kdrinter = 0.003 // (siemens/cm2)
+		}
+
+		define_shape() // builtin fcn: fill in 3d info for sections defined by only L and diam, translate 3d points for consistency with their connections	
+	}
+
+	proc insert_mechs(){
+		randseed = $1
+		soma[0]{
+			noiseRandObj=new Random()
+			noiseRandObj.Random123(randseed)
+			noiseRandObj.normal(0,1)
+
+			soma noise = new Gfluct2(0.5)
+			noise.g_e0 = 0.001 //0.00121
+			noise.g_i0 = 0.004 //0.00573
+			noise.std_e = 0.00025 //0.00012
+			noise.std_i = 0.002 //0.00264
+
+			noise.setRandObj(noiseRandObj)
+		}
+	}
+endtemplate FSI_Cell
+
+
+/////////////////////// LTS_Cell //////////////////////////////
+// Adapted from Amygdala SOM cell model
+begintemplate LTS_Cell
+	public soma, dend, type, Vinit, insert_mechs
+	create soma[1], dend[2]
+	strdef type
+
+	public noise, noiseRandObj
+	objref noise, noiseRandObj
+	public all, somatic, basal, apical, axonal
+	objref all, somatic, basal, apical, axonal
+    
+    proc init() {
+		type = "LTS_Cell"
+		
+		/////// parameters ///////
+		Vinit = -70 // initial potential
+		RaAll = 150 //200
+
+		Cap_scale = 0.55 // scale membrance capacitance
+		RM_scale = 1 // scale membrane resistance
+		Cm_soma = 1.3 *Cap_scale//1 //2.5
+		Cm_dend = 1.3 *Cap_scale
+
+		eleak = -70 //-60
+		gleak = 6.7e-05 // 6e-05
+		gnat = 0.08 //0.08 //0.06
+		gkdr = 0.026 //0.04 //0.065 //0.03 //0.015
+		gnap = 0.0011 // 0.0014 //0.0022 //0.0022 //0.0013 //0.0009 //0.00065
+		gim  = 0.00015 //0.0015 //0.005 //0.007 //0.00501 //0005 //0.007 //0.009
+
+		/////// sections ///////
+		all = new SectionList()
+		somatic = new SectionList()
+		basal = new SectionList()
+		apical = new SectionList()
+		axonal = new SectionList()
+
+		soma[0] all.append()
+		soma[0] somatic.append()
+		dend[0] all.append()
+		dend[0] basal.append()
+		dend[1] all.append()
+		dend[1] basal.append()
+
+		/////// topology ////////
+		connect dend[0](0), soma[0](0)
+		connect dend[1](0), soma[0](1)
+
+		/////// geometry ////////
+		// dendrites along z axis
+		diam_scale = 1.0 // scale diameter for all compartments
+		Lsoma = 20.0
+		Ldend = 250.0 
+		soma_diam = 10.0 *diam_scale
+		dend_diam = 3*diam_scale
+		soma[0] {
+			diam = soma_diam nseg = 1
+			pt3dadd(0,0,-Lsoma/2,diam)
+			pt3dadd(0,0,Lsoma/2,diam)
+		}
+		dend[0] {
+			diam = dend_diam nseg = 1
+			pt3dadd(0,0,0,diam)
+			pt3dadd(0,0,-Ldend,diam)
+		}
+		dend[1] {
+			diam = dend_diam nseg = 1
+			pt3dadd(0,0,0,diam)
+			pt3dadd(0,0,Ldend,diam)
+		}
+
+		/////// biophysics //////
+		forall {
+			Ra = RaAll
+			insert leak
+			el_leak = eleak
+			glbar_leak = gleak
+			insert natCA3
+			gbar_natCA3 = gnat
+			insert napCA3
+			gbar_napCA3 = gnap
+			insert kdrCA3
+			gbar_kdrCA3 = gkdr
+			insert imCA3
+			gbar_imCA3 = gim
+
+			ena = 45
+			ek = -80
+			v = Vinit // initial potential
+		}
+
+		soma[0] cm = Cm_soma
+		for i = 0, 1 dend[i] {
+			cm = Cm_dend
+		}
+
+		define_shape() // builtin fcn: fill in 3d info for sections defined by only L and diam, translate 3d points for consistency with their connections
+	}
+
+	proc insert_mechs(){
+		randseed = $1
+		soma[0]{
+			noiseRandObj=new Random()
+			noiseRandObj.Random123(randseed)
+			noiseRandObj.normal(0,1)
+
+			noise = new Gfluct2(0.5)
+			noise.g_e0 = 0.0007 //0.00121
+			noise.g_i0 = 0.004 //0.00573
+			noise.std_e = 0.000175 //0.00012
+			noise.std_i = 0.002 //0.00264
+
+			noise.setRandObj(noiseRandObj)
+		}
+	}
+endtemplate LTS_Cell
