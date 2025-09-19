@@ -661,7 +661,8 @@ def connection_histogram(
                 (edges[source_id_type] == source_id) & (edges[target_id_type] == target_id)
             ]
             if not include_gap:
-                temp = temp[~temp["is_gap_junction"]]
+                gap_col = temp["is_gap_junction"].fillna(False).astype(bool)
+                temp = temp[~gap_col]
             node_pairs = temp.groupby("target_node_id")["source_node_id"].count()
             try:
                 conn_mean = statistics.mean(node_pairs.values)
@@ -1022,8 +1023,8 @@ def plot_synapse_location(config: str, source: str, target: str, sids: str, tids
         )
 
     # Fix the validation logic - it was using 'or' instead of 'and'
-    if syn_feature not in ["afferent_section_id", "afferent_section_pos"]:
-        raise ValueError("Currently only syn features supported are afferent_section_id or afferent_section_pos")
+    #if syn_feature not in ["afferent_section_id", "afferent_section_pos"]:
+    #    raise ValueError("Currently only syn features supported are afferent_section_id or afferent_section_pos")
 
     try:
         # Load mechanisms and template

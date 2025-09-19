@@ -1,4 +1,5 @@
 import argparse
+from logging import raiseExceptions
 import math
 import os
 import smtplib
@@ -1081,7 +1082,9 @@ def connection_totals(
         total = edges[(edges[source_id_type] == source_id) & (edges[target_id_type] == target_id)]
         if not include_gap:
             try:
-                total = total[~total["is_gap_junction"]]
+                # Handle mixed types and NaN values in is_gap_junction column
+                gap_col = total["is_gap_junction"].fillna(False).astype(bool)
+                total = total[~gap_col]
             except:
                 # If there are no gap junctions, just continue
                 pass
@@ -1129,7 +1132,8 @@ def percent_connections(
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type] == target_id)]
         if not include_gap:
             try:
-                gaps = cons["is_gap_junction"]==True
+                # Handle mixed types and NaN values in is_gap_junction column
+                gaps = cons["is_gap_junction"].fillna(False).astype(bool)
                 cons = cons[~gaps]
             except:
                 raise Exception("no gap junctions found to drop from connections")
@@ -1200,9 +1204,11 @@ def connection_divergence(
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type] == target_id)]
         if not include_gap:
             try:
-                cons = cons[~cons["is_gap_junction"]]
+                # Handle mixed types and NaN values in is_gap_junction column
+                gap_col = cons["is_gap_junction"].fillna(False).astype(bool)
+                cons = cons[~gap_col]
             except:
-                pass
+                raise Exception("error")
         
         if cons.empty:
             if method == "mean+std":
@@ -1451,7 +1457,9 @@ def connection_probabilities(
         ]
         if not include_gap:
             try:
-                relevant_edges = relevant_edges[~relevant_edges["is_gap_junction"]]
+                # Handle mixed types and NaN values in is_gap_junction column
+                gap_col = relevant_edges["is_gap_junction"].fillna(False).astype(bool)
+                relevant_edges = relevant_edges[~gap_col]
             except:
                 raise Exception("no gap junctions found to drop from connections")
         connected_distances = eudist(relevant_edges, dist_X, dist_Y, dist_Z).values.tolist()
