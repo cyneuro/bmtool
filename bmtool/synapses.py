@@ -1175,7 +1175,9 @@ class SynapseTuner:
         amp = np.array(amp)
         amp = amp * 1000  # scale up
         amp = amp.reshape(-1, amp.shape[-1])
-        maxamp = amp.max(axis=1 if normalize_by_trial else None)
+        
+        # Calculate 90th percentile amplitude for normalization
+        percentile_90 = np.percentile(amp, 90)
 
         def format_array(arr):
             """Format an array to 2 significant figures for cleaner output."""
@@ -1187,49 +1189,42 @@ class SynapseTuner:
                 f"Short Term Plasticity Results for {self.train_freq}Hz with {self.train_delay} Delay"
             )
             print("=" * 40)
-            print("PPR: Above 1 is facilitating, below 1 is depressing.")
+            print("PPR: Above 0 is facilitating, below 0 is depressing.")
             print("Induction: Above 0 is facilitating, below 0 is depressing.")
             print("Recovery: A measure of how fast STP decays.\n")
 
-            # PPR Calculation
-            ppr = amp[:, 1:2] / amp[:, 0:1]
+            # PPR Calculation: (Avg 2nd pulse - Avg 1st pulse) / 90th percentile amplitude
+            ppr = (np.mean(amp[:, 1:2]) - np.mean(amp[:, 0:1])) / percentile_90
             print("Paired Pulse Response (PPR)")
-            print("Calculation: 2nd pulse / 1st pulse")
+            print("Calculation: (Avg 2nd pulse - Avg 1st pulse) / 90th percentile amplitude")
             print(
-                f"Values: ({format_array(amp[:, 1:2])}) / ({format_array(amp[:, 0:1])}) = {format_array(ppr)}\n"
+                f"Values: ({np.mean(amp[:, 1:2]):.3f} - {np.mean(amp[:, 0:1]):.3f}) / {percentile_90:.3f} = {ppr:.3f}\n"
             )
 
-            # Induction Calculation
-            induction = np.mean((amp[:, 5:8].mean(axis=1) - amp[:, :1].mean(axis=1)) / maxamp)
+            # Induction Calculation: (Avg (6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude
+            induction = (np.mean(amp[:, 5:8]) - np.mean(amp[:, :1])) / percentile_90
             print("Induction")
-            print("Calculation: (avg(6th, 7th, 8th pulses) - 1st pulse) / max amps")
+            print("Calculation: (Avg(6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude")
             print(
-                f"Values: avg({format_array(amp[:, 5:8])}) - {format_array(amp[:, :1])} / {format_array(maxamp)}"
-            )
-            print(
-                f"({format_array(amp[:, 5:8].mean(axis=1))}) - ({format_array(amp[:, :1].mean(axis=1))}) / {format_array(maxamp)} = {induction:.3f}\n"
+                f"Values: {np.mean(amp[:, 5:8]):.3f} - {np.mean(amp[:, :1]):.3f} / {percentile_90:.3f} = {induction:.3f}\n"
             )
 
-            # Recovery Calculation
-            recovery = np.mean((amp[:, 8:12].mean(axis=1) - amp[:, :4].mean(axis=1)) / maxamp)
+            # Recovery Calculation: (Avg (9th, 10th, 11th, 12th pulses) - Avg (1st, 2nd, 3rd, 4th pulses)) / 90th percentile amplitude
+            recovery = (np.mean(amp[:, 8:12]) - np.mean(amp[:, :4])) / percentile_90
             print("Recovery")
             print(
-                "Calculation: (avg(9th, 10th, 11th, 12th pulses) - avg(1st to 4th pulses)) / max amps"
+                "Calculation: (Avg(9th, 10th, 11th, 12th pulses) - Avg(1st to 4th pulses)) / 90th percentile amplitude"
             )
             print(
-                f"Values: avg({format_array(amp[:, 8:12])}) - avg({format_array(amp[:, :4])}) / {format_array(maxamp)}"
-            )
-            print(
-                f"({format_array(amp[:, 8:12].mean(axis=1))}) - ({format_array(amp[:, :4].mean(axis=1))}) / {format_array(maxamp)} = {recovery:.3f}\n"
+                f"Values: {np.mean(amp[:, 8:12]):.3f} - {np.mean(amp[:, :4]):.3f} / {percentile_90:.3f} = {recovery:.3f}\n"
             )
 
             print("=" * 40 + "\n")
 
-        recovery = np.mean((amp[:, 8:12].mean(axis=1) - amp[:, :4].mean(axis=1)) / maxamp)
-        induction = np.mean((amp[:, 5:8].mean(axis=1) - amp[:, :1].mean(axis=1)) / maxamp)
-        ppr = amp[:, 1:2] / amp[:, 0:1]
-        # maxamp = max(amp, key=lambda x: abs(x[0]))
-        maxamp = maxamp.max()
+        # Calculate final metrics
+        ppr = (np.mean(amp[:, 1:2]) - np.mean(amp[:, 0:1])) / percentile_90
+        induction = (np.mean(amp[:, 5:8]) - np.mean(amp[:, :1])) / percentile_90
+        recovery = (np.mean(amp[:, 8:12]) - np.mean(amp[:, :4])) / percentile_90
 
         return ppr, induction, recovery
 
