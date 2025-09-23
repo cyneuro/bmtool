@@ -1325,7 +1325,7 @@ class SynapseTuner:
         vlamp_status = self.vclamp
 
         # Connection dropdown
-        connection_options = list(self.conn_type_settings.keys())
+        connection_options = sorted(list(self.conn_type_settings.keys()))
         w_connection = widgets.Dropdown(
             options=connection_options,
             value=self.current_connection,
