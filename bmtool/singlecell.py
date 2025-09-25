@@ -769,7 +769,7 @@ class FI(object):
         --------
         tuple
             (current_amplitudes, spike_counts) where:
-            - current_amplitudes: List of current injection amplitudes (nA)
+            - current_amplitudes: List of current injection amplitudes (pA)
             - spike_counts: List of spike counts corresponding to each amplitude
         """
         print("Running simulations for FI curve...")
@@ -781,14 +781,14 @@ class FI(object):
         print()
         print("Results")
         # lets make a df so the results line up nice
-        data = {"Injection (nA):": self.amps, "number of spikes": self.nspks}
+        data = {"Injection (pA):": [amp * 1000 for amp in self.amps], "number of spikes": self.nspks}
         df = pd.DataFrame(data)
         print(df)
-        # print(f'Injection (nA): ' + ', '.join(f'{x:g}' for x in self.amps))
+        # print(f'Injection (pA): ' + ', '.join(f'{x:g}' for x in self.amps))
         # print(f'Number of spikes: ' + ', '.join(f'{x:d}' for x in self.nspks))
         print()
 
-        return self.amps, self.nspks
+        return [amp * 1000 for amp in self.amps], self.nspks
 
 
 class ZAP(CurrentClamp):
@@ -1260,7 +1260,7 @@ class Profiler:
         plot: bool
             automatically plot an fi curve
 
-        Returns the injection amplitudes (nA) used, number of spikes per amplitude supplied
+        Returns the injection amplitudes (pA) used, number of spikes per amplitude supplied
             list(amps), list(# of spikes)
         """
         fi = FI(
@@ -1276,7 +1276,7 @@ class Profiler:
             plt.figure()
             plt.plot(amp, nspk)
             plt.title("FI Curve")
-            plt.xlabel("Injection (nA)")
+            plt.xlabel("Injection (pA)")
             plt.ylabel("# Spikes")
             plt.show()
 
