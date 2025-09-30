@@ -1801,7 +1801,6 @@ class GapJunctionTuner:
             self.cell2 = getattr(h, self.cell_name)()
         else:
             print(self.conn)
-            print(self.conn['cell'])
             self.cell_name = self.conn['cell']
             self.cell1 = getattr(h, self.cell_name)()
             self.cell2 = getattr(h, self.cell_name)()
