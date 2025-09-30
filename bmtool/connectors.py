@@ -1604,6 +1604,392 @@ class CorrelatedGapJunction(GapJunction):
             if self.save_report:
                 self.save_connection_report()
         return nsyns
+    
+class GapJunctionConditionalReciprocalConnector(AbstractConnector):
+    """
+    Object for building reciprocal chemical synapses in BMTK network model with
+    probabilities that depend on the presence of gap junctions between cell pairs.
+
+    This connector creates chemical synapses where the connection probabilities
+    (forward, backward, and reciprocal) differ based on whether a pair of cells
+    shares a gap junction. This allows modeling of the experimentally observed
+    correlation between electrical and chemical coupling in neural populations.
+
+    Algorithm:
+        For each potential connection pair, first determine if a gap junction exists
+        using the provided gap_connector. Then apply different bivariate Bernoulli
+        probability distributions for chemical synapses based on electrical coupling
+        status:
+        - Electrically coupled pairs: Use p0_elec, p1_elec, pr_elec probabilities
+        - Non-electrically coupled pairs: Use p0_nonelec, p1_nonelec, pr_nonelec probabilities
+
+        For each pair, generate random connections following the same bivariate
+        Bernoulli distribution as ReciprocalConnector, but with conditional
+        probabilities based on gap junction presence.
+
+    Use with BMTK:
+        1. First create and set up a gap junction connector:
+
+            gap_connector = GapJunction(p=0.08, verbose=True)
+            gap_connector.setup_nodes(source_population, target_population)
+            net.add_edges(is_gap_junction=True, **gap_connector.edge_params())
+
+        2. Create the conditional reciprocal connector with different probabilities
+        for electrically coupled vs non-coupled pairs:
+
+            chemical_connector = GapJunctionConditionalReciprocalConnector(
+                gap_connector=gap_connector,
+                p0_elec=0.50, p1_elec=0.50, pr_elec=0.25,        # High reciprocity for coupled pairs
+                p0_nonelec=0.125, p1_nonelec=0.125, pr_nonelec=0.03,  # Low reciprocity for non-coupled pairs
+                verbose=True
+            )
+
+        3. Set up nodes and add chemical edges:
+
+            chemical_connector.setup_nodes(source_population, target_population)
+            net.add_edges(**chemical_connector.edge_params(),
+                         **chemical_synapse_properties)
+
+        4. Build the network:
+
+            net.build()
+
+    Parameters:
+        gap_connector: GapJunction connector object that has been set up with nodes.
+            Used to determine which cell pairs have electrical coupling.
+        p0_elec, p1_elec: Forward and backward connection probabilities for
+            electrically coupled pairs. Can be constants or functions within [0, 1].
+        pr_elec: Reciprocal connection probability for electrically coupled pairs.
+            Can be a constant or function accepting (pr_arg, p0, p1) arguments.
+        p0_nonelec, p1_nonelec: Forward and backward connection probabilities for
+            non-electrically coupled pairs. Can be constants or functions within [0, 1].
+        pr_nonelec: Reciprocal connection probability for non-electrically coupled pairs.
+            Can be a constant or function accepting (pr_arg, p0, p1) arguments.
+        p0_elec_arg, p1_elec_arg, pr_elec_arg: Input arguments for electrically coupled
+            probability functions. Can be constants, distance functions, or other
+            node property functions. Set to None if functions don't need arguments.
+        p0_nonelec_arg, p1_nonelec_arg, pr_nonelec_arg: Input arguments for
+            non-electrically coupled probability functions, similar to above.
+        n_syn0, n_syn1: Number of synapses for forward/backward connections if
+            established. Can be constants or functions of node properties.
+            Limited to 255 due to uint8 storage.
+        verbose: Whether to print detailed connection statistics and progress.
+        save_report: Whether to save connection report to CSV file.
+        report_name: Filename for connection report (default: "conn.csv").
+
+    Returns:
+        An object that works with BMTK to build conditional reciprocal chemical
+        edges in a network, with probabilities dependent on gap junction presence.
+
+    Important attributes:
+        gap_connector: Reference to the GapJunction connector used for coupling detection.
+        vars: Dictionary storing original input parameters.
+        source, target: NodePool objects for source and target populations.
+        recurrent: Whether source and target populations are the same.
+        conn_mat: Connection matrix storing synapse counts.
+        conn_prop: List of dictionaries storing connection properties for forward
+            and backward connections. Format: [{src_id: {tgt_id: prop}, ...}, ...]
+        gap_decisions: Dictionary caching gap junction presence for each pair.
+        connection_stats: Statistics tracking connections by electrical coupling status.
+            Format: {'elec': {'pairs': int, 'uni': int, 'recp': int},
+                    'nonelec': {'pairs': int, 'uni': int, 'recp': int}}
+    """
+
+    def __init__(self, gap_connector, p0_elec, p1_elec, pr_elec, p0_nonelec, p1_nonelec, pr_nonelec, 
+                 p0_elec_arg=None, p1_elec_arg=None, pr_elec_arg=None,
+                 p0_nonelec_arg=None, p1_nonelec_arg=None, pr_nonelec_arg=None,
+                 n_syn0=1, n_syn1=1, verbose=True, save_report=True, report_name=None):
+        # Store original parameters like ReciprocalConnector
+        args = locals()
+        var_set = ("p0_elec", "p0_elec_arg", "p1_elec", "p1_elec_arg", "pr_elec", "pr_elec_arg",
+                   "p0_nonelec", "p0_nonelec_arg", "p1_nonelec", "p1_nonelec_arg", "pr_nonelec", "pr_nonelec_arg",
+                   "n_syn0", "n_syn1")
+        self.vars = {key: args[key] for key in var_set}
+        
+        self.gap_connector = gap_connector
+        self.verbose = verbose
+        self.save_report = save_report
+        self.report_name = report_name or "conn.csv"
+        self.conn_prop = [{}, {}]
+        self.stage = 0
+        # Track gap junction decisions and connections for detailed reporting
+        self.gap_decisions = {}
+        self.connection_stats = {'elec': {'pairs': 0, 'uni': 0, 'recp': 0}, 
+                               'nonelec': {'pairs': 0, 'uni': 0, 'recp': 0}}
+
+    def setup_variables(self):
+        """Set up variables like ReciprocalConnector does"""
+        callable_set = set()
+        # Make constant variables constant functions
+        for name, var in self.vars.items():
+            if callable(var):
+                callable_set.add(name)  # record callable variables
+                setattr(self, name, var)
+            else:
+                setattr(self, name, self.constant_function(var))
+                callable_set.add(name)  # constants converted to functions are also callable
+        self.callable_set = callable_set
+
+        # Make callable variables accept index input instead of node input
+        # Exclude probability functions (p0_elec, p1_elec, pr_elec, p0_nonelec, p1_nonelec, pr_nonelec)
+        # as they are called with arguments from _arg functions
+        for name in callable_set - {"p0_elec", "p1_elec", "pr_elec", "p0_nonelec", "p1_nonelec", "pr_nonelec"}:
+            var = getattr(self, name)  # Get the already converted function
+            setattr(self, name, self.node_2_idx_input(var, '1' in name and name.startswith(('p1_', 'pr_', 'n_syn1'))))
+
+    @staticmethod
+    def constant_function(val):
+        """Convert a constant to a constant function"""
+        def constant(*arg):
+            return val
+        return constant
+
+    def node_2_idx_input(self, var_func, reverse=False):
+        """Convert a function that accept nodes as input to accept indices as input"""
+        if reverse:
+            def idx_2_var(j, i):
+                return var_func(self.target_list[j], self.source_list[i])
+        else:
+            def idx_2_var(i, j):
+                return var_func(self.source_list[i], self.target_list[j])
+        return idx_2_var
+
+    def setup_nodes(self, source, target):
+        self.source = source
+        self.target = target
+        self.recurrent = is_same_pop(self.source, self.target)
+        self.source_ids = [s.node_id for s in self.source]
+        self.n_source = len(self.source_ids)
+        self.source_list = list(self.source)
+        if self.recurrent:
+            self.target_ids = self.source_ids
+            self.n_target = self.n_source
+            self.target_list = self.source_list
+        else:
+            self.target_ids = [t.node_id for t in self.target]
+            self.n_target = len(self.target_ids)
+            self.target_list = list(self.target)
+
+    def edge_params(self):
+        if self.stage == 0:
+            params = {
+                "source": self.source,
+                "target": self.target,
+                "iterator": "one_to_all",
+                "connection_rule": self.make_forward_connection,
+            }
+        else:
+            params = {
+                "source": self.target,
+                "target": self.source,
+                "iterator": "all_to_one",
+                "connection_rule": self.make_backward_connection,
+            }
+        self.stage += 1
+        return params
+
+    def has_gap(self, source_node, target_node):
+        """Check if a gap junction exists between two cells by checking the gap_connector's connections"""
+        sid = source_node.node_id
+        tid = target_node.node_id
+        
+        # Check if this pair has a gap junction recorded in the gap_connector
+        # Since gap junctions are bidirectional, check both directions
+        return (sid in self.gap_connector.conn_prop and tid in self.gap_connector.conn_prop[sid]) or \
+               (tid in self.gap_connector.conn_prop and sid in self.gap_connector.conn_prop[tid])
+
+    def cond_backward_prob(self, forward, p0, p1, pr):
+        """Calculate conditional probability of backward connection given forward result"""
+        if p0 > 0:
+            # Ensure pr is within valid bounds
+            pr_min = max(0, p0 + p1 - 1)
+            pr_max = min(p0, p1)
+            pr = max(pr_min, min(pr_max, pr))
+            
+            if forward:
+                return pr / p0
+            else:
+                return (p1 - pr) / (1 - p0) if p1 > pr else 0.0
+        else:
+            return p1
+
+    def make_forward_connection(self, source, targets, *args, **kwargs):
+        if not hasattr(self, 'conn_mat'):
+            self.initialize()
+        stage_idx = self.stage - 1
+        nsyns = self.conn_mat[stage_idx, self.iter_count, :]
+        self.iter_count += 1
+        if self.iter_count == self.n_source and stage_idx == self.end_stage:
+            if self.verbose:
+                self.connection_number_info()
+        return nsyns
+
+    def make_backward_connection(self, targets, source, *args, **kwargs):
+        self.stage = 2
+        return self.make_forward_connection(source, targets)
+
+    def calc_pair(self, i, j, is_elec):
+        """Calculate probability values for a pair like ReciprocalConnector does"""
+        if is_elec:
+            p0_arg = self.p0_elec_arg(i, j)
+            p1_arg = self.p1_elec_arg(j, i)
+            p0 = self.p0_elec(p0_arg)
+            p1 = self.p1_elec(p1_arg)
+            pr = self.pr_elec(self.pr_elec_arg(i, j), p0, p1)
+        else:
+            p0_arg = self.p0_nonelec_arg(i, j)
+            p1_arg = self.p1_nonelec_arg(j, i)
+            p0 = self.p0_nonelec(p0_arg)
+            p1 = self.p1_nonelec(p1_arg)
+            pr = self.pr_nonelec(self.pr_nonelec_arg(i, j), p0, p1)
+        return p0, p1, pr
+
+    def initialize(self):
+        self.setup_variables()  # Set up variables like ReciprocalConnector
+        self.end_stage = 0 if self.recurrent else 1
+        shape = (self.end_stage + 1, self.n_source, self.n_target)
+        self.conn_mat = np.zeros(shape, dtype=np.uint8)
+        self.iter_count = 0
+        
+        if self.verbose:
+            self.timer = Timer()
+            
+        # Pre-generate gap junction connections for consistency
+        # Store gap decisions with symmetric pair keys
+        self.gap_decisions = {}
+        
+        # Generate connections using proper bivariate Bernoulli distribution
+        for i in range(self.n_source):
+            for j in range(self.n_target):
+                # Skip self-connections for recurrent networks
+                if self.recurrent and i >= j:
+                    continue
+                    
+                sid = self.source_ids[i]
+                tid = self.target_ids[j]
+                source_node = self.source_list[i]
+                target_node = self.target_list[j]
+                
+                # Check or generate gap junction decision with symmetric key
+                pair_key = (min(sid, tid), max(sid, tid))  # Ensure consistent ordering
+                if pair_key not in self.gap_decisions:
+                    self.gap_decisions[pair_key] = self.has_gap(source_node, target_node)
+                has_gap = self.gap_decisions[pair_key]
+                
+                # Track pair counts for statistics
+                if has_gap:
+                    self.connection_stats['elec']['pairs'] += 1
+                    p0, p1, pr = self.calc_pair(i, j, True)
+                else:
+                    self.connection_stats['nonelec']['pairs'] += 1
+                    p0, p1, pr = self.calc_pair(i, j, False)
+                
+                # First decide forward connection
+                forward = decision(p0)
+                
+                # Then decide backward connection based on forward result
+                backward_prob = self.cond_backward_prob(forward, p0, p1, pr)
+                backward = decision(backward_prob)
+                
+                # Track connection statistics
+                if forward and backward:
+                    # Reciprocal connection
+                    if has_gap:
+                        self.connection_stats['elec']['recp'] += 1
+                    else:
+                        self.connection_stats['nonelec']['recp'] += 1
+                elif forward or backward:
+                    # Unidirectional connection
+                    if has_gap:
+                        self.connection_stats['elec']['uni'] += 1
+                    else:
+                        self.connection_stats['nonelec']['uni'] += 1
+                
+                # Set connections in matrix
+                if forward:
+                    self.conn_mat[0, i, j] = self.n_syn0(i, j)
+                    self.add_conn_prop(i, j, None, 0)
+                    
+                if backward:
+                    if self.recurrent:
+                        self.conn_mat[0, j, i] = self.n_syn1(j, i)
+                        self.add_conn_prop(j, i, None, 0)
+                    else:
+                        self.conn_mat[1, i, j] = self.n_syn1(i, j)
+                        self.add_conn_prop(i, j, None, 1)
+                        
+        if self.verbose:
+            self.timer.report("Time for creating connection matrix")
+        if self.save_report:
+            self.save_connection_report()
+
+    def add_conn_prop(self, src, trg, prop, stage=0):
+        sid = self.source_ids[src]
+        tid = self.target_ids[trg]
+        if stage:
+            sid, tid = tid, sid
+        trg_dict = self.conn_prop[stage].setdefault(sid, {})
+        trg_dict[tid] = prop
+
+    def connection_number_info(self):
+        conn_mat = self.conn_mat.astype(bool)
+        
+        if self.recurrent:
+            # Calculate total pairs (upper triangle only to avoid double counting)
+            n_pairs = (self.n_source * (self.n_source - 1)) // 2
+            
+            # Count reciprocal connections (both i->j and j->i exist)
+            n_recp = np.count_nonzero(conn_mat[0] & conn_mat[0].T) // 2
+            # Count total connections
+            n_total = np.count_nonzero(conn_mat[0])
+            # Unidirectional = total - 2*reciprocal
+            n_uni = n_total - 2 * n_recp
+            
+            # Print detailed breakdown by electrical coupling
+            print("Detailed connection statistics by electrical coupling:")
+            print("=" * 60)
+            
+            # Electrically coupled pairs
+            elec_pairs = self.connection_stats['elec']['pairs']
+            elec_uni = self.connection_stats['elec']['uni'] 
+            elec_recp = self.connection_stats['elec']['recp']
+            
+            print(f"Electrically coupled pairs ({elec_pairs} pairs, {elec_pairs/n_pairs:.1%} of total):")
+            print(f"  Unidirectional: {elec_uni} ({elec_uni/elec_pairs:.1%} of elec pairs)")
+            print(f"  Bidirectional:  {elec_recp} ({elec_recp/elec_pairs:.1%} of elec pairs)")
+            print(f"  No connection:  {elec_pairs - elec_uni - elec_recp} ({(elec_pairs - elec_uni - elec_recp)/elec_pairs:.1%} of elec pairs)")
+            
+            # Non-electrically coupled pairs  
+            nonelec_pairs = self.connection_stats['nonelec']['pairs']
+            nonelec_uni = self.connection_stats['nonelec']['uni']
+            nonelec_recp = self.connection_stats['nonelec']['recp']
+            
+            print(f"\nNon-electrically coupled pairs ({nonelec_pairs} pairs, {nonelec_pairs/n_pairs:.1%} of total):")
+            print(f"  Unidirectional: {nonelec_uni} ({nonelec_uni/nonelec_pairs:.1%} of nonelec pairs)")
+            print(f"  Bidirectional:  {nonelec_recp} ({nonelec_recp/nonelec_pairs:.1%} of nonelec pairs)")
+            print(f"  No connection:  {nonelec_pairs - nonelec_uni - nonelec_recp} ({(nonelec_pairs - nonelec_uni - nonelec_recp)/nonelec_pairs:.1%} of nonelec pairs)")
+            
+            print(f"\nOverall chemical connectivity:")
+            print(f"  Numbers of connections: unidirectional, reciprocal")
+            print(f"  Number of connected pairs: ({n_uni}, {n_recp})")
+            print(f"  Fraction of connected pairs: ({n_uni/n_pairs:.2%}, {n_recp/n_pairs:.2%})")
+            print(f"  Total chemical connectivity: {(n_uni + n_recp)/n_pairs:.2%}")
+            
+        else:
+            # For non-recurrent networks
+            n_pairs = self.n_source * self.n_target
+            n_forward = np.count_nonzero(conn_mat[0])
+            n_backward = np.count_nonzero(conn_mat[1])
+            n_recp = np.count_nonzero(conn_mat[0] & conn_mat[1])
+            
+            print("Numbers of connections: forward, backward, reciprocal")
+            print(f"Number of connected pairs: ({n_forward}, {n_backward}, {n_recp})")
+            print(f"Fraction of connected pairs: ({n_forward/n_pairs:.2%}, {n_backward/n_pairs:.2%}, {n_recp/n_pairs:.2%})")
+
+    def save_connection_report(self):
+        # Implement similar to ReciprocalConnector if needed
+        pass
+
 
 
 class OneToOneSequentialConnector(AbstractConnector):

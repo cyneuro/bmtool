@@ -1163,9 +1163,43 @@ def percent_connections(
         num_sources = s_list[source_id_type].value_counts().sort_index().loc[source_id]
         num_targets = t_list[target_id_type].value_counts().sort_index().loc[target_id]
 
-        total = round(total_cons / (num_sources * num_targets) * 100, 2)
-        uni = round(num_uni / (num_sources * num_targets) * 100, 2)
-        bi = round(num_bi / (num_sources * num_targets) * 100, 2)
+        # Check if this is a recurrent network (same source and target population)
+        # For recurrent networks (e.g., FSI->FSI), we need special handling because:
+        # - Each pair can have at most 2 directed connections (bidirectional)
+        # - We want to count unique pairs, not directed connections
+        # - The denominator should be n*(n-1)/2, not n*n
+        is_recurrent = source_id == target_id
+        
+        if is_recurrent:
+            # For recurrent networks, calculate connectivity based on unique undirected pairs
+            # This avoids double-counting reciprocal connections and uses correct denominator
+            pair_counts = {}
+            for _, row in cons.iterrows():
+                sid = row['source_node_id']
+                tid = row['target_node_id']
+                if sid != tid:  # Exclude self-connections
+                    # Use symmetric pair key to count connections per unique pair
+                    pair_key = (min(sid, tid), max(sid, tid))
+                    if pair_key not in pair_counts:
+                        pair_counts[pair_key] = 0
+                    pair_counts[pair_key] += 1
+            
+            # Count pairs with exactly 1 connection (unidirectional) vs 2 connections (bidirectional)
+            num_uni = sum(1 for count in pair_counts.values() if count == 1)
+            num_bi = sum(1 for count in pair_counts.values() if count == 2)
+            
+            # Total possible unique pairs (excluding self-connections)
+            total_possible = num_sources * (num_sources - 1) / 2
+            total = round((num_uni + num_bi) / total_possible * 100, 2)
+            uni = round(num_uni / total_possible * 100, 2)
+            bi = round(num_bi / total_possible * 100, 2)
+        else:
+            # For non-recurrent networks, use the original calculation
+            # Each connection is unique (no double-counting issues)
+            total = round(total_cons / (num_sources * num_targets) * 100, 2)
+            uni = round(num_uni / (num_sources * num_targets) * 100, 2)
+            bi = round(num_bi / (num_sources * num_targets) * 100, 2)
+        
         if method == "total":
             return total
         if method == "uni":
@@ -1309,9 +1343,10 @@ def gap_junction_connections(
         s_list = kwargs["source_nodes"]
 
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type] == target_id)]
-        # add functionality that shows only the one's with gap_junctions
+        # print(cons)
+
         try:
-            cons = cons[cons["is_gap_junction"]]
+            cons = cons[cons["is_gap_junction"]==True]
         except:
             raise Exception("no gap junctions found to drop from connections")
 
