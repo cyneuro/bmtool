@@ -199,7 +199,7 @@ def percent_connection_matrix(
         title = "Percent Connectivity"
 
     if return_dict:
-        dict = plot_connection_info(text, num, source_labels, target_labels, title, save_file=save_file,return_dict=return_dict)
+        dict = plot_connection_info(text, num, source_labels, target_labels, title, save_file=save_file, return_dict=return_dict)
         return dict
     else:
         plot_connection_info(text, num, source_labels, target_labels, title, save_file=save_file)
