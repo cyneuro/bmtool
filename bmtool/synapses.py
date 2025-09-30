@@ -38,6 +38,7 @@ DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS = {
     "tdur": 500.0,
     "dt": 0.025,
     "celsius": 20,
+    "iclamp_amp": -0.01, # nA
 }
 
 
@@ -1762,42 +1763,356 @@ class GapJunctionTuner:
             self.general_settings = {**DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS, **general_settings}
         self.conn_type_settings = conn_type_settings
 
+        self._syn_params_cache = {}
+        self.config = config
+        self.available_networks = []
+        self.current_network = None
+        if self.conn_type_settings is None and self.config is not None:
+            self.conn_type_settings = self._build_conn_type_settings_from_config(self.config)
+        if self.conn_type_settings is None or len(self.conn_type_settings) == 0:
+            raise ValueError("conn_type_settings must be provided or config must be given to load gap junction connections from")
+        self.current_connection = list(self.conn_type_settings.keys())[0]
+        self.conn = self.conn_type_settings[self.current_connection]
+
         h.tstop = self.general_settings["tstart"] + self.general_settings["tdur"] + 100.0
         h.dt = self.general_settings["dt"]  # Time step (resolution) of the simulation in ms
         h.steps_per_ms = 1 / h.dt
         h.celsius = self.general_settings["celsius"]
 
+        # Clean up any existing parallel context before setting up gap junctions
+        try:
+            pc_temp = h.ParallelContext()
+            pc_temp.done()  # Clean up any existing parallel context
+        except:
+            pass  # Ignore errors if no existing context
+        
+        # Force cleanup
+        import gc
+        gc.collect()
+
         # set up gap junctions
-        pc = h.ParallelContext()
+        self.pc = h.ParallelContext()
 
         # Use provided hoc_cell or create new cells
         if self.hoc_cell is not None:
             self.cell1 = self.hoc_cell
             # For gap junctions, we need two cells, so create a second one if using hoc_cell
-            self.cell_name = conn_type_settings["cell"]
+            self.cell_name = self.conn['cell']
             self.cell2 = getattr(h, self.cell_name)()
         else:
-            self.cell_name = conn_type_settings["cell"]
+            print(self.conn)
+            self.cell_name = self.conn['cell']
             self.cell1 = getattr(h, self.cell_name)()
             self.cell2 = getattr(h, self.cell_name)()
 
         self.icl = h.IClamp(self.cell1.soma[0](0.5))
         self.icl.delay = self.general_settings["tstart"]
         self.icl.dur = self.general_settings["tdur"]
-        self.icl.amp = self.conn_type_settings["iclamp_amp"]  # nA
+        self.icl.amp = self.general_settings["iclamp_amp"]  # nA
 
-        sec1 = list(self.cell1.all)[conn_type_settings["sec_id"]]
-        sec2 = list(self.cell2.all)[conn_type_settings["sec_id"]]
+        sec1 = list(self.cell1.all)[self.conn["sec_id"]]
+        sec2 = list(self.cell2.all)[self.conn["sec_id"]]
 
-        pc.source_var(sec1(conn_type_settings["sec_x"])._ref_v, 0, sec=sec1)
+        # Use unique IDs to avoid conflicts with existing parallel context setups
+        import time
+        unique_id = int(time.time() * 1000) % 10000  # Use timestamp as unique base ID
+        
+        self.pc.source_var(sec1(self.conn["sec_x"])._ref_v, unique_id, sec=sec1)
         self.gap_junc_1 = h.Gap(sec1(0.5))
-        pc.target_var(self.gap_junc_1._ref_vgap, 1)
+        self.pc.target_var(self.gap_junc_1._ref_vgap, unique_id + 1)
 
-        pc.source_var(sec2(conn_type_settings["sec_x"])._ref_v, 1, sec=sec2)
+        self.pc.source_var(sec2(self.conn["sec_x"])._ref_v, unique_id + 1, sec=sec2)
         self.gap_junc_2 = h.Gap(sec2(0.5))
-        pc.target_var(self.gap_junc_2._ref_vgap, 0)
+        self.pc.target_var(self.gap_junc_2._ref_vgap, unique_id)
 
-        pc.setup_transfer()
+        self.pc.setup_transfer()
+        
+        # Now it's safe to initialize NEURON
+        h.finitialize()
+
+    def _load_synaptic_params_from_config(self, config: dict, dynamics_params: str) -> dict:
+        try:
+            # Get the synaptic models directory from config
+            synaptic_models_dir = config.get('components', {}).get('synaptic_models_dir', '')
+            if synaptic_models_dir:
+                # Handle path variables
+                if synaptic_models_dir.startswith('$'):
+                    # This is a placeholder, try to resolve it
+                    config_dir = os.path.dirname(config.get('config_path', ''))
+                    synaptic_models_dir = synaptic_models_dir.replace('$COMPONENTS_DIR', 
+                                                                    os.path.join(config_dir, 'components'))
+                    synaptic_models_dir = synaptic_models_dir.replace('$BASE_DIR', config_dir)
+                
+                dynamics_file = os.path.join(synaptic_models_dir, dynamics_params)
+                
+                if os.path.exists(dynamics_file):
+                    with open(dynamics_file, 'r') as f:
+                        return json.load(f)
+                else:
+                    print(f"Warning: Dynamics params file not found: {dynamics_file}")
+        except Exception as e:
+            print(f"Warning: Error loading synaptic parameters: {e}")
+        
+        return {}
+
+    def _load_available_networks(self) -> None:
+        """
+        Load available network names from the config file for the network dropdown feature.
+        
+        This method is automatically called during initialization when a config file is provided.
+        It populates the available_networks list which enables the network dropdown in 
+        InteractiveTuner when multiple networks are available.
+        
+        Network Dropdown Behavior:
+        -------------------------
+        - If only one network exists: No network dropdown is shown
+        - If multiple networks exist: Network dropdown appears next to connection dropdown
+        - Networks are loaded from the edges data in the config file
+        - Current network defaults to the first available if not specified during init
+        """
+        if self.config is None:
+            self.available_networks = []
+            return
+            
+        try:
+            edges = load_edges_from_config(self.config)
+            self.available_networks = list(edges.keys())
+            
+            # Set current network to first available if not specified
+            if self.current_network is None and self.available_networks:
+                self.current_network = self.available_networks[0]
+        except Exception as e:
+            print(f"Warning: Could not load networks from config: {e}")
+            self.available_networks = []
+
+    def _build_conn_type_settings_from_config(self, config_path: str) -> Dict[str, dict]:
+        # Load configuration and get nodes and edges using util.py methods
+        config = load_config(config_path)
+        # Ensure the config dict knows its source path so path substitutions can be resolved
+        try:
+            config['config_path'] = config_path
+        except Exception:
+            pass
+        nodes = load_nodes_from_config(config_path)
+        edges = load_edges_from_config(config_path)
+        
+        conn_type_settings = {}
+        
+        # Process all edge datasets
+        for edge_dataset_name, edge_df in edges.items():
+            if edge_df.empty:
+                continue
+            
+            # Merging with node data to get model templates
+            source_node_df = None
+            target_node_df = None
+            
+            # First, try to deterministically parse the edge_dataset_name for patterns like '<src>_to_<tgt>'
+            if '_to_' in edge_dataset_name:
+                parts = edge_dataset_name.split('_to_')
+                if len(parts) == 2:
+                    src_name, tgt_name = parts
+                    if src_name in nodes:
+                        source_node_df = nodes[src_name].add_prefix('source_')
+                    if tgt_name in nodes:
+                        target_node_df = nodes[tgt_name].add_prefix('target_')
+            
+            # If not found by parsing name, fall back to inspecting a sample edge row
+            if source_node_df is None or target_node_df is None:
+                sample_edge = edge_df.iloc[0] if len(edge_df) > 0 else None
+                if sample_edge is not None:
+                    source_pop_name = sample_edge.get('source_population', '')
+                    target_pop_name = sample_edge.get('target_population', '')
+                    if source_pop_name in nodes:
+                        source_node_df = nodes[source_pop_name].add_prefix('source_')
+                    if target_pop_name in nodes:
+                        target_node_df = nodes[target_pop_name].add_prefix('target_')
+            
+            # As a last resort, attempt to heuristically match
+            if source_node_df is None or target_node_df is None:
+                for pop_name, node_df in nodes.items():
+                    if source_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
+                        source_node_df = node_df.add_prefix('source_')
+                    if target_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
+                        target_node_df = node_df.add_prefix('target_')
+            
+            if source_node_df is None or target_node_df is None:
+                print(f"Warning: Could not find node data for edge dataset {edge_dataset_name}")
+                continue
+            
+            # Merge edge data with source node info
+            edges_with_source = pd.merge(
+                edge_df.reset_index(), 
+                source_node_df, 
+                how='left', 
+                left_on='source_node_id', 
+                right_index=True
+            )
+            
+            # Merge with target node info
+            edges_with_nodes = pd.merge(
+                edges_with_source, 
+                target_node_df, 
+                how='left', 
+                left_on='target_node_id', 
+                right_index=True
+            )
+            
+            # Skip edge datasets that don't have gap junction information
+            if 'is_gap_junction' not in edges_with_nodes.columns:
+                continue
+            
+            # Filter to only gap junction edges
+            # Handle NaN values in is_gap_junction column
+            gap_junction_mask = edges_with_nodes['is_gap_junction'].fillna(False) == True
+            gap_junction_edges = edges_with_nodes[gap_junction_mask]
+            if gap_junction_edges.empty:
+                continue
+            
+            # Get unique edge types from the gap junction edges
+            if 'edge_type_id' in gap_junction_edges.columns:
+                edge_types = gap_junction_edges['edge_type_id'].unique()
+            else:
+                edge_types = [None]  # Single edge type
+            
+            # Process each edge type
+            for edge_type_id in edge_types:
+                # Filter edges for this type
+                if edge_type_id is not None:
+                    edge_type_data = gap_junction_edges[gap_junction_edges['edge_type_id'] == edge_type_id]
+                else:
+                    edge_type_data = gap_junction_edges
+                
+                if len(edge_type_data) == 0:
+                    continue
+                
+                # Get representative edge for this type
+                edge_info = edge_type_data.iloc[0]
+                
+                # Process gap junction
+                source_model_template = edge_info.get('source_model_template', '')
+                target_model_template = edge_info.get('target_model_template', '')
+                
+                source_cell_type = source_model_template.replace('hoc:', '') if source_model_template.startswith('hoc:') else source_model_template
+                target_cell_type = target_model_template.replace('hoc:', '') if target_model_template.startswith('hoc:') else target_model_template
+                
+                if source_cell_type != target_cell_type:
+                    continue  # Only process gap junctions between same cell types
+                
+                source_pop = edge_info.get('source_pop_name', '')
+                target_pop = edge_info.get('target_pop_name', '')
+                
+                conn_name = f"{source_pop}2{target_pop}_gj"
+                if edge_type_id is not None:
+                    conn_name += f"_type_{edge_type_id}"
+                
+                conn_settings = {
+                    'cell': source_cell_type,
+                    'sec_id': 0,
+                    'sec_x': 0.5,
+                    'iclamp_amp': -0.01,
+                    'spec_syn_param': {}
+                }
+                
+                # Load dynamics params
+                dynamics_file_name = edge_info.get('dynamics_params', '')
+                if dynamics_file_name and dynamics_file_name.upper() != 'NULL':
+                    try:
+                        syn_params = self._load_synaptic_params_from_config(config, dynamics_file_name)
+                        conn_settings['spec_syn_param'] = syn_params
+                    except Exception as e:
+                        print(f"Warning: could not load dynamics_params file '{dynamics_file_name}': {e}")
+                
+                conn_type_settings[conn_name] = conn_settings
+        
+        return conn_type_settings
+
+    def _switch_connection(self, new_connection: str) -> None:
+        """
+        Switch to a different gap junction connection and update all related properties.
+        
+        Parameters:
+        -----------
+        new_connection : str
+            Name of the new connection type to switch to.
+        """
+        if new_connection not in self.conn_type_settings:
+            raise ValueError(f"Connection '{new_connection}' not found in conn_type_settings")
+        
+        # Update current connection
+        self.current_connection = new_connection
+        self.conn = self.conn_type_settings[new_connection]
+        
+        # Check if cell type changed
+        new_cell_name = self.conn['cell']
+        if self.cell_name != new_cell_name:
+            self.cell_name = new_cell_name
+            
+            # Recreate cells
+            if self.hoc_cell is None:
+                self.cell1 = getattr(h, self.cell_name)()
+                self.cell2 = getattr(h, self.cell_name)()
+            else:
+                # For hoc_cell, recreate the second cell
+                self.cell2 = getattr(h, self.cell_name)()
+            
+            # Recreate IClamp
+            self.icl = h.IClamp(self.cell1.soma[0](0.5))
+            self.icl.delay = self.general_settings["tstart"]
+            self.icl.dur = self.general_settings["tdur"]
+            self.icl.amp = self.general_settings["iclamp_amp"]
+        else:
+            # Update IClamp parameters even if same cell type
+            self.icl.amp = self.general_settings["iclamp_amp"]
+        
+        # Always recreate gap junctions when switching connections 
+        # (even for same cell type, sec_id or sec_x might differ)
+        
+        # Clean up previous gap junctions and parallel context
+        if hasattr(self, 'gap_junc_1'):
+            del self.gap_junc_1
+        if hasattr(self, 'gap_junc_2'):
+            del self.gap_junc_2
+        
+        # Properly clean up the existing parallel context
+        if hasattr(self, 'pc'):
+            self.pc.done()  # Clean up existing parallel context
+        
+        # Force garbage collection and reset NEURON state
+        import gc
+        gc.collect()
+        h.finitialize()
+        
+        # Create a fresh parallel context after cleanup
+        self.pc = h.ParallelContext()
+        
+        try:
+            sec1 = list(self.cell1.all)[self.conn["sec_id"]]
+            sec2 = list(self.cell2.all)[self.conn["sec_id"]]
+            
+            # Use unique IDs to avoid conflicts with existing parallel context setups
+            import time
+            unique_id = int(time.time() * 1000) % 10000  # Use timestamp as unique base ID
+            
+            self.pc.source_var(sec1(self.conn["sec_x"])._ref_v, unique_id, sec=sec1)
+            self.gap_junc_1 = h.Gap(sec1(0.5))
+            self.pc.target_var(self.gap_junc_1._ref_vgap, unique_id + 1)
+            
+            self.pc.source_var(sec2(self.conn["sec_x"])._ref_v, unique_id + 1, sec=sec2)
+            self.gap_junc_2 = h.Gap(sec2(0.5))
+            self.pc.target_var(self.gap_junc_2._ref_vgap, unique_id)
+            
+            self.pc.setup_transfer()
+        except Exception as e:
+            print(f"Error setting up gap junctions: {e}")
+            # Try to continue with basic setup
+            self.gap_junc_1 = h.Gap(list(self.cell1.all)[self.conn["sec_id"]](0.5))
+            self.gap_junc_2 = h.Gap(list(self.cell2.all)[self.conn["sec_id"]](0.5))
+        
+        # Reset NEURON state after complete setup
+        h.finitialize()
+        
+        print(f"Successfully switched to connection: {new_connection}")
 
     def model(self, resistance):
         """
@@ -1901,13 +2216,9 @@ class GapJunctionTuner:
             continuous_update=True,
         )
 
-        ui = VBox([w_run, resistance])
-
-        # Create an output widget to control what gets cleared
         output = widgets.Output()
 
-        display(ui)
-        display(output)
+        ui_widgets = [w_run, resistance]
 
         def on_button(*args):
             with output:
@@ -1915,7 +2226,7 @@ class GapJunctionTuner:
                 output.clear_output(wait=True)
 
                 resistance_for_gap = resistance.value
-                print(f"Running simulation with resistance: {resistance_for_gap}")
+                print(f"Running simulation with resistance: {resistance_for_gap:0.6f} and {self.general_settings['iclamp_amp']*1000}pA current clamps")
 
                 try:
                     self.model(resistance_for_gap)
@@ -1935,6 +2246,25 @@ class GapJunctionTuner:
                     import traceback
 
                     traceback.print_exc()
+
+        # Add connection dropdown if multiple connections exist
+        if len(self.conn_type_settings) > 1:
+            connection_dropdown = widgets.Dropdown(
+                options=list(self.conn_type_settings.keys()),
+                value=self.current_connection,
+                description='Connection:',
+            )
+            def on_connection_change(change):
+                if change['type'] == 'change' and change['name'] == 'value':
+                    self._switch_connection(change['new'])
+                    on_button()  # Automatically rerun the simulation after switching
+            connection_dropdown.observe(on_connection_change)
+            ui_widgets.insert(0, connection_dropdown)
+
+        ui = VBox(ui_widgets)
+
+        display(ui)
+        display(output)
 
         # Run once initially
         on_button()
@@ -2315,7 +2645,6 @@ class SynapseOptimizer:
         if self.run_single_event:
             self.tuner.ispk = None
             self.tuner.SingleEvent(plot_and_print=True)
-
 
 # dataclass means just init the typehints as self.typehint. looks a bit cleaner
 @dataclass
