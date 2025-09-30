@@ -38,6 +38,7 @@ DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS = {
     "tdur": 500.0,
     "dt": 0.025,
     "celsius": 20,
+    "iclamp_amp": -0.01, # nA
 }
 
 
@@ -1808,7 +1809,7 @@ class GapJunctionTuner:
         self.icl = h.IClamp(self.cell1.soma[0](0.5))
         self.icl.delay = self.general_settings["tstart"]
         self.icl.dur = self.general_settings["tdur"]
-        self.icl.amp = self.conn["iclamp_amp"]  # nA
+        self.icl.amp = self.general_settings["iclamp_amp"]  # nA
 
         sec1 = list(self.cell1.all)[self.conn["sec_id"]]
         sec2 = list(self.cell2.all)[self.conn["sec_id"]]
@@ -2060,10 +2061,10 @@ class GapJunctionTuner:
             self.icl = h.IClamp(self.cell1.soma[0](0.5))
             self.icl.delay = self.general_settings["tstart"]
             self.icl.dur = self.general_settings["tdur"]
-            self.icl.amp = self.conn["iclamp_amp"]
+            self.icl.amp = self.general_settings["iclamp_amp"]
         else:
             # Update IClamp parameters even if same cell type
-            self.icl.amp = self.conn["iclamp_amp"]
+            self.icl.amp = self.general_settings["iclamp_amp"]
         
         # Always recreate gap junctions when switching connections 
         # (even for same cell type, sec_id or sec_x might differ)
@@ -2226,7 +2227,7 @@ class GapJunctionTuner:
                 output.clear_output(wait=True)
 
                 resistance_for_gap = resistance.value
-                print(f"Running simulation with resistance: {resistance_for_gap:0.6f} and -10pA current clamps")
+                print(f"Running simulation with resistance: {resistance_for_gap:0.6f} and {self.general_settings['iclamp_amp']*1000}pA current clamps")
 
                 try:
                     self.model(resistance_for_gap)
