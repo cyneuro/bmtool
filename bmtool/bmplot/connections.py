@@ -154,6 +154,7 @@ def percent_connection_matrix(
     save_file=None,
     method="total",
     include_gap=True,
+    return_dict = False
 ):
     """
     Generates a plot showing the percent connectivity of a network
@@ -197,8 +198,12 @@ def percent_connection_matrix(
     if title is None or title == "":
         title = "Percent Connectivity"
 
-    plot_connection_info(text, num, source_labels, target_labels, title, save_file=save_file)
-    return
+    if return_dict:
+        dict = plot_connection_info(text, num, source_labels, target_labels, title, save_file=save_file,return_dict=return_dict)
+        return dict
+    else:
+        plot_connection_info(text, num, source_labels, target_labels, title, save_file=save_file)
+        return
 
 
 def probability_connection_matrix(
