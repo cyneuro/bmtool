@@ -1278,19 +1278,19 @@ class SynapseTuner:
             for i in range(3):
                 self.vcl.amp[i] = self.conn["spec_settings"]["vclamp_amp"]
                 self.vcl.dur[i] = vcldur[1][i]
-            #h.finitialize(self.cell.Vinit * mV)
-            #h.continuerun(self.tstop * ms)
-            h.run()
+            h.finitialize(70 * mV)
+            h.continuerun(self.tstop * ms)
+            #h.run()
         else:
-            self.tstop = self.general_settings["tstart"] + self.general_settings["tdur"]
+            # Continuous input mode: ensure simulation runs long enough for the full stimulation duration
+            self.tstop = self.general_settings["tstart"] + self.w_duration.value + 300 # 300ms buffer time 
             self.nstim.interval = 1000 / input_frequency
             self.nstim.number = np.ceil(self.w_duration.value / 1000 * input_frequency + 1)
             self.nstim2.number = 0
-            self.tstop = self.w_duration.value + self.general_settings["tstart"]
 
-            #h.finitialize(self.cell.Vinit * mV)
-            #h.continuerun(self.tstop * ms)
-            h.run()
+            h.finitialize(70 * mV)
+            h.continuerun(self.tstop * ms)
+            #h.run()
 
     def InteractiveTuner(self):
         """
