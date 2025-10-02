@@ -1190,34 +1190,44 @@ class SynapseTuner:
                 f"Short Term Plasticity Results for {self.train_freq}Hz with {self.train_delay} Delay"
             )
             print("=" * 40)
-            print("PPR: Above 0 is facilitating, below 0 is depressing.")
-            print("Induction: Above 0 is facilitating, below 0 is depressing.")
-            print("Recovery: A measure of how fast STP decays.\n")
+            print("Simple PPR: Above 1 is facilitating, below 1 is depressing")
+            print("PPR:        Above 0 is facilitating, below 0 is depressing.")
+            print("Induction:  Above 0 is facilitating, below 0 is depressing.")
+            print("Recovery:   A measure of how fast STP decays.\n")
+
+            # Simple PPR Calculation: Avg 2nd pulse / Avg 1st pulse
+            simple_ppr = np.mean(amp[:, 1:2]) / np.mean(amp[:, 0:1])
+            print("Simple Paired Pulse Ratio (PPR)")
+            print("    Calculation: Avg 2nd pulse / Avg 1st pulse")
+            print(
+                f"    Values: {np.mean(amp[:, 1:2]):.3f} / {np.mean(amp[:, 0:1]):.3f} = {simple_ppr:.3f}\n"
+            )
 
             # PPR Calculation: (Avg 2nd pulse - Avg 1st pulse) / 90th percentile amplitude
             ppr = (np.mean(amp[:, 1:2]) - np.mean(amp[:, 0:1])) / percentile_90
             print("Paired Pulse Response (PPR)")
-            print("Calculation: (Avg 2nd pulse - Avg 1st pulse) / 90th percentile amplitude")
+            print("    Calculation: (Avg 2nd pulse - Avg 1st pulse) / 90th percentile amplitude")
             print(
-                f"Values: ({np.mean(amp[:, 1:2]):.3f} - {np.mean(amp[:, 0:1]):.3f}) / {percentile_90:.3f} = {ppr:.3f}\n"
+                f"    Values: ({np.mean(amp[:, 1:2]):.3f} - {np.mean(amp[:, 0:1]):.3f}) / {percentile_90:.3f} = {ppr:.3f}\n"
             )
+            
 
             # Induction Calculation: (Avg (6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude
             induction = (np.mean(amp[:, 5:8]) - np.mean(amp[:, :1])) / percentile_90
             print("Induction")
-            print("Calculation: (Avg(6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude")
+            print("    Calculation: (Avg(6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude")
             print(
-                f"Values: {np.mean(amp[:, 5:8]):.3f} - {np.mean(amp[:, :1]):.3f} / {percentile_90:.3f} = {induction:.3f}\n"
+                f"    Values: {np.mean(amp[:, 5:8]):.3f} - {np.mean(amp[:, :1]):.3f} / {percentile_90:.3f} = {induction:.3f}\n"
             )
 
             # Recovery Calculation: (Avg (9th, 10th, 11th, 12th pulses) - Avg (1st, 2nd, 3rd, 4th pulses)) / 90th percentile amplitude
             recovery = (np.mean(amp[:, 8:12]) - np.mean(amp[:, :4])) / percentile_90
             print("Recovery")
             print(
-                "Calculation: (Avg(9th, 10th, 11th, 12th pulses) - Avg(1st to 4th pulses)) / 90th percentile amplitude"
+                "    Calculation: (Avg(9th, 10th, 11th, 12th pulses) - Avg(1st to 4th pulses)) / 90th percentile amplitude"
             )
             print(
-                f"Values: {np.mean(amp[:, 8:12]):.3f} - {np.mean(amp[:, :4]):.3f} / {percentile_90:.3f} = {recovery:.3f}\n"
+                f"    Values: {np.mean(amp[:, 8:12]):.3f} - {np.mean(amp[:, :4]):.3f} / {percentile_90:.3f} = {recovery:.3f}\n"
             )
 
             print("=" * 40 + "\n")
