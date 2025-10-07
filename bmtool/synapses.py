@@ -1045,7 +1045,8 @@ class SynapseTuner:
             for j in range(num_vars_to_plot, len(axs)):
                 fig.delaxes(axs[j])
 
-        # plt.tight_layout()
+        #plt.tight_layout()
+        fig.suptitle(f"Connection: {self.current_connection}")
         plt.show()
 
     def _set_drive_train(self, freq=50.0, delay=250.0):
@@ -1148,7 +1149,7 @@ class SynapseTuner:
 
     def _calc_ppr_induction_recovery(self, amp, normalize_by_trial=True, print_math=True):
         """
-        Calculates paired-pulse ratio, induction, and recovery metrics from response amplitudes.
+        Calculates paired-pulse ratio, induction, recovery, and simple PPR metrics from response amplitudes.
 
         Parameters:
         -----------
@@ -1163,13 +1164,15 @@ class SynapseTuner:
         --------
         tuple
             A tuple containing:
-            - ppr: Paired-pulse ratio (2nd pulse / 1st pulse)
+            - ppr: Paired-pulse ratio (2nd pulse - 1st pulse) normalized by 90th percentile amplitude
             - induction: Measure of facilitation/depression during initial pulses
             - recovery: Measure of recovery after the delay period
+            - simple_ppr: Simple paired-pulse ratio (2nd pulse / 1st pulse)
 
         Notes:
         ------
-        - PPR > 1 indicates facilitation, PPR < 1 indicates depression
+        - PPR > 0 indicates facilitation, PPR < 0 indicates depression
+        - Simple PPR > 1 indicates facilitation, Simple PPR < 1 indicates depression
         - Induction > 0 indicates facilitation, Induction < 0 indicates depression
         - Recovery compares the response after delay to the initial pulses
         """
@@ -1236,8 +1239,9 @@ class SynapseTuner:
         ppr = (np.mean(amp[:, 1:2]) - np.mean(amp[:, 0:1])) / percentile_90
         induction = (np.mean(amp[:, 5:8]) - np.mean(amp[:, :1])) / percentile_90
         recovery = (np.mean(amp[:, 8:12]) - np.mean(amp[:, :4])) / percentile_90
+        simple_ppr = np.mean(amp[:, 1:2]) / np.mean(amp[:, 0:1])
 
-        return ppr, induction, recovery
+        return ppr, induction, recovery, simple_ppr
 
     def _set_syn_prop(self, **kwargs):
         """
@@ -1628,6 +1632,7 @@ class SynapseTuner:
             Dictionary containing frequency-dependent metrics with keys:
             - 'frequencies': List of tested frequencies
             - 'ppr': Paired-pulse ratios at each frequency
+            - 'simple_ppr': Simple paired-pulse ratios (2nd/1st pulse) at each frequency
             - 'induction': Induction values at each frequency
             - 'recovery': Recovery values at each frequency
 
@@ -1637,7 +1642,7 @@ class SynapseTuner:
         behavior of synapses, such as identifying facilitating vs. depressing regimes
         or the frequency at which a synapse transitions between these behaviors.
         """
-        results = {"frequencies": freqs, "ppr": [], "induction": [], "recovery": []}
+        results = {"frequencies": freqs, "ppr": [], "induction": [], "recovery": [], "simple_ppr": []}
 
         # Store original state
         original_ispk = self.ispk
@@ -1645,11 +1650,12 @@ class SynapseTuner:
         for freq in tqdm(freqs, desc="Analyzing frequencies"):
             self._simulate_model(freq, delay)
             amp = self._response_amplitude()
-            ppr, induction, recovery = self._calc_ppr_induction_recovery(amp, print_math=False)
+            ppr, induction, recovery, simple_ppr = self._calc_ppr_induction_recovery(amp, print_math=False)
 
             results["ppr"].append(float(ppr))
             results["induction"].append(float(induction))
             results["recovery"].append(float(recovery))
+            results["simple_ppr"].append(float(simple_ppr))
 
         # Restore original state
         self.ispk = original_ispk
@@ -1669,6 +1675,7 @@ class SynapseTuner:
             Dictionary containing frequency analysis results with keys:
             - 'frequencies': List of tested frequencies
             - 'ppr': Paired-pulse ratios at each frequency
+            - 'simple_ppr': Simple paired-pulse ratios at each frequency
             - 'induction': Induction values at each frequency
             - 'recovery': Recovery values at each frequency
         log_plot : bool
@@ -1677,24 +1684,27 @@ class SynapseTuner:
         Notes:
         ------
         Creates a figure with three subplots showing:
-        1. Paired-pulse ratio vs. frequency
+        1. Paired-pulse ratios (both normalized and simple) vs. frequency
         2. Induction vs. frequency
         3. Recovery vs. frequency
 
         Each plot includes a horizontal reference line at y=0 or y=1 to indicate
         the boundary between facilitation and depression.
         """
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
 
-        # Plot PPR
+        # Plot both PPR measures
         if log_plot:
-            ax1.semilogx(results["frequencies"], results["ppr"], "o-")
+            ax1.semilogx(results["frequencies"], results["ppr"], "o-", label="Normalized PPR")
+            ax1.semilogx(results["frequencies"], results["simple_ppr"], "s-", label="Simple PPR")
         else:
-            ax1.plot(results["frequencies"], results["ppr"], "o-")
+            ax1.plot(results["frequencies"], results["ppr"], "o-", label="Normalized PPR")
+            ax1.plot(results["frequencies"], results["simple_ppr"], "s-", label="Simple PPR")
         ax1.axhline(y=1, color="gray", linestyle="--", alpha=0.5)
         ax1.set_xlabel("Frequency (Hz)")
         ax1.set_ylabel("Paired Pulse Ratio")
         ax1.set_title("PPR vs Frequency")
+        ax1.legend()
         ax1.grid(True)
 
         # Plot Induction
@@ -2361,7 +2371,8 @@ class SynapseOptimizer:
         Dict[str, float]
             Dictionary of calculated metrics including:
             - induction: measure of synaptic facilitation/depression
-            - ppr: paired-pulse ratio
+            - ppr: paired-pulse ratio from Allen database calculation
+            - simple-ppr another simple way to measure PPR
             - recovery: recovery from facilitation/depression
             - max_amplitude: maximum synaptic response amplitude
             - rise_time: time for synaptic response to rise from 20% to 80% of peak
@@ -2374,6 +2385,7 @@ class SynapseOptimizer:
         # Set these to 0 for when we return the dict
         induction = 0
         ppr = 0
+        simple_ppr = 0
         recovery = 0
         amp = 0
         rise_time = 0
@@ -2398,7 +2410,7 @@ class SynapseOptimizer:
         if self.run_train_input:
             self.tuner._simulate_model(self.train_frequency, self.train_delay)
             amp = self.tuner._response_amplitude()
-            ppr, induction, recovery = self.tuner._calc_ppr_induction_recovery(
+            ppr, induction, recovery, simple_ppr = self.tuner._calc_ppr_induction_recovery(
                 amp, print_math=False
             )
             amp = self.tuner._find_max_amp(amp)
@@ -2407,6 +2419,7 @@ class SynapseOptimizer:
             "induction": float(induction),
             "ppr": float(ppr),
             "recovery": float(recovery),
+            "simple_ppr": float(simple_ppr),
             "max_amplitude": float(amp),
             "rise_time": float(rise_time),
             "decay_time": float(decay_time),
