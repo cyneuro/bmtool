@@ -1042,6 +1042,7 @@ class Profiler:
         self.mechanism_dir = None
         self.templates = None  # Initialize templates attribute
         self.config = config  # Store config path
+        self.last_figure = None  # Store reference to last generated figure
 
         # If a BMTK config is provided, load mechanisms/templates from it
         if config is not None:
@@ -1202,6 +1203,7 @@ class Profiler:
             plt.title("Passive Cell Current Injection")
             plt.xlabel("Time (ms)")
             plt.ylabel("Membrane Potential (mV)")
+            self.last_figure = plt.gcf()
             plt.show()
 
         return time, amp
@@ -1230,6 +1232,8 @@ class Profiler:
             plt.title("Current Injection")
             plt.xlabel("Time (ms)")
             plt.ylabel("Membrane Potential (mV)")
+            plt.xlim(ccl.inj_delay - 10, ccl.inj_delay + ccl.inj_dur + 10)
+            self.last_figure = plt.gcf()
             plt.show()
 
         return time, amp
@@ -1278,6 +1282,7 @@ class Profiler:
             plt.title("FI Curve")
             plt.xlabel("Injection (pA)")
             plt.ylabel("# Spikes")
+            self.last_figure = plt.gcf()
             plt.show()
 
         return amp, nspk
@@ -1317,18 +1322,22 @@ class Profiler:
             plt.title("ZAP Response")
             plt.xlabel("Time (ms)")
             plt.ylabel("Membrane Potential (mV)")
+            self.last_figure = plt.gcf()
 
             plt.figure()
             plt.plot(time, zap.zap_vec)
             plt.title("ZAP Current")
             plt.xlabel("Time (ms)")
             plt.ylabel("Current Injection (nA)")
+            # Note: This will overwrite last_figure with the current plot
+            self.last_figure = plt.gcf()
 
             plt.figure()
             plt.plot(*zap.get_impedance(smooth=smooth))
             plt.title("Impedance Amplitude Profile")
             plt.xlabel("Frequency (Hz)")
             plt.ylabel("Impedance (MOhms)")
+            self.last_figure = plt.gcf()
             plt.show()
 
         return time, amp
@@ -1461,6 +1470,15 @@ class Profiler:
             layout=widgets.Layout(width='150px')
         )
         
+        save_path_text = widgets.Text(value='', description='Save Path:', placeholder='e.g., plot.png', style={'description_width': 'initial'}, layout=widgets.Layout(width='300px'))
+        
+        save_button = widgets.Button(
+            description='Save Plot', 
+            button_style='success', 
+            icon='save',
+            layout=widgets.Layout(width='120px')
+        )
+        
         output_area = widgets.Output(
             layout=widgets.Layout(border='1px solid #ccc', padding='10px', margin='10px 0 0 0')
         )
@@ -1475,7 +1493,8 @@ class Profiler:
         # Button row - main controls
         button_row = widgets.HBox([
             run_button,
-            reset_button
+            reset_button,
+            save_button
         ], layout=widgets.Layout(margin='0 0 10px 0'))
         
         # Section row - recording and injection sections  
@@ -1483,6 +1502,11 @@ class Profiler:
             record_sec_text,
             inj_sec_text,
             post_init_text
+        ], layout=widgets.Layout(margin='0 0 10px 0'))
+        
+        # Save row
+        save_row = widgets.HBox([
+            save_path_text
         ], layout=widgets.Layout(margin='0 0 10px 0'))
         
         # Parameter columns - organized in columns like synapse tuner
@@ -1681,15 +1705,36 @@ class Profiler:
                 update_slider_values(method)
                 print(f"Reset all parameters to defaults for {method}")
         
+        # Save function
+        def save_plot(b):
+            path = save_path_text.value
+            if not path:
+                with output_area:
+                    print("Please enter a save path")
+                return
+            if self.last_figure is None:
+                with output_area:
+                    print("No plot to save. Run an analysis first.")
+                return
+            try:
+                self.last_figure.savefig(path)
+                with output_area:
+                    print(f"Plot saved to {path}")
+            except Exception as e:
+                with output_area:
+                    print(f"Error saving plot: {e}")
+        
         run_button.on_click(run_analysis)
         reset_button.on_click(reset_to_defaults)
+        save_button.on_click(save_plot)
         
         # Create main UI layout - matching synapse tuner structure
         ui = widgets.VBox([
             selection_row,
             button_row, 
             section_row,
-            param_columns
+            param_columns,
+            save_row
         ], layout=widgets.Layout(padding='10px'))
         
         # Display the interface - UI on top, output below (like synapse tuner)

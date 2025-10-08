@@ -173,6 +173,7 @@ class SynapseTuner:
         self.other_vars_to_record = other_vars_to_record or []
         self.ispk = None
         self.input_mode = False  # Add input_mode attribute
+        self.last_figure = None  # Store reference to last generated figure
 
         # Store original slider_vars for connection switching
         self.original_slider_vars = slider_vars or list(self.synaptic_props.keys())
@@ -1047,6 +1048,7 @@ class SynapseTuner:
 
         #plt.tight_layout()
         fig.suptitle(f"Connection: {self.current_connection}")
+        self.last_figure = plt.gcf()
         plt.show()
 
     def _set_drive_train(self, freq=50.0, delay=250.0):
@@ -1389,6 +1391,52 @@ class SynapseTuner:
             options=durations, value=duration0, description="Duration"
         )
 
+        # Save functionality widgets
+        save_path_text = widgets.Text(
+            value="plot.png",
+            description="Save path:",
+            layout=widgets.Layout(width='300px')
+        )
+        save_button = widgets.Button(description="Save Plot", icon="save", button_style="success")
+
+        def save_plot(b):
+            if hasattr(self, 'last_figure') and self.last_figure is not None:
+                try:
+                    # Create a new figure with just the first subplot (synaptic current)
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    
+                    # Get the axes from the original figure
+                    original_axes = self.last_figure.get_axes()
+                    if len(original_axes) > 0:
+                        first_ax = original_axes[0]
+                        
+                        # Copy the data from the first subplot
+                        for line in first_ax.get_lines():
+                            ax.plot(line.get_xdata(), line.get_ydata(), 
+                                   color=line.get_color(), label=line.get_label())
+                        
+                        # Copy axis labels and title
+                        ax.set_xlabel(first_ax.get_xlabel())
+                        ax.set_ylabel(first_ax.get_ylabel())
+                        ax.set_title(first_ax.get_title())
+                        ax.set_xlim(first_ax.get_xlim())
+                        ax.legend()
+                        ax.grid(True)
+                        
+                        # Save the new figure
+                        fig.savefig(save_path_text.value)
+                        plt.close(fig)  # Close the temporary figure
+                        print(f"Synaptic current plot saved to {save_path_text.value}")
+                    else:
+                        print("No subplots found in the figure")
+                        
+                except Exception as e:
+                    print(f"Error saving plot: {e}")
+            else:
+                print("No plot to save")
+
+        save_button.on_click(save_plot)
+
         def create_dynamic_sliders():
             """Create sliders based on current connection's parameters"""
             sliders = {}
@@ -1529,8 +1577,9 @@ class SynapseTuner:
             else:
                 connection_row = HBox([w_connection])
             slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
+            save_row = HBox([save_path_text, save_button])
             
-            ui = VBox([connection_row, button_row, slider_row, slider_columns])
+            ui = VBox([connection_row, button_row, slider_row, slider_columns, save_row])
 
         # Function to update UI based on input mode
         def update_ui(*args):
@@ -1787,6 +1836,7 @@ class GapJunctionTuner:
         self.config = config
         self.available_networks = []
         self.current_network = None
+        self.last_figure = None
         if self.conn_type_settings is None and self.config is not None:
             self.conn_type_settings = self._build_conn_type_settings_from_config(self.config)
         if self.conn_type_settings is None or len(self.conn_type_settings) == 0:
@@ -2188,6 +2238,7 @@ class GapJunctionTuner:
         plt.xlabel("Time (ms)")
         plt.ylabel("Membrane Voltage (mV)")
         plt.legend()
+        self.last_figure = plt.gcf()
 
     def coupling_coefficient(self, t, v1, v2, t_start, t_end, dt=h.dt):
         """
@@ -2238,7 +2289,38 @@ class GapJunctionTuner:
 
         output = widgets.Output()
 
+        # Save functionality widgets
+        save_path_text = widgets.Text(
+            value="",
+            placeholder="Enter file path (e.g., plot.png, plot.svg)",
+            description="Save Path:",
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='400px')
+        )
+        save_button = widgets.Button(
+            description="Save Plot",
+            icon="save",
+            button_style="success"
+        )
+
         ui_widgets = [w_run, resistance]
+
+        def save_plot(*args):
+            """Save the last generated plot to a file."""
+            if self.last_figure is None:
+                print("No plot available to save. Please run a simulation first.")
+                return
+            
+            save_path = save_path_text.value.strip()
+            if not save_path:
+                print("Please enter a file path to save the plot.")
+                return
+            
+            try:
+                self.last_figure.savefig(save_path, bbox_inches='tight')
+                print(f"Plot saved to: {save_path}")
+            except Exception as e:
+                print(f"Error saving plot: {e}")
 
         def on_button(*args):
             with output:
@@ -2281,10 +2363,17 @@ class GapJunctionTuner:
             connection_dropdown.observe(on_connection_change)
             ui_widgets.insert(0, connection_dropdown)
 
+        # Add save widgets to UI
+        save_row = HBox([save_path_text, save_button])
+        ui_widgets.append(save_row)
+
         ui = VBox(ui_widgets)
 
         display(ui)
         display(output)
+
+        # Connect save button to callback
+        save_button.on_click(save_plot)
 
         # Run once initially
         on_button()
