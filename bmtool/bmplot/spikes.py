@@ -242,6 +242,7 @@ def plot_firing_rate_distribution(
     color_map: Optional[Dict[str, str]] = None,
     plot_type: Union[str, list] = "box",
     swarm_alpha: float = 0.6,
+    logscale: bool = False,
 ) -> Axes:
     """
     Plots a distribution of individual firing rates using one or more plot types
@@ -261,6 +262,8 @@ def plot_firing_rate_distribution(
         List of plot types to generate. Options: "box", "violin", "swarm". Default is "box".
     swarm_alpha : float, optional
         Transparency of swarm plot points. Default is 0.6.
+    logscale : bool, optional
+        If True, use logarithmic scale for the y-axis (default is False).
 
     Returns:
     -------
@@ -342,6 +345,9 @@ def plot_firing_rate_distribution(
     ax.set_title("Firing Rate Distribution for individual cells")
     ax.grid(axis="y", linestyle="--", alpha=0.7)
 
+    if logscale:
+        ax.set_yscale('log')
+
     return ax
 
 
@@ -354,6 +360,7 @@ def plot_firing_rate_vs_node_attribute(
     attribute: Optional[str] = None,
     figsize=(12, 8),
     dot_size: float = 3,
+    color_map: Optional[Dict[str, str]] = None,
 ) -> plt.Figure:
     """
     Plot firing rate vs node attribute for each group in separate subplots.
@@ -376,6 +383,8 @@ def plot_firing_rate_vs_node_attribute(
         Figure dimensions (width, height) in inches
     dot_size : float, optional
         Size of scatter plot points
+    color_map : dict, optional
+        Dictionary specifying colors for each group. Keys should be group names, and values should be color values.
 
     Returns
     -------
@@ -433,10 +442,20 @@ def plot_firing_rate_vs_node_attribute(
         axes = np.array([axes])
     axes = axes.flatten()
 
+    # Generate colors if no color_map is provided
+    if color_map is None:
+        cmap = plt.get_cmap("tab10")
+        color_map = {group: cmap(i / len(unique_groups)) for i, group in enumerate(unique_groups)}
+    else:
+        # Ensure color_map contains all groups
+        missing_colors = [group for group in unique_groups if group not in color_map]
+        if missing_colors:
+            raise ValueError(f"color_map is missing colors for groups: {missing_colors}")
+
     # Plot each group
     for i, group in enumerate(unique_groups):
         group_df = merged_df[merged_df[groupby] == group]
-        axes[i].scatter(group_df["firing_rate"], group_df[attribute], s=dot_size)
+        axes[i].scatter(group_df["firing_rate"], group_df[attribute], s=dot_size, color=color_map[group])
         axes[i].set_xlabel("Firing Rate (Hz)")
         axes[i].set_ylabel(attribute)
         
@@ -451,3 +470,111 @@ def plot_firing_rate_vs_node_attribute(
 
     plt.tight_layout()
     return fig
+
+
+def plot_firing_rate_histogram(
+    individual_stats: pd.DataFrame,
+    groupby: str = "pop_name",
+    ax: Optional[Axes] = None,
+    color_map: Optional[Dict[str, str]] = None,
+    bins: int = 30,
+    alpha: float = 0.7,
+    figsize=(12, 8),
+    stacked: bool = False,
+    logscale: bool = False,
+    min_fr: Optional[float] = None,
+) -> plt.Figure:
+    """
+    Plot histograms of firing rates for each population group.
+
+    Parameters:
+    ----------
+    individual_stats : pd.DataFrame
+        DataFrame containing individual firing rates with group labels.
+    groupby : str, optional
+        Column name to group by (default is "pop_name").
+    ax : matplotlib.axes.Axes, optional
+        Axes on which to plot; if None, a new figure is created.
+    color_map : dict, optional
+        Dictionary specifying colors for each group. Keys should be group names, and values should be color values.
+    bins : int, optional
+        Number of bins for the histogram (default is 30).
+    alpha : float, optional
+        Transparency level for the histograms (default is 0.7).
+    figsize : tuple, optional
+        Figure size if creating a new figure (default is (12, 8)).
+    stacked : bool, optional
+        If True, plot all histograms on a single axes stacked (default is False).
+    logscale : bool, optional
+        If True, use logarithmic scale for the x-axis (default is False).
+    min_fr : float, optional
+        Minimum firing rate for log scale bins (default is None).
+
+    Returns:
+    -------
+    matplotlib.figure.Figure
+        Figure containing the histogram subplots.
+    """
+    sns.set_style("whitegrid")
+
+    # Get unique groups
+    unique_groups = individual_stats[groupby].unique()
+
+    # Generate colors if no color_map is provided
+    if color_map is None:
+        cmap = plt.get_cmap("tab10")
+        color_map = {group: cmap(i / len(unique_groups)) for i, group in enumerate(unique_groups)}
+    else:
+        # Ensure color_map contains all groups
+        missing_colors = [group for group in unique_groups if group not in color_map]
+        if missing_colors:
+            raise ValueError(f"color_map is missing colors for groups: {missing_colors}")
+
+    # Group data by population
+    pop_fr = {}
+    for group in unique_groups:
+        pop_fr[group] = individual_stats[individual_stats[groupby] == group]["firing_rate"].values
+
+    if logscale and min_fr is not None:
+        pop_fr = {p: np.fmax(fr, min_fr) for p, fr in pop_fr.items()}
+    fr = np.concatenate(list(pop_fr.values()))
+    if logscale:
+        fr = fr[fr > 0]
+        bins_array = np.geomspace(fr.min(), fr.max(), bins + 1)
+    else:
+        bins_array = np.linspace(fr.min(), fr.max(), bins + 1)
+
+    # Setup subplot layout or single plot
+    n_groups = len(unique_groups)
+    if stacked or not stacked:  # Always use single ax for now, since stacked means overlaid
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        # If not stacked, but since overlaid is default, perhaps keep as is
+        fig, ax = plt.subplots(figsize=figsize)
+
+    if stacked:
+        ax.hist(pop_fr.values(), bins=bins_array, label=list(pop_fr.keys()),
+                color=[color_map[p] for p in pop_fr.keys()], stacked=True)
+    else:
+        for p, fr_vals in pop_fr.items():
+            ax.hist(fr_vals, bins=bins_array, label=p, color=color_map[p], alpha=alpha)
+
+    if logscale:
+        ax.set_xscale('log')
+        plt.draw()
+        xt = ax.get_xticks()
+        xtl = [f'{x:g}' for x in xt]
+        if min_fr is not None:
+            xt = np.append(xt, min_fr)
+            xtl.append('0')
+        ax.set_xticks(xt)
+        ax.set_xticklabels(xtl)
+
+    ax.set_xlim(bins_array[0], bins_array[-1])
+    ax.legend(loc='upper right')
+    ax.set_title('Firing Rate Histogram')
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Count')
+    return fig
+
+

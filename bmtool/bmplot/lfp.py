@@ -56,4 +56,4 @@ def plot_spectrogram(
     plt.colorbar(mappable=pcm, ax=ax, label=cbar_label, pad=pad)
     ax.set_xlabel("Time (sec)")
     ax.set_ylabel("Frequency (Hz)")
-    return sxx
+    return ax.figure
