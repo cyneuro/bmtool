@@ -1,6 +1,7 @@
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -206,7 +207,7 @@ def plot_spike_power_correlation(
 
     # Plotting
     sns.set_style("whitegrid")
-    plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=(12, 8))
 
     for i, pop in enumerate(pop_names):
         # Extract data for plotting
@@ -294,7 +295,7 @@ def plot_spike_power_correlation(
     plt.ylim(min(y_min, -0.1), max(y_max, 0.1))
 
     plt.tight_layout()
-    plt.show()
+    return fig
 
 
 def plot_cycle_with_spike_histograms(phase_data, bins=36, pop_name=None):
@@ -361,7 +362,7 @@ def plot_cycle_with_spike_histograms(phase_data, bins=36, pop_name=None):
     ax_hist.set_xlabel("Phase (degrees)", fontsize=12)
 
     plt.tight_layout()
-    plt.show()
+    return fig
 
 
 def plot_entrainment_by_population(ppc_dict, pop_names, freqs, figsize=(15, 8), title=None):
@@ -381,7 +382,7 @@ def plot_entrainment_by_population(ppc_dict, pop_names, freqs, figsize=(15, 8), 
     """
     # Set up the visualization style
     sns.set_style("whitegrid")
-    plt.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize)
 
     # Calculate the width of each group of bars
     n_groups = len(freqs)
@@ -443,7 +444,7 @@ def plot_entrainment_by_population(ppc_dict, pop_names, freqs, figsize=(15, 8), 
 
     # Adjust layout and save
     plt.tight_layout()
-    plt.show()
+    return fig
 
 
 def plot_entrainment_swarm_plot(ppc_dict, pop_names, freq, save_path=None, title=None):
@@ -500,7 +501,7 @@ def plot_entrainment_swarm_plot(ppc_dict, pop_names, freq, save_path=None, title
             print(f"{pop}: {mean_val:.4f} ± {sem_val:.4f} (n={n})")
 
     # Create figure
-    plt.figure(figsize=(max(8, len(pop_names) * 1.5), 8))
+    fig = plt.figure(figsize=(max(8, len(pop_names) * 1.5), 8))
 
     # Create swarm plot
     ax = sns.swarmplot(
@@ -608,7 +609,7 @@ def plot_entrainment_swarm_plot(ppc_dict, pop_names, freq, save_path=None, title
     if save_path:
         plt.savefig(f"{save_path}/ppc_change_swarm_plot_{freq}Hz.png", dpi=300, bbox_inches="tight")
 
-    plt.show()
+    return fig
 
 
 def plot_trial_avg_entrainment(
@@ -621,7 +622,7 @@ def plot_trial_avg_entrainment(
     firing_quantile: float,
     spike_fs: float = 1000,
     error_type: str = "ci",  # New parameter: "ci" for confidence interval, "sem" for standard error, "std" for standard deviation
-) -> None:
+) -> Figure:
     """
     Plot trial-averaged entrainment for specified population names. Only supports wavelet filter current, could easily add other support
 
@@ -813,7 +814,7 @@ def plot_trial_avg_entrainment(
                 error_plv[pop_name] = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1)
 
     # Create the combined plot
-    plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=(12, 8))
 
     # Define markers and colors for different populations
     markers = ["o-", "s-", "^-", "D-", "v-", "<-", ">-", "p-"]
@@ -862,4 +863,104 @@ def plot_trial_avg_entrainment(
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.show()
+    return fig
+
+
+def plot_fr_hist_phase_amplitude(
+    fr_hist: np.ndarray, 
+    pop_names: List[str], 
+    freq_labels: List[str], 
+    nbins_pha: int = 16, 
+    nbins_amp: int = 16,
+    common_clim: bool = True, 
+    figsize: Tuple[float, float] = (3, 2),
+    cmap: str = 'viridis',
+    title: Optional[str] = None
+) -> Tuple[plt.Figure, np.ndarray]:
+    """
+    Plot firing rate histograms binned by LFP phase and amplitude. 
+    Check out the bmtool/bmtool/analysis/entrainment.py function
+    compute_fr_hist_phase_amplitude
+    
+    Parameters
+    ----------
+    fr_hist : np.ndarray
+        Firing rate histogram of shape (n_pop, n_freq, nbins_pha, nbins_amp)
+    pop_names : List[str]
+        List of population names
+    freq_labels : List[str]
+        List of frequency labels for subplot titles (e.g., ['Beta', 'Gamma'])
+    nbins_pha : int, default=16
+        Number of phase bins
+    nbins_amp : int, default=16
+        Number of amplitude bins
+    common_clim : bool, default=True
+        Whether to use common color limits across all subplots
+    figsize : Tuple[float, float], default=(3, 2)
+        Size of each subplot
+    cmap : str, default='RdBu_r'
+        Colormap to use
+    title : Optional[str], default=None
+        Overall title for the figure
+        
+    Returns
+    -------
+    Tuple[plt.Figure, np.ndarray]
+        Figure and axes objects
+        
+    Examples
+    --------
+    >>> fig, axs = plot_fr_hist_phase_amplitude(
+    ...     fr_hist, ['PV', 'SST'], ['Beta', 'Gamma'], 
+    ...     common_clim=True, cmap='RdBu_r', title='LFP Phase-Amplitude Coupling'
+    ... )
+    """
+    pha_bins = np.linspace(-np.pi, np.pi, nbins_pha + 1)
+    quantiles = np.linspace(0, 1, nbins_amp + 1)
+    
+    n_pop = len(pop_names)
+    n_freq = len(freq_labels)
+    
+    fig, axs = plt.subplots(n_pop, n_freq, 
+                           figsize=(figsize[0] * n_freq, figsize[1] * n_pop),
+                           squeeze=False)
+
+    
+    # Add overall title if provided
+    if title:
+        fig.suptitle(title, fontsize=14, y=0.98)
+    
+    for i, p in enumerate(pop_names):
+        if common_clim:
+            vmin, vmax = fr_hist.min(), fr_hist.max()
+        else:
+            vmin, vmax = None, None
+            
+        for j, freq_label in enumerate(freq_labels):
+            ax = axs[i, j]
+            pcm = ax.pcolormesh(pha_bins, quantiles, fr_hist[i, j].T, 
+                               vmin=vmin, vmax=vmax, cmap=cmap)
+            ax.set_title(p)
+            
+            if i < n_pop - 1:
+                ax.get_xaxis().set_visible(False)
+            else:
+                ax.set_xlabel(freq_label.title() + ' Phase')
+                ax.set_xticks((-np.pi, 0, np.pi))
+                ax.set_xticklabels([r'$-\pi$', '0', r'$\pi$'])
+                
+            if j > 0:
+                ax.get_yaxis().set_visible(False)
+            else:
+                ax.set_ylabel('Amplitude (quantile)')
+                
+            if not common_clim:
+                plt.colorbar(mappable=pcm, ax=ax, 
+                           label='Firing rate (% Change)' if j == n_freq - 1 else None, 
+                           pad=0.02)
+                           
+        if common_clim:
+            plt.colorbar(mappable=pcm, ax=axs[i], 
+                        label='Firing rate (% Change)', pad=0.02)
+    
+    return fig, axs

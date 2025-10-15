@@ -16,6 +16,7 @@ def raster(
     config: Optional[str] = None,
     network_name: Optional[str] = None,
     groupby: Optional[str] = "pop_name",
+    sortby: Optional[str] = None,
     ax: Optional[Axes] = None,
     tstart: Optional[float] = None,
     tstop: Optional[float] = None,
@@ -33,6 +34,10 @@ def raster(
         Path to the configuration file used to load node data.
     network_name : str, optional
         Specific network name to select from the configuration; if not provided, uses the first network.
+    groupby : str, optional
+        Column name to group spikes by for coloring. Default is 'pop_name'.
+    sortby : str, optional
+        Column name to sort node_ids within each group. If provided, nodes within each population will be sorted by this column.
     ax : matplotlib.axes.Axes, optional
         Axes on which to plot the raster; if None, a new figure and axes are created.
     tstart : float, optional
@@ -107,11 +112,32 @@ def raster(
 
     # Plot each population with its specified or generated color
     legend_handles = []
+    y_offset = 0  # Track y-position offset for stacking populations
+    
     for pop_name, group in spikes_df.groupby(groupby):
-        ax.scatter(group["timestamps"], group["node_ids"], color=color_map[pop_name], s=dot_size)
+        if sortby:
+            # Sort by the specified column, putting NaN values at the end
+            group_sorted = group.sort_values(by=sortby, na_position='last')
+            # Create a mapping from node_ids to consecutive y-positions based on sorted order
+            # Use the sorted order to maintain the same sequence for all spikes from same node
+            unique_nodes_sorted = group_sorted['node_ids'].drop_duplicates()
+            node_to_y = {node_id: y_offset + i for i, node_id in enumerate(unique_nodes_sorted)}
+            # Map node_ids to new y-positions for ALL spikes (not just the sorted group)
+            y_positions = group['node_ids'].map(node_to_y)
+            # Verify no data was lost
+            assert len(y_positions) == len(group), f"Data loss detected in population {pop_name}"
+            assert y_positions.isna().sum() == 0, f"Unmapped node_ids found in population {pop_name}"
+        else:
+            y_positions = group['node_ids']
+            
+        ax.scatter(group["timestamps"], y_positions, color=color_map[pop_name], s=dot_size)
         # Dummy scatter for consistent legend appearance
         handle = ax.scatter([], [], color=color_map[pop_name], label=pop_name, s=20)
         legend_handles.append(handle)
+        
+        # Update y_offset for next population if sortby is used
+        if sortby:
+            y_offset += len(unique_nodes_sorted)
 
     # Label axes
     ax.set_xlabel("Time")
@@ -413,6 +439,10 @@ def plot_firing_rate_vs_node_attribute(
         axes[i].scatter(group_df["firing_rate"], group_df[attribute], s=dot_size)
         axes[i].set_xlabel("Firing Rate (Hz)")
         axes[i].set_ylabel(attribute)
+        
+        # Calculate and display mean firing rate in legend
+        mean_fr = group_df["firing_rate"].mean()
+        axes[i].legend([f"Mean FR: {mean_fr:.2f} Hz"], loc="upper right")
         axes[i].set_title(f"{groupby}: {group}")
 
     # Hide unused subplots
@@ -420,4 +450,4 @@ def plot_firing_rate_vs_node_attribute(
         axes[j].set_visible(False)
 
     plt.tight_layout()
-    plt.show()
+    return fig
