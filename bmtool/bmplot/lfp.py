@@ -45,7 +45,7 @@ def plot_spectrogram(
         vmin, vmax = sxx[c_idx, :].min(), sxx[c_idx, :].max()
 
     f = f[f_idx]
-    pcm = ax.pcolormesh(t, f, sxx[f_idx, :], shading="gouraud", vmin=vmin, vmax=vmax)
+    pcm = ax.pcolormesh(t, f, sxx[f_idx, :], shading="gouraud", vmin=vmin, vmax=vmax, rasterized=True)
     if "cone_of_influence_frequency" in sxx_xarray:
         coif = sxx_xarray.cone_of_influence_frequency
         ax.plot(t, coif)
