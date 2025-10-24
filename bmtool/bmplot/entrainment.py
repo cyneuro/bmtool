@@ -1,6 +1,7 @@
-from typing import List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -18,16 +19,16 @@ def plot_spike_power_correlation(
     lfp_data: xr.DataArray,
     firing_quantile: float,
     fs: float,
-    pop_names: list,
+    pop_names: List[str],
     filter_method: str = "wavelet",
     bandwidth: float = 2.0,
-    lowcut: float = None,
-    highcut: float = None,
-    freq_range: tuple = (10, 100),
+    lowcut: Optional[float] = None,
+    highcut: Optional[float] = None,
+    freq_range: Tuple[float, float] = (10, 100),
     freq_step: float = 5,
     type_name: str = "raw",
-    time_windows: list = None,
-    error_type: str = "ci",  # New parameter: "ci" for confidence interval, "sem" for standard error, "std" for standard deviation
+    time_windows: Optional[List[Tuple[float, float]]] = None,
+    error_type: str = "ci",
 ):
     """
     Calculate and plot correlation between population spike rates and LFP power across frequencies.
@@ -35,13 +36,15 @@ def plot_spike_power_correlation(
 
     Parameters
     ----------
-    spike_rate : xr.DataArray
-        Population spike rates with dimensions (time, population[, type])
+    spike_df : pd.DataFrame
+        DataFrame containing spike data with columns 'timestamps', 'node_ids', and 'pop_name'.
     lfp_data : xr.DataArray
         LFP data
+    firing_quantile : float
+        Upper quantile threshold for selecting high-firing cells (e.g., 0.8 for top 20%)
     fs : float
         Sampling frequency
-    pop_names : list
+    pop_names : List[str]
         List of population names to analyze
     filter_method : str, optional
         Filtering method to use, either 'wavelet' or 'butter' (default: 'wavelet')
@@ -51,16 +54,21 @@ def plot_spike_power_correlation(
         Lower frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
     highcut : float, optional
         Upper frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
-    freq_range : tuple, optional
+    freq_range : Tuple[float, float], optional
         Min and max frequency to analyze (default: (10, 100))
     freq_step : float, optional
         Step size for frequency analysis (default: 5)
     type_name : str, optional
         Which type of spike rate to use if 'type' dimension exists (default: 'raw')
-    time_windows : list, optional
+    time_windows : List[Tuple[float, float]], optional
         List of (start, end) time tuples for trial-based analysis. If None, analyze entire signal
     error_type : str, optional
         Type of error bars to plot: "ci" for 95% confidence interval, "sem" for standard error, "std" for standard deviation
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure containing the correlation plot
     """
 
     if not (0 <= firing_quantile < 1):
@@ -206,7 +214,7 @@ def plot_spike_power_correlation(
 
     # Plotting
     sns.set_style("whitegrid")
-    plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=(12, 8))
 
     for i, pop in enumerate(pop_names):
         # Extract data for plotting
@@ -294,28 +302,31 @@ def plot_spike_power_correlation(
     plt.ylim(min(y_min, -0.1), max(y_max, 0.1))
 
     plt.tight_layout()
-    plt.show()
+    return fig
 
 
-def plot_cycle_with_spike_histograms(phase_data, bins=36, pop_name=None):
+def plot_cycle_with_spike_histograms(phase_data, pop_names: List[str], bins: int = 36):
     """
     Plot an idealized cycle with spike histograms for different neuron populations.
 
-    Parameters:
+    Parameters
     -----------
     phase_data : dict
         Dictionary containing phase values for each spike and neuron population
-    fs : float
-        Sampling frequency of LFP in Hz
-    bins : int
-        Number of bins for the phase histogram (default 36 gives 10-degree bins)
-    pop_name : list
+    pop_names : List[str]
         List of population names to be plotted
+    bins : int, optional
+        Number of bins for the phase histogram (default 36 gives 10-degree bins)
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure containing the cycle and histograms
     """
     sns.set_style("whitegrid")
     # Create a figure with subplots
     fig = plt.figure(figsize=(12, 8))
-    gs = GridSpec(len(pop_name) + 1, 1, height_ratios=[1.5] + [1] * len(pop_name))
+    gs = GridSpec(len(pop_names) + 1, 1, height_ratios=[1.5] + [1] * len(pop_names))
 
     # Top subplot: Idealized gamma cycle
     ax_gamma = fig.add_subplot(gs[0])
@@ -335,10 +346,10 @@ def plot_cycle_with_spike_histograms(phase_data, bins=36, pop_name=None):
     ax_gamma.axvline(x=0, color="k", linestyle="--", alpha=0.3)
 
     # Generate a color map for the different populations
-    colors = plt.cm.tab10(np.linspace(0, 1, len(pop_name)))
+    colors = plt.cm.tab10(np.linspace(0, 1, len(pop_names)))
 
     # Add histograms for each neuron population
-    for i, pop_name in enumerate(pop_name):
+    for i, pop_name in enumerate(pop_names):
         ax_hist = fig.add_subplot(gs[i + 1], sharex=ax_gamma)
 
         # Compute histogram
@@ -361,27 +372,34 @@ def plot_cycle_with_spike_histograms(phase_data, bins=36, pop_name=None):
     ax_hist.set_xlabel("Phase (degrees)", fontsize=12)
 
     plt.tight_layout()
-    plt.show()
+    return fig
 
 
-def plot_entrainment_by_population(ppc_dict, pop_names, freqs, figsize=(15, 8), title=None):
+def plot_entrainment_by_population(ppc_dict: Dict[str, Dict[str, Dict[float, float]]], pop_names: List[str], freqs: List[float], figsize: Tuple[float, float] = (15, 8), title: Optional[str] = None):
     """
     Plot PPC for all node populations on one graph with mean and standard error.
 
     Parameters:
     -----------
-    ppc_dict : dict
+    ppc_dict : Dict[str, Dict[str, Dict[float, float]]]
         Dictionary containing PPC data organized by population, node, and frequency
-    pop_names : list
+    pop_names : List[str]
         List of population names to plot data for
-    freqs : list
+    freqs : List[float]
         List of frequencies to plot
-    figsize : tuple
+    figsize : Tuple[float, float], optional
         Figure size for the plot
+    title : str, optional
+        Title for the plot
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure containing the bar plot
     """
     # Set up the visualization style
     sns.set_style("whitegrid")
-    plt.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize)
 
     # Calculate the width of each group of bars
     n_groups = len(freqs)
@@ -443,23 +461,25 @@ def plot_entrainment_by_population(ppc_dict, pop_names, freqs, figsize=(15, 8), 
 
     # Adjust layout and save
     plt.tight_layout()
-    plt.show()
+    return fig
 
 
-def plot_entrainment_swarm_plot(ppc_dict, pop_names, freq, save_path=None, title=None):
+def plot_entrainment_swarm_plot(ppc_dict: Dict[str, Dict[str, Dict[float, float]]], pop_names: List[str], freq: Union[float, int], save_path: Optional[str] = None, title: Optional[str] = None):
     """
     Plot a swarm plot of the entrainment for different populations at a single frequency.
 
     Parameters:
     -----------
-    ppc_dict : dict
+    ppc_dict : Dict[str, Dict[str, Dict[float, float]]]
         Dictionary containing PPC values organized by population, node, and frequency
-    pop_names : list
+    pop_names : List[str]
         List of population names to include in the plot
-    freq : float or int
+    freq : Union[float, int]
         The specific frequency to plot
     save_path : str, optional
         Path to save the figure. If None, figure is just displayed.
+    title : str, optional
+        Title for the plot
 
     Returns:
     --------
@@ -500,7 +520,7 @@ def plot_entrainment_swarm_plot(ppc_dict, pop_names, freq, save_path=None, title
             print(f"{pop}: {mean_val:.4f} ± {sem_val:.4f} (n={n})")
 
     # Create figure
-    plt.figure(figsize=(max(8, len(pop_names) * 1.5), 8))
+    fig = plt.figure(figsize=(max(8, len(pop_names) * 1.5), 8))
 
     # Create swarm plot
     ax = sns.swarmplot(
@@ -608,20 +628,20 @@ def plot_entrainment_swarm_plot(ppc_dict, pop_names, freq, save_path=None, title
     if save_path:
         plt.savefig(f"{save_path}/ppc_change_swarm_plot_{freq}Hz.png", dpi=300, bbox_inches="tight")
 
-    plt.show()
+    return fig
 
 
 def plot_trial_avg_entrainment(
     spike_df: pd.DataFrame,
-    lfp: np.ndarray,
+    lfp: xr.DataArray,
     time_windows: List[Tuple[float, float]],
     entrainment_method: str,
     pop_names: List[str],
     freqs: Union[List[float], np.ndarray],
     firing_quantile: float,
     spike_fs: float = 1000,
-    error_type: str = "ci",  # New parameter: "ci" for confidence interval, "sem" for standard error, "std" for standard deviation
-) -> None:
+    error_type: str = "ci",
+) -> Figure:
     """
     Plot trial-averaged entrainment for specified population names. Only supports wavelet filter current, could easily add other support
 
@@ -629,9 +649,7 @@ def plot_trial_avg_entrainment(
     -----------
     spike_df : pd.DataFrame
         Spike data containing timestamps, node_ids, and pop_name columns
-    spike_fs : float
-        fs for spike data. Default is 1000
-    lfp : xarray
+    lfp : xr.DataArray
         Xarray for a channel of the lfp data
     time_windows : List[Tuple[float, float]]
         List of windows to analysis with start and stp time [(start_time, end_time), ...] for each trial
@@ -643,7 +661,9 @@ def plot_trial_avg_entrainment(
         Array of frequencies to analyze (Hz)
     firing_quantile : float
         Upper quantile threshold for selecting high-firing cells (e.g., 0.8 for top 20%)
-    error_type : str
+    spike_fs : float, optional
+        fs for spike data. Default is 1000
+    error_type : str, optional
         Type of error bars to plot: "ci" for 95% confidence interval, "sem" for standard error, "std" for standard deviation
 
     Raises:
@@ -655,8 +675,8 @@ def plot_trial_avg_entrainment(
 
     Returns:
     --------
-    None
-        Displays plot and prints summary statistics
+    matplotlib.figure.Figure
+        The figure containing the plot
     """
     sns.set_style("whitegrid")
     # Validate inputs
@@ -813,7 +833,7 @@ def plot_trial_avg_entrainment(
                 error_plv[pop_name] = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1)
 
     # Create the combined plot
-    plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=(12, 8))
 
     # Define markers and colors for different populations
     markers = ["o-", "s-", "^-", "D-", "v-", "<-", ">-", "p-"]
@@ -862,4 +882,104 @@ def plot_trial_avg_entrainment(
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.show()
+    return fig
+
+
+def plot_fr_hist_phase_amplitude(
+    fr_hist: np.ndarray, 
+    pop_names: List[str], 
+    freq_labels: List[str], 
+    nbins_pha: int = 16, 
+    nbins_amp: int = 16,
+    common_clim: bool = True, 
+    figsize: Tuple[float, float] = (3, 2),
+    cmap: str = 'viridis',
+    title: Optional[str] = None
+) -> Tuple[plt.Figure, np.ndarray]:
+    """
+    Plot firing rate histograms binned by LFP phase and amplitude. 
+    Check out the bmtool/bmtool/analysis/entrainment.py function
+    compute_fr_hist_phase_amplitude
+    
+    Parameters
+    ----------
+    fr_hist : np.ndarray
+        Firing rate histogram of shape (n_pop, n_freq, nbins_pha, nbins_amp)
+    pop_names : List[str]
+        List of population names
+    freq_labels : List[str]
+        List of frequency labels for subplot titles (e.g., ['Beta', 'Gamma'])
+    nbins_pha : int, default=16
+        Number of phase bins
+    nbins_amp : int, default=16
+        Number of amplitude bins
+    common_clim : bool, default=True
+        Whether to use common color limits across all subplots
+    figsize : Tuple[float, float], default=(3, 2)
+        Size of each subplot
+    cmap : str, default='RdBu_r'
+        Colormap to use
+    title : Optional[str], default=None
+        Overall title for the figure
+        
+    Returns
+    -------
+    Tuple[plt.Figure, np.ndarray]
+        Figure and axes objects
+        
+    Examples
+    --------
+    >>> fig, axs = plot_fr_hist_phase_amplitude(
+    ...     fr_hist, ['PV', 'SST'], ['Beta', 'Gamma'], 
+    ...     common_clim=True, cmap='RdBu_r', title='LFP Phase-Amplitude Coupling'
+    ... )
+    """
+    pha_bins = np.linspace(-np.pi, np.pi, nbins_pha + 1)
+    quantiles = np.linspace(0, 1, nbins_amp + 1)
+    
+    n_pop = len(pop_names)
+    n_freq = len(freq_labels)
+    
+    fig, axs = plt.subplots(n_pop, n_freq, 
+                           figsize=(figsize[0] * n_freq, figsize[1] * n_pop),
+                           squeeze=False)
+
+    
+    # Add overall title if provided
+    if title:
+        fig.suptitle(title, fontsize=14, y=0.98)
+    
+    for i, p in enumerate(pop_names):
+        if common_clim:
+            vmin, vmax = fr_hist.min(), fr_hist.max()
+        else:
+            vmin, vmax = None, None
+            
+        for j, freq_label in enumerate(freq_labels):
+            ax = axs[i, j]
+            pcm = ax.pcolormesh(pha_bins, quantiles, fr_hist[i, j].T, 
+                               vmin=vmin, vmax=vmax, cmap=cmap)
+            ax.set_title(p)
+            
+            if i < n_pop - 1:
+                ax.get_xaxis().set_visible(False)
+            else:
+                ax.set_xlabel(freq_label.title() + ' Phase')
+                ax.set_xticks((-np.pi, 0, np.pi))
+                ax.set_xticklabels([r'$-\pi$', '0', r'$\pi$'])
+                
+            if j > 0:
+                ax.get_yaxis().set_visible(False)
+            else:
+                ax.set_ylabel('Amplitude (quantile)')
+                
+            if not common_clim:
+                plt.colorbar(mappable=pcm, ax=ax, 
+                           label='Firing rate (% Change)' if j == n_freq - 1 else None, 
+                           pad=0.02)
+                           
+        if common_clim:
+            plt.colorbar(mappable=pcm, ax=axs[i], 
+                        label='Firing rate (% Change)', pad=0.02)
+    
+    return fig, axs

@@ -173,6 +173,7 @@ class SynapseTuner:
         self.other_vars_to_record = other_vars_to_record or []
         self.ispk = None
         self.input_mode = False  # Add input_mode attribute
+        self.last_figure = None  # Store reference to last generated figure
 
         # Store original slider_vars for connection switching
         self.original_slider_vars = slider_vars or list(self.synaptic_props.keys())
@@ -1045,7 +1046,9 @@ class SynapseTuner:
             for j in range(num_vars_to_plot, len(axs)):
                 fig.delaxes(axs[j])
 
-        # plt.tight_layout()
+        #plt.tight_layout()
+        fig.suptitle(f"Connection: {self.current_connection}")
+        self.last_figure = plt.gcf()
         plt.show()
 
     def _set_drive_train(self, freq=50.0, delay=250.0):
@@ -1148,7 +1151,7 @@ class SynapseTuner:
 
     def _calc_ppr_induction_recovery(self, amp, normalize_by_trial=True, print_math=True):
         """
-        Calculates paired-pulse ratio, induction, and recovery metrics from response amplitudes.
+        Calculates paired-pulse ratio, induction, recovery, and simple PPR metrics from response amplitudes.
 
         Parameters:
         -----------
@@ -1163,13 +1166,15 @@ class SynapseTuner:
         --------
         tuple
             A tuple containing:
-            - ppr: Paired-pulse ratio (2nd pulse / 1st pulse)
+            - ppr: Paired-pulse ratio (2nd pulse - 1st pulse) normalized by 90th percentile amplitude
             - induction: Measure of facilitation/depression during initial pulses
             - recovery: Measure of recovery after the delay period
+            - simple_ppr: Simple paired-pulse ratio (2nd pulse / 1st pulse)
 
         Notes:
         ------
-        - PPR > 1 indicates facilitation, PPR < 1 indicates depression
+        - PPR > 0 indicates facilitation, PPR < 0 indicates depression
+        - Simple PPR > 1 indicates facilitation, Simple PPR < 1 indicates depression
         - Induction > 0 indicates facilitation, Induction < 0 indicates depression
         - Recovery compares the response after delay to the initial pulses
         """
@@ -1190,34 +1195,44 @@ class SynapseTuner:
                 f"Short Term Plasticity Results for {self.train_freq}Hz with {self.train_delay} Delay"
             )
             print("=" * 40)
-            print("PPR: Above 0 is facilitating, below 0 is depressing.")
-            print("Induction: Above 0 is facilitating, below 0 is depressing.")
-            print("Recovery: A measure of how fast STP decays.\n")
+            print("Simple PPR: Above 1 is facilitating, below 1 is depressing")
+            print("PPR:        Above 0 is facilitating, below 0 is depressing.")
+            print("Induction:  Above 0 is facilitating, below 0 is depressing.")
+            print("Recovery:   A measure of how fast STP decays.\n")
+
+            # Simple PPR Calculation: Avg 2nd pulse / Avg 1st pulse
+            simple_ppr = np.mean(amp[:, 1:2]) / np.mean(amp[:, 0:1])
+            print("Simple Paired Pulse Ratio (PPR)")
+            print("    Calculation: Avg 2nd pulse / Avg 1st pulse")
+            print(
+                f"    Values: {np.mean(amp[:, 1:2]):.3f} / {np.mean(amp[:, 0:1]):.3f} = {simple_ppr:.3f}\n"
+            )
 
             # PPR Calculation: (Avg 2nd pulse - Avg 1st pulse) / 90th percentile amplitude
             ppr = (np.mean(amp[:, 1:2]) - np.mean(amp[:, 0:1])) / percentile_90
             print("Paired Pulse Response (PPR)")
-            print("Calculation: (Avg 2nd pulse - Avg 1st pulse) / 90th percentile amplitude")
+            print("    Calculation: (Avg 2nd pulse - Avg 1st pulse) / 90th percentile amplitude")
             print(
-                f"Values: ({np.mean(amp[:, 1:2]):.3f} - {np.mean(amp[:, 0:1]):.3f}) / {percentile_90:.3f} = {ppr:.3f}\n"
+                f"    Values: ({np.mean(amp[:, 1:2]):.3f} - {np.mean(amp[:, 0:1]):.3f}) / {percentile_90:.3f} = {ppr:.3f}\n"
             )
+            
 
             # Induction Calculation: (Avg (6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude
             induction = (np.mean(amp[:, 5:8]) - np.mean(amp[:, :1])) / percentile_90
             print("Induction")
-            print("Calculation: (Avg(6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude")
+            print("    Calculation: (Avg(6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude")
             print(
-                f"Values: {np.mean(amp[:, 5:8]):.3f} - {np.mean(amp[:, :1]):.3f} / {percentile_90:.3f} = {induction:.3f}\n"
+                f"    Values: {np.mean(amp[:, 5:8]):.3f} - {np.mean(amp[:, :1]):.3f} / {percentile_90:.3f} = {induction:.3f}\n"
             )
 
             # Recovery Calculation: (Avg (9th, 10th, 11th, 12th pulses) - Avg (1st, 2nd, 3rd, 4th pulses)) / 90th percentile amplitude
             recovery = (np.mean(amp[:, 8:12]) - np.mean(amp[:, :4])) / percentile_90
             print("Recovery")
             print(
-                "Calculation: (Avg(9th, 10th, 11th, 12th pulses) - Avg(1st to 4th pulses)) / 90th percentile amplitude"
+                "    Calculation: (Avg(9th, 10th, 11th, 12th pulses) - Avg(1st to 4th pulses)) / 90th percentile amplitude"
             )
             print(
-                f"Values: {np.mean(amp[:, 8:12]):.3f} - {np.mean(amp[:, :4]):.3f} / {percentile_90:.3f} = {recovery:.3f}\n"
+                f"    Values: {np.mean(amp[:, 8:12]):.3f} - {np.mean(amp[:, :4]):.3f} / {percentile_90:.3f} = {recovery:.3f}\n"
             )
 
             print("=" * 40 + "\n")
@@ -1226,8 +1241,9 @@ class SynapseTuner:
         ppr = (np.mean(amp[:, 1:2]) - np.mean(amp[:, 0:1])) / percentile_90
         induction = (np.mean(amp[:, 5:8]) - np.mean(amp[:, :1])) / percentile_90
         recovery = (np.mean(amp[:, 8:12]) - np.mean(amp[:, :4])) / percentile_90
+        simple_ppr = np.mean(amp[:, 1:2]) / np.mean(amp[:, 0:1])
 
-        return ppr, induction, recovery
+        return ppr, induction, recovery, simple_ppr
 
     def _set_syn_prop(self, **kwargs):
         """
@@ -1268,19 +1284,19 @@ class SynapseTuner:
             for i in range(3):
                 self.vcl.amp[i] = self.conn["spec_settings"]["vclamp_amp"]
                 self.vcl.dur[i] = vcldur[1][i]
-            #h.finitialize(self.cell.Vinit * mV)
-            #h.continuerun(self.tstop * ms)
-            h.run()
+            h.finitialize(70 * mV)
+            h.continuerun(self.tstop * ms)
+            #h.run()
         else:
-            self.tstop = self.general_settings["tstart"] + self.general_settings["tdur"]
+            # Continuous input mode: ensure simulation runs long enough for the full stimulation duration
+            self.tstop = self.general_settings["tstart"] + self.w_duration.value + 300 # 300ms buffer time 
             self.nstim.interval = 1000 / input_frequency
             self.nstim.number = np.ceil(self.w_duration.value / 1000 * input_frequency + 1)
             self.nstim2.number = 0
-            self.tstop = self.w_duration.value + self.general_settings["tstart"]
 
-            #h.finitialize(self.cell.Vinit * mV)
-            #h.continuerun(self.tstop * ms)
-            h.run()
+            h.finitialize(70 * mV)
+            h.continuerun(self.tstop * ms)
+            #h.run()
 
     def InteractiveTuner(self):
         """
@@ -1375,6 +1391,52 @@ class SynapseTuner:
             options=durations, value=duration0, description="Duration"
         )
 
+        # Save functionality widgets
+        save_path_text = widgets.Text(
+            value="plot.png",
+            description="Save path:",
+            layout=widgets.Layout(width='300px')
+        )
+        save_button = widgets.Button(description="Save Plot", icon="save", button_style="success")
+
+        def save_plot(b):
+            if hasattr(self, 'last_figure') and self.last_figure is not None:
+                try:
+                    # Create a new figure with just the first subplot (synaptic current)
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    
+                    # Get the axes from the original figure
+                    original_axes = self.last_figure.get_axes()
+                    if len(original_axes) > 0:
+                        first_ax = original_axes[0]
+                        
+                        # Copy the data from the first subplot
+                        for line in first_ax.get_lines():
+                            ax.plot(line.get_xdata(), line.get_ydata(), 
+                                   color=line.get_color(), label=line.get_label())
+                        
+                        # Copy axis labels and title
+                        ax.set_xlabel(first_ax.get_xlabel())
+                        ax.set_ylabel(first_ax.get_ylabel())
+                        ax.set_title(first_ax.get_title())
+                        ax.set_xlim(first_ax.get_xlim())
+                        ax.legend()
+                        ax.grid(True)
+                        
+                        # Save the new figure
+                        fig.savefig(save_path_text.value)
+                        plt.close(fig)  # Close the temporary figure
+                        print(f"Synaptic current plot saved to {save_path_text.value}")
+                    else:
+                        print("No subplots found in the figure")
+                        
+                except Exception as e:
+                    print(f"Error saving plot: {e}")
+            else:
+                print("No plot to save")
+
+        save_button.on_click(save_plot)
+
         def create_dynamic_sliders():
             """Create sliders based on current connection's parameters"""
             sliders = {}
@@ -1453,7 +1515,7 @@ class SynapseTuner:
             the network dropdown. It coordinates the complete switching process:
             1. Calls _switch_network() to rebuild connections for the new network
             2. Updates the connection dropdown options with new network's connections
-            3. Recreates dynamic sliders for the new connection parameters
+            3. Recreates dynamic sliders for new connection parameters
             4. Refreshes the entire UI to reflect all changes
             """
             if w_network is None:
@@ -1515,8 +1577,9 @@ class SynapseTuner:
             else:
                 connection_row = HBox([w_connection])
             slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
+            save_row = HBox([save_path_text, save_button])
             
-            ui = VBox([connection_row, button_row, slider_row, slider_columns])
+            ui = VBox([connection_row, button_row, slider_row, slider_columns, save_row])
 
         # Function to update UI based on input mode
         def update_ui(*args):
@@ -1618,6 +1681,7 @@ class SynapseTuner:
             Dictionary containing frequency-dependent metrics with keys:
             - 'frequencies': List of tested frequencies
             - 'ppr': Paired-pulse ratios at each frequency
+            - 'simple_ppr': Simple paired-pulse ratios (2nd/1st pulse) at each frequency
             - 'induction': Induction values at each frequency
             - 'recovery': Recovery values at each frequency
 
@@ -1627,7 +1691,7 @@ class SynapseTuner:
         behavior of synapses, such as identifying facilitating vs. depressing regimes
         or the frequency at which a synapse transitions between these behaviors.
         """
-        results = {"frequencies": freqs, "ppr": [], "induction": [], "recovery": []}
+        results = {"frequencies": freqs, "ppr": [], "induction": [], "recovery": [], "simple_ppr": []}
 
         # Store original state
         original_ispk = self.ispk
@@ -1635,11 +1699,12 @@ class SynapseTuner:
         for freq in tqdm(freqs, desc="Analyzing frequencies"):
             self._simulate_model(freq, delay)
             amp = self._response_amplitude()
-            ppr, induction, recovery = self._calc_ppr_induction_recovery(amp, print_math=False)
+            ppr, induction, recovery, simple_ppr = self._calc_ppr_induction_recovery(amp, print_math=False)
 
             results["ppr"].append(float(ppr))
             results["induction"].append(float(induction))
             results["recovery"].append(float(recovery))
+            results["simple_ppr"].append(float(simple_ppr))
 
         # Restore original state
         self.ispk = original_ispk
@@ -1659,6 +1724,7 @@ class SynapseTuner:
             Dictionary containing frequency analysis results with keys:
             - 'frequencies': List of tested frequencies
             - 'ppr': Paired-pulse ratios at each frequency
+            - 'simple_ppr': Simple paired-pulse ratios at each frequency
             - 'induction': Induction values at each frequency
             - 'recovery': Recovery values at each frequency
         log_plot : bool
@@ -1667,24 +1733,27 @@ class SynapseTuner:
         Notes:
         ------
         Creates a figure with three subplots showing:
-        1. Paired-pulse ratio vs. frequency
+        1. Paired-pulse ratios (both normalized and simple) vs. frequency
         2. Induction vs. frequency
         3. Recovery vs. frequency
 
         Each plot includes a horizontal reference line at y=0 or y=1 to indicate
         the boundary between facilitation and depression.
         """
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
 
-        # Plot PPR
+        # Plot both PPR measures
         if log_plot:
-            ax1.semilogx(results["frequencies"], results["ppr"], "o-")
+            ax1.semilogx(results["frequencies"], results["ppr"], "o-", label="Normalized PPR")
+            ax1.semilogx(results["frequencies"], results["simple_ppr"], "s-", label="Simple PPR")
         else:
-            ax1.plot(results["frequencies"], results["ppr"], "o-")
+            ax1.plot(results["frequencies"], results["ppr"], "o-", label="Normalized PPR")
+            ax1.plot(results["frequencies"], results["simple_ppr"], "s-", label="Simple PPR")
         ax1.axhline(y=1, color="gray", linestyle="--", alpha=0.5)
         ax1.set_xlabel("Frequency (Hz)")
         ax1.set_ylabel("Paired Pulse Ratio")
         ax1.set_title("PPR vs Frequency")
+        ax1.legend()
         ax1.grid(True)
 
         # Plot Induction
@@ -1712,6 +1781,168 @@ class SynapseTuner:
         plt.tight_layout()
         plt.show()
 
+
+    def generate_synaptic_table(self, stp_frequency=50.0, stp_delay=250.0, plot=True):
+        """
+        Generate a comprehensive table of synaptic parameters for all connections.
+        
+        This method iterates through all available connections, runs simulations to 
+        characterize each synapse, and compiles the results into a pandas DataFrame.
+        
+        Parameters:
+        -----------
+        stp_frequency : float, optional
+            Frequency in Hz to use for STP (short-term plasticity) analysis. Default is 50.0 Hz.
+        stp_delay : float, optional
+            Delay in ms between pulse trains for STP analysis. Default is 250.0 ms.
+        plot : bool, optional
+            Whether to display the resulting table. Default is True.
+            
+        Returns:
+        --------
+        pd.DataFrame
+            DataFrame containing synaptic parameters for each connection with columns:
+            - connection: Connection name
+            - rise_time: 20-80% rise time (ms)
+            - decay_time: Decay time constant (ms)
+            - latency: Response latency (ms)
+            - half_width: Response half-width (ms)
+            - peak_amplitude: Peak synaptic current amplitude (pA)
+            - baseline: Baseline current (pA)
+            - ppr: Paired-pulse ratio (normalized)
+            - simple_ppr: Simple paired-pulse ratio (2nd/1st pulse)
+            - induction: STP induction measure
+            - recovery: STP recovery measure
+            
+        Notes:
+        ------
+        This method temporarily switches between connections to characterize each one,
+        then restores the original connection. The STP metrics are calculated at the
+        specified frequency and delay.
+        """
+        # Store original connection to restore later
+        original_connection = self.current_connection
+        
+        # Initialize results list
+        results = []
+        
+        print(f"Analyzing {len(self.conn_type_settings)} connections...")
+        
+        for conn_name in tqdm(self.conn_type_settings.keys(), desc="Analyzing connections"):
+            try:
+                # Switch to this connection
+                self._switch_connection(conn_name)
+                
+                # Run single event analysis
+                self.SingleEvent(plot_and_print=False)
+                
+                # Get synaptic properties from the single event
+                syn_props = self._get_syn_prop()
+                
+                # Run STP analysis at specified frequency
+                stp_results = self.stp_frequency_response(
+                    freqs=[stp_frequency], 
+                    delay=stp_delay, 
+                    plot=False, 
+                    log_plot=False
+                )
+                
+                # Extract STP metrics for this frequency
+                freq_idx = 0  # Only one frequency tested
+                ppr = stp_results['ppr'][freq_idx]
+                induction = stp_results['induction'][freq_idx]
+                recovery = stp_results['recovery'][freq_idx]
+                simple_ppr = stp_results['simple_ppr'][freq_idx]
+                
+                # Compile results for this connection
+                conn_results = {
+                    'connection': conn_name,
+                    'rise_time': float(self.rise_time),
+                    'decay_time': float(self.decay_time),
+                    'latency': float(syn_props.get('latency', 0)),
+                    'half_width': float(syn_props.get('half_width', 0)),
+                    'peak_amplitude': float(syn_props.get('amp', 0)),
+                    'baseline': float(syn_props.get('baseline', 0)),
+                    'ppr': float(ppr),
+                    'simple_ppr': float(simple_ppr),
+                    'induction': float(induction),
+                    'recovery': float(recovery)
+                }
+                
+                results.append(conn_results)
+                
+            except Exception as e:
+                print(f"Warning: Failed to analyze connection '{conn_name}': {e}")
+                # Add partial results if possible
+                results.append({
+                    'connection': conn_name,
+                    'rise_time': float('nan'),
+                    'decay_time': float('nan'),
+                    'latency': float('nan'),
+                    'half_width': float('nan'),
+                    'peak_amplitude': float('nan'),
+                    'baseline': float('nan'),
+                    'ppr': float('nan'),
+                    'simple_ppr': float('nan'),
+                    'induction': float('nan'),
+                    'recovery': float('nan')
+                })
+        
+        # Restore original connection
+        if original_connection in self.conn_type_settings:
+            self._switch_connection(original_connection)
+        
+        # Create DataFrame
+        df = pd.DataFrame(results)
+        
+        # Set connection as index for better display
+        df = df.set_index('connection')
+        
+        if plot:
+            # Display the table
+            print("\nSynaptic Parameters Table:")
+            print("=" * 80)
+            display(df.round(4))
+            
+            # Optional: Create a simple bar plot for key metrics
+            try:
+                fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+                fig.suptitle(f'Synaptic Parameters Across Connections (STP at {stp_frequency}Hz)', fontsize=16)
+                
+                # Plot rise/decay times
+                df[['rise_time', 'decay_time']].plot(kind='bar', ax=axes[0,0])
+                axes[0,0].set_title('Rise and Decay Times')
+                axes[0,0].set_ylabel('Time (ms)')
+                axes[0,0].tick_params(axis='x', rotation=45)
+                
+                # Plot PPR metrics
+                df[['ppr', 'simple_ppr']].plot(kind='bar', ax=axes[0,1])
+                axes[0,1].set_title('Paired-Pulse Ratios')
+                axes[0,1].axhline(y=1, color='gray', linestyle='--', alpha=0.5)
+                axes[0,1].tick_params(axis='x', rotation=45)
+                
+                # Plot induction
+                df['induction'].plot(kind='bar', ax=axes[1,0], color='green')
+                axes[1,0].set_title('STP Induction')
+                axes[1,0].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+                axes[1,0].set_ylabel('Induction')
+                axes[1,0].tick_params(axis='x', rotation=45)
+                
+                # Plot recovery
+                df['recovery'].plot(kind='bar', ax=axes[1,1], color='orange')
+                axes[1,1].set_title('STP Recovery')
+                axes[1,1].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+                axes[1,1].set_ylabel('Recovery')
+                axes[1,1].tick_params(axis='x', rotation=45)
+                
+                plt.tight_layout()
+                plt.show()
+                
+            except Exception as e:
+                print(f"Warning: Could not create plots: {e}")
+        
+        return df
+        
 
 class GapJunctionTuner:
     def __init__(
@@ -1767,6 +1998,7 @@ class GapJunctionTuner:
         self.config = config
         self.available_networks = []
         self.current_network = None
+        self.last_figure = None
         if self.conn_type_settings is None and self.config is not None:
             self.conn_type_settings = self._build_conn_type_settings_from_config(self.config)
         if self.conn_type_settings is None or len(self.conn_type_settings) == 0:
@@ -2168,6 +2400,7 @@ class GapJunctionTuner:
         plt.xlabel("Time (ms)")
         plt.ylabel("Membrane Voltage (mV)")
         plt.legend()
+        self.last_figure = plt.gcf()
 
     def coupling_coefficient(self, t, v1, v2, t_start, t_end, dt=h.dt):
         """
@@ -2202,662 +2435,1133 @@ class GapJunctionTuner:
         return (v2[idx2] - v2[idx1]) / (v1[idx2] - v1[idx1])
 
     def InteractiveTuner(self):
-        w_run = widgets.Button(description="Run", icon="history", button_style="primary")
-        values = [i * 10**-4 for i in range(1, 1001)]  # From 1e-4 to 1e-1
+        """
+        Sets up interactive sliders for tuning short-term plasticity (STP) parameters in a Jupyter Notebook.
 
-        # Create the SelectionSlider widget with appropriate formatting
-        resistance = widgets.FloatLogSlider(
-            value=0.001,
-            base=10,
-            min=-4,  # max exponent of base
-            max=-1,  # min exponent of base
-            step=0.1,  # exponent step
-            description="Resistance: ",
-            continuous_update=True,
+        This method creates an interactive UI with sliders for:
+        - Network selection dropdown (if multiple networks available and config provided)
+        - Connection type selection dropdown
+        - Input frequency
+        - Delay between pulse trains
+        - Duration of stimulation (for continuous input mode)
+        - Synaptic parameters (e.g., Use, tau_f, tau_d) based on the syn model
+
+        It also provides buttons for:
+        - Running a single event simulation
+        - Running a train input simulation
+        - Toggling voltage clamp mode
+        - Switching between standard and continuous input modes
+
+        Network Dropdown Feature:
+        ------------------------
+        When the SynapseTuner is initialized with a BMTK config file containing multiple networks:
+        - A network dropdown appears next to the connection dropdown
+        - Users can dynamically switch between networks (e.g., 'network_to_network', 'external_to_network')
+        - Switching networks rebuilds available connections and updates the connection dropdown
+        - The current connection is preserved if it exists in the new network
+        - If multiple networks exist but only one is specified during init, that network is used as default
+
+        Notes:
+        ------
+        Ideal for exploratory parameter tuning and interactive visualization of
+        synapse behavior with different parameter values and stimulation protocols.
+        The network dropdown feature enables comprehensive exploration of multi-network
+        BMTK simulations without needing to reinitialize the tuner.
+        """
+        # Widgets setup (Sliders)
+        freqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200]
+        delays = [125, 250, 500, 1000, 2000, 4000]
+        durations = [100, 300, 500, 1000, 2000, 5000, 10000]
+        freq0 = 50
+        delay0 = 250
+        duration0 = 300
+        vlamp_status = self.vclamp
+
+        # Connection dropdown
+        connection_options = sorted(list(self.conn_type_settings.keys()))
+        w_connection = widgets.Dropdown(
+            options=connection_options,
+            value=self.current_connection,
+            description="Connection:",
+            style={'description_width': 'initial'}
         )
 
-        output = widgets.Output()
-
-        ui_widgets = [w_run, resistance]
-
-        def on_button(*args):
-            with output:
-                # Clear only the output widget, not the entire cell
-                output.clear_output(wait=True)
-
-                resistance_for_gap = resistance.value
-                print(f"Running simulation with resistance: {resistance_for_gap:0.6f} and {self.general_settings['iclamp_amp']*1000}pA current clamps")
-
-                try:
-                    self.model(resistance_for_gap)
-                    self.plot_model()
-
-                    # Convert NEURON vectors to numpy arrays
-                    t_array = np.array(self.t_vec)
-                    v1_array = np.array(self.soma_v_1)
-                    v2_array = np.array(self.soma_v_2)
-
-                    cc = self.coupling_coefficient(t_array, v1_array, v2_array, 500, 1000)
-                    print(f"coupling_coefficient is {cc:0.4f}")
-                    plt.show()
-
-                except Exception as e:
-                    print(f"Error during simulation or analysis: {e}")
-                    import traceback
-
-                    traceback.print_exc()
-
-        # Add connection dropdown if multiple connections exist
-        if len(self.conn_type_settings) > 1:
-            connection_dropdown = widgets.Dropdown(
-                options=list(self.conn_type_settings.keys()),
-                value=self.current_connection,
-                description='Connection:',
+        # Network dropdown - only shown if config was provided and multiple networks are available
+        # This enables users to switch between different network datasets dynamically
+        w_network = None
+        if self.config is not None and len(self.available_networks) > 1:
+            w_network = widgets.Dropdown(
+                options=self.available_networks,
+                value=self.current_network,
+                description="Network:",
+                style={'description_width': 'initial'}
             )
-            def on_connection_change(change):
-                if change['type'] == 'change' and change['name'] == 'value':
-                    self._switch_connection(change['new'])
-                    on_button()  # Automatically rerun the simulation after switching
-            connection_dropdown.observe(on_connection_change)
-            ui_widgets.insert(0, connection_dropdown)
 
-        ui = VBox(ui_widgets)
+        w_run = widgets.Button(description="Run Train", icon="history", button_style="primary")
+        w_single = widgets.Button(description="Single Event", icon="check", button_style="success")
+        w_vclamp = widgets.ToggleButton(
+            value=vlamp_status,
+            description="Voltage Clamp",
+            icon="fast-backward",
+            button_style="warning",
+        )
+        
+        # Voltage clamp amplitude input
+        default_vclamp_amp = getattr(self.conn['spec_settings'], 'vclamp_amp', -70.0)
+        w_vclamp_amp = widgets.FloatText(
+            value=default_vclamp_amp,
+            description="V_clamp (mV):",
+            step=5.0,
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='150px')
+        )
+        
+        w_input_mode = widgets.ToggleButton(
+            value=False, description="Continuous input", icon="eject", button_style="info"
+        )
+        w_input_freq = widgets.SelectionSlider(options=freqs, value=freq0, description="Input Freq")
+
+        # Sliders for delay and duration
+        self.w_delay = widgets.SelectionSlider(options=delays, value=delay0, description="Delay")
+        self.w_duration = widgets.SelectionSlider(
+            options=durations, value=duration0, description="Duration"
+        )
+
+        # Save functionality widgets
+        save_path_text = widgets.Text(
+            value="plot.png",
+            description="Save path:",
+            layout=widgets.Layout(width='300px')
+        )
+        save_button = widgets.Button(description="Save Plot", icon="save", button_style="success")
+
+        def save_plot(b):
+            if hasattr(self, 'last_figure') and self.last_figure is not None:
+                try:
+                    # Create a new figure with just the first subplot (synaptic current)
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    
+                    # Get the axes from the original figure
+                    original_axes = self.last_figure.get_axes()
+                    if len(original_axes) > 0:
+                        first_ax = original_axes[0]
+                        
+                        # Copy the data from the first subplot
+                        for line in first_ax.get_lines():
+                            ax.plot(line.get_xdata(), line.get_ydata(), 
+                                   color=line.get_color(), label=line.get_label())
+                        
+                        # Copy axis labels and title
+                        ax.set_xlabel(first_ax.get_xlabel())
+                        ax.set_ylabel(first_ax.get_ylabel())
+                        ax.set_title(first_ax.get_title())
+                        ax.set_xlim(first_ax.get_xlim())
+                        ax.legend()
+                        ax.grid(True)
+                        
+                        # Save the new figure
+                        fig.savefig(save_path_text.value)
+                        plt.close(fig)  # Close the temporary figure
+                        print(f"Synaptic current plot saved to {save_path_text.value}")
+                    else:
+                        print("No subplots found in the figure")
+                        
+                except Exception as e:
+                    print(f"Error saving plot: {e}")
+            else:
+                print("No plot to save")
+
+        save_button.on_click(save_plot)
+
+        def create_dynamic_sliders():
+            """Create sliders based on current connection's parameters"""
+            sliders = {}
+            for key, value in self.slider_vars.items():
+                if isinstance(value, (int, float)):  # Only create sliders for numeric values
+                    if hasattr(self.syn, key):
+                        if value == 0:
+                            print(
+                                f"{key} was set to zero, going to try to set a range of values, try settings the {key} to a nonzero value if you dont like the range!"
+                            )
+                            slider = widgets.FloatSlider(
+                                value=value, min=0, max=1000, step=1, description=key
+                            )
+                        else:
+                            slider = widgets.FloatSlider(
+                                value=value, min=0, max=value * 20, step=value / 5, description=key
+                            )
+                        sliders[key] = slider
+                    else:
+                        print(f"skipping slider for {key} due to not being a synaptic variable")
+            return sliders
+
+        # Generate sliders dynamically based on valid numeric entries in self.slider_vars
+        self.dynamic_sliders = create_dynamic_sliders()
+        print(
+            "Setting up slider! The sliders ranges are set by their init value so try changing that if you dont like the slider range!"
+        )
+
+        # Create output widget for displaying results
+        output_widget = widgets.Output()
+        
+        def run_single_event(*args):
+            clear_output()
+            display(ui)
+            display(output_widget)
+            
+            self.vclamp = w_vclamp.value
+            # Update voltage clamp amplitude if voltage clamp is enabled
+            if self.vclamp:
+                # Update the voltage clamp amplitude settings
+                self.conn['spec_settings']['vclamp_amp'] = w_vclamp_amp.value
+                # Update general settings if they exist
+                if hasattr(self, 'general_settings'):
+                    self.general_settings['vclamp_amp'] = w_vclamp_amp.value
+            # Update synaptic properties based on slider values
+            self.ispk = None
+            
+            # Clear previous results and run simulation
+            output_widget.clear_output()
+            with output_widget:
+                self.SingleEvent()
+
+        def on_connection_change(*args):
+            """Handle connection dropdown change"""
+            try:
+                new_connection = w_connection.value
+                if new_connection != self.current_connection:
+                    # Switch to new connection
+                    self._switch_connection(new_connection)
+                    
+                    # Recreate dynamic sliders for new connection
+                    self.dynamic_sliders = create_dynamic_sliders()
+                    
+                    # Update UI
+                    update_ui_layout()
+                    update_ui()
+                    
+            except Exception as e:
+                print(f"Error switching connection: {e}")
+
+        def on_network_change(*args):
+            """
+            Handle network dropdown change events.
+            
+            This callback is triggered when the user selects a different network from 
+            the network dropdown. It coordinates the complete switching process:
+            1. Calls _switch_network() to rebuild connections for the new network
+            2. Updates the connection dropdown options with new network's connections
+            3. Recreates dynamic sliders for new connection parameters
+            4. Refreshes the entire UI to reflect all changes
+            """
+            if w_network is None:
+                return
+            try:
+                new_network = w_network.value
+                if new_network != self.current_network:
+                    # Switch to new network
+                    self._switch_network(new_network)
+                    
+                    # Update connection dropdown options with new network's connections
+                    connection_options = list(self.conn_type_settings.keys())
+                    w_connection.options = connection_options
+                    if connection_options:
+                        w_connection.value = self.current_connection
+                    
+                    # Recreate dynamic sliders for new connection
+                    self.dynamic_sliders = create_dynamic_sliders()
+                    
+                    # Update UI
+                    update_ui_layout()
+                    update_ui()
+                    
+            except Exception as e:
+                print(f"Error switching network: {e}")
+
+        def update_ui_layout():
+            """
+            Update the UI layout with new sliders and network dropdown.
+            
+            This function reconstructs the entire UI layout including:
+            - Network dropdown (if available) and connection dropdown in the top row
+            - Button controls and input mode toggles
+            - Parameter sliders arranged in columns
+            """
+            nonlocal ui, slider_columns
+            
+            # Add the dynamic sliders to the UI
+            slider_widgets = [slider for slider in self.dynamic_sliders.values()]
+            
+            if slider_widgets:
+                half = len(slider_widgets) // 2
+                col1 = VBox(slider_widgets[:half])
+                col2 = VBox(slider_widgets[half:])
+                slider_columns = HBox([col1, col2])
+            else:
+                slider_columns = VBox([])
+            
+            # Create button row with voltage clamp controls
+            if w_vclamp.value:  # Show voltage clamp amplitude input when toggle is on
+                button_row = HBox([w_run, w_single, w_vclamp, w_vclamp_amp, w_input_mode])
+            else:  # Hide voltage clamp amplitude input when toggle is off
+                button_row = HBox([w_run, w_single, w_vclamp, w_input_mode])
+            
+            # Construct the top row - include network dropdown if available
+            # This creates a horizontal layout with network dropdown (if present) and connection dropdown
+            if w_network is not None:
+                connection_row = HBox([w_network, w_connection])
+            else:
+                connection_row = HBox([w_connection])
+            slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
+            save_row = HBox([save_path_text, save_button])
+            
+            ui = VBox([connection_row, button_row, slider_row, slider_columns, save_row])
+
+        # Function to update UI based on input mode
+        def update_ui(*args):
+            clear_output()
+            display(ui)
+            display(output_widget)
+            
+            self.vclamp = w_vclamp.value
+            # Update voltage clamp amplitude if voltage clamp is enabled
+            if self.vclamp:
+                self.conn['spec_settings']['vclamp_amp'] = w_vclamp_amp.value
+                if hasattr(self, 'general_settings'):
+                    self.general_settings['vclamp_amp'] = w_vclamp_amp.value
+            
+            self.input_mode = w_input_mode.value
+            syn_props = {var: slider.value for var, slider in self.dynamic_sliders.items()}
+            self._set_syn_prop(**syn_props)
+            
+            # Clear previous results and run simulation
+            output_widget.clear_output()
+            with output_widget:
+                if not self.input_mode:
+                    self._simulate_model(w_input_freq.value, self.w_delay.value, w_vclamp.value)
+                else:
+                    self._simulate_model(w_input_freq.value, self.w_duration.value, w_vclamp.value)
+                amp = self._response_amplitude()
+                self._plot_model(
+                    [self.general_settings["tstart"] - self.nstim.interval / 3, self.tstop]
+                )
+                _ = self._calc_ppr_induction_recovery(amp)
+
+        # Function to switch between delay and duration sliders
+        def switch_slider(*args):
+            if w_input_mode.value:
+                self.w_delay.layout.display = "none"  # Hide delay slider
+                self.w_duration.layout.display = ""  # Show duration slider
+            else:
+                self.w_delay.layout.display = ""  # Show delay slider
+                self.w_duration.layout.display = "none"  # Hide duration slider
+
+        # Function to handle voltage clamp toggle
+        def on_vclamp_toggle(*args):
+            """Handle voltage clamp toggle changes to show/hide amplitude input"""
+            update_ui_layout()
+            clear_output()
+            display(ui)
+            display(output_widget)
+
+        # Link widgets to their callback functions
+        w_connection.observe(on_connection_change, names="value")
+        # Link network dropdown callback only if network dropdown was created
+        if w_network is not None:
+            w_network.observe(on_network_change, names="value")
+        w_input_mode.observe(switch_slider, names="value")
+        w_vclamp.observe(on_vclamp_toggle, names="value")
+
+        # Hide the duration slider initially until the user selects it
+        self.w_duration.layout.display = "none"  # Hide duration slider
+
+        w_single.on_click(run_single_event)
+        w_run.on_click(update_ui)
+
+        # Initial UI setup
+        slider_columns = VBox([])
+        ui = VBox([])
+        update_ui_layout()
 
         display(ui)
-        display(output)
+        update_ui()
 
-        # Run once initially
-        on_button()
-        w_run.on_click(on_button)
-
-
-# optimizers!
-
-
-@dataclass
-class SynapseOptimizationResult:
-    """Container for synaptic parameter optimization results"""
-
-    optimal_params: Dict[str, float]
-    achieved_metrics: Dict[str, float]
-    target_metrics: Dict[str, float]
-    error: float
-    optimization_path: List[Dict[str, float]]
-
-
-class SynapseOptimizer:
-    def __init__(self, tuner):
-        """
-        Initialize the synapse optimizer with parameter scaling
-
-        Parameters:
-        -----------
-        tuner : SynapseTuner
-            Instance of the SynapseTuner class
-        """
-        self.tuner = tuner
-        self.optimization_history = []
-        self.param_scales = {}
-
-    def _normalize_params(self, params: np.ndarray, param_names: List[str]) -> np.ndarray:
-        """
-        Normalize parameters to similar scales for better optimization performance.
-
-        Parameters:
-        -----------
-        params : np.ndarray
-            Original parameter values.
-        param_names : List[str]
-            Names of the parameters corresponding to the values.
-
-        Returns:
-        --------
-        np.ndarray
-            Normalized parameter values.
-        """
-        return np.array([params[i] / self.param_scales[name] for i, name in enumerate(param_names)])
-
-    def _denormalize_params(
-        self, normalized_params: np.ndarray, param_names: List[str]
-    ) -> np.ndarray:
-        """
-        Convert normalized parameters back to original scale.
-
-        Parameters:
-        -----------
-        normalized_params : np.ndarray
-            Normalized parameter values.
-        param_names : List[str]
-            Names of the parameters corresponding to the normalized values.
-
-        Returns:
-        --------
-        np.ndarray
-            Denormalized parameter values in their original scale.
-        """
-        return np.array(
-            [normalized_params[i] * self.param_scales[name] for i, name in enumerate(param_names)]
-        )
-
-    def _calculate_metrics(self) -> Dict[str, float]:
-        """
-        Calculate standard metrics from the current simulation.
-
-        This method runs either a single event simulation, a train input simulation,
-        or both based on configuration flags, and calculates relevant synaptic metrics.
-
-        Returns:
-        --------
-        Dict[str, float]
-            Dictionary of calculated metrics including:
-            - induction: measure of synaptic facilitation/depression
-            - ppr: paired-pulse ratio
-            - recovery: recovery from facilitation/depression
-            - max_amplitude: maximum synaptic response amplitude
-            - rise_time: time for synaptic response to rise from 20% to 80% of peak
-            - decay_time: time constant of synaptic response decay
-            - latency: synaptic response latency
-            - half_width: synaptic response half-width
-            - baseline: baseline current
-            - amp: peak amplitude from syn_props
-        """
-        # Set these to 0 for when we return the dict
-        induction = 0
-        ppr = 0
-        recovery = 0
-        amp = 0
-        rise_time = 0
-        decay_time = 0
-        latency = 0
-        half_width = 0
-        baseline = 0
-        syn_amp = 0
-
-        if self.run_single_event:
-            self.tuner.SingleEvent(plot_and_print=False)
-            # Use the attributes set by SingleEvent method
-            rise_time = getattr(self.tuner, "rise_time", 0)
-            decay_time = getattr(self.tuner, "decay_time", 0)
-            # Get additional syn_props directly
-            syn_props = self.tuner._get_syn_prop()
-            latency = syn_props.get("latency", 0)
-            half_width = syn_props.get("half_width", 0)
-            baseline = syn_props.get("baseline", 0)
-            syn_amp = syn_props.get("amp", 0)
-
-        if self.run_train_input:
-            self.tuner._simulate_model(self.train_frequency, self.train_delay)
-            amp = self.tuner._response_amplitude()
-            ppr, induction, recovery = self.tuner._calc_ppr_induction_recovery(
-                amp, print_math=False
-            )
-            amp = self.tuner._find_max_amp(amp)
-
-        return {
-            "induction": float(induction),
-            "ppr": float(ppr),
-            "recovery": float(recovery),
-            "max_amplitude": float(amp),
-            "rise_time": float(rise_time),
-            "decay_time": float(decay_time),
-            "latency": float(latency),
-            "half_width": float(half_width),
-            "baseline": float(baseline),
-            "amp": float(syn_amp),
-        }
-
-    def _default_cost_function(
-        self, metrics: Dict[str, float], target_metrics: Dict[str, float]
-    ) -> float:
-        """
-        Default cost function that minimizes the squared difference between achieved and target induction.
-
-        Parameters:
-        -----------
-        metrics : Dict[str, float]
-            Dictionary of calculated metrics from the current simulation.
-        target_metrics : Dict[str, float]
-            Dictionary of target metrics to optimize towards.
-
-        Returns:
-        --------
-        float
-            The squared error between achieved and target induction.
-        """
-        return float((metrics["induction"] - target_metrics["induction"]) ** 2)
-
-    def _objective_function(
+    def stp_frequency_response(
         self,
-        normalized_params: np.ndarray,
-        param_names: List[str],
-        cost_function: Callable,
-        target_metrics: Dict[str, float],
-    ) -> float:
+        freqs=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200],
+        delay=250,
+        plot=True,
+        log_plot=True,
+    ):
         """
-        Calculate error using provided cost function
-        """
-        # Denormalize parameters
-        params = self._denormalize_params(normalized_params, param_names)
+        Analyze synaptic response across different stimulation frequencies.
 
-        # Set parameters
-        for name, value in zip(param_names, params):
-            setattr(self.tuner.syn, name, value)
-
-        # just do this and have the SingleEvent handle it
-        if self.run_single_event:
-            self.tuner.using_optimizer = True
-            self.tuner.param_names = param_names
-            self.tuner.params = params
-
-        # Calculate metrics and error
-        metrics = self._calculate_metrics()
-        error = float(cost_function(metrics, target_metrics))  # Ensure error is scalar
-
-        # Store history with denormalized values
-        history_entry = {
-            "params": dict(zip(param_names, params)),
-            "metrics": metrics,
-            "error": error,
-        }
-        self.optimization_history.append(history_entry)
-
-        return error
-
-    def optimize_parameters(
-        self,
-        target_metrics: Dict[str, float],
-        param_bounds: Dict[str, Tuple[float, float]],
-        run_single_event: bool = False,
-        run_train_input: bool = True,
-        train_frequency: float = 50,
-        train_delay: float = 250,
-        cost_function: Optional[Callable] = None,
-        method: str = "SLSQP",
-        init_guess="random",
-    ) -> SynapseOptimizationResult:
-        """
-        Optimize synaptic parameters to achieve target metrics.
+        This method systematically tests how the synapse model responds to different
+        stimulation frequencies, calculating key short-term plasticity (STP) metrics
+        for each frequency.
 
         Parameters:
         -----------
-        target_metrics : Dict[str, float]
-            Target values for synaptic metrics (e.g., {'induction': 0.2, 'rise_time': 0.5})
-        param_bounds : Dict[str, Tuple[float, float]]
-            Bounds for each parameter to optimize (e.g., {'tau_d': (5, 50), 'Use': (0.1, 0.9)})
-        run_single_event : bool, optional
-            Whether to run single event simulations during optimization (default: False)
-        run_train_input : bool, optional
-            Whether to run train input simulations during optimization (default: True)
-        train_frequency : float, optional
-            Frequency of the stimulus train in Hz (default: 50)
-        train_delay : float, optional
-            Delay between pulse trains in ms (default: 250)
-        cost_function : Optional[Callable]
-            Custom cost function for optimization. If None, uses default cost function
-            that optimizes induction.
-        method : str, optional
-            Optimization method to use (default: 'SLSQP')
-        init_guess : str, optional
-            Method for initial parameter guess ('random' or 'middle_guess')
-
-        Returns:
-        --------
-        SynapseOptimizationResult
-            Results of the optimization including optimal parameters, achieved metrics,
-            target metrics, final error, and optimization path.
-
-        Notes:
-        ------
-        This function uses scipy.optimize.minimize to find the optimal parameter values
-        that minimize the difference between achieved and target metrics.
-        """
-        self.optimization_history = []
-        self.train_frequency = train_frequency
-        self.train_delay = train_delay
-        self.run_single_event = run_single_event
-        self.run_train_input = run_train_input
-
-        param_names = list(param_bounds.keys())
-        bounds = [param_bounds[name] for name in param_names]
-
-        if cost_function is None:
-            cost_function = self._default_cost_function
-
-        # Calculate scaling factors
-        self.param_scales = {
-            name: max(abs(bounds[i][0]), abs(bounds[i][1])) for i, name in enumerate(param_names)
-        }
-
-        # Normalize bounds
-        normalized_bounds = [
-            (b[0] / self.param_scales[name], b[1] / self.param_scales[name])
-            for name, b in zip(param_names, bounds)
-        ]
-
-        # picks with method of init value we want to use
-        if init_guess == "random":
-            x0 = np.array([np.random.uniform(b[0], b[1]) for b in bounds])
-        elif init_guess == "middle_guess":
-            x0 = [(b[0] + b[1]) / 2 for b in bounds]
-        else:
-            raise Exception("Pick a vaid init guess method either random or midde_guess")
-        normalized_x0 = self._normalize_params(np.array(x0), param_names)
-
-        # Run optimization
-        result = minimize(
-            self._objective_function,
-            normalized_x0,
-            args=(param_names, cost_function, target_metrics),
-            method=method,
-            bounds=normalized_bounds,
-        )
-
-        # Get final parameters and metrics
-        final_params = dict(zip(param_names, self._denormalize_params(result.x, param_names)))
-        for name, value in final_params.items():
-            setattr(self.tuner.syn, name, value)
-        final_metrics = self._calculate_metrics()
-
-        return SynapseOptimizationResult(
-            optimal_params=final_params,
-            achieved_metrics=final_metrics,
-            target_metrics=target_metrics,
-            error=result.fun,
-            optimization_path=self.optimization_history,
-        )
-
-    def plot_optimization_results(self, result: SynapseOptimizationResult):
-        """
-        Plot optimization results including convergence and final traces.
-
-        Parameters:
-        -----------
-        result : SynapseOptimizationResult
-            Results from optimization as returned by optimize_parameters()
-
-        Notes:
-        ------
-        This method generates three plots:
-        1. Error convergence plot showing how the error decreased over iterations
-        2. Parameter convergence plots showing how each parameter changed
-        3. Final model response with the optimal parameters
-
-        It also prints a summary of the optimization results including target vs. achieved
-        metrics and the optimal parameter values.
-        """
-        # Ensure errors are properly shaped for plotting
-        iterations = range(len(result.optimization_path))
-        errors = np.array([float(h["error"]) for h in result.optimization_path]).flatten()
-
-        # Plot error convergence
-        fig1, ax1 = plt.subplots(figsize=(8, 5))
-        ax1.plot(iterations, errors, label="Error")
-        ax1.set_xlabel("Iteration")
-        ax1.set_ylabel("Error")
-        ax1.set_title("Error Convergence")
-        ax1.set_yscale("log")
-        ax1.legend()
-        plt.tight_layout()
-        plt.show()
-
-        # Plot parameter convergence
-        param_names = list(result.optimal_params.keys())
-        num_params = len(param_names)
-        fig2, axs = plt.subplots(nrows=num_params, ncols=1, figsize=(8, 5 * num_params))
-
-        if num_params == 1:
-            axs = [axs]
-
-        for ax, param in zip(axs, param_names):
-            values = [float(h["params"][param]) for h in result.optimization_path]
-            ax.plot(iterations, values, label=f"{param}")
-            ax.set_xlabel("Iteration")
-            ax.set_ylabel("Parameter Value")
-            ax.set_title(f"Convergence of {param}")
-            ax.legend()
-
-        plt.tight_layout()
-        plt.show()
-
-        # Print final results
-        print("Optimization Results:")
-        print(f"Final Error: {float(result.error):.2e}\n")
-        print("Target Metrics:")
-        for metric, value in result.target_metrics.items():
-            achieved = result.achieved_metrics.get(metric)
-            if achieved is not None and metric != "amplitudes":  # Skip amplitude array
-                print(f"{metric}: {float(achieved):.3f} (target: {float(value):.3f})")
-
-        print("\nOptimal Parameters:")
-        for param, value in result.optimal_params.items():
-            print(f"{param}: {float(value):.3f}")
-
-        # Plot final model response
-        if self.run_train_input:
-            self.tuner._plot_model(
-                [
-                    self.tuner.general_settings["tstart"] - self.tuner.nstim.interval / 3,
-                    self.tuner.tstop,
-                ]
-            )
-            amp = self.tuner._response_amplitude()
-            self.tuner._calc_ppr_induction_recovery(amp)
-        if self.run_single_event:
-            self.tuner.ispk = None
-            self.tuner.SingleEvent(plot_and_print=True)
-
-# dataclass means just init the typehints as self.typehint. looks a bit cleaner
-@dataclass
-class GapOptimizationResult:
-    """Container for gap junction optimization results"""
-
-    optimal_resistance: float
-    achieved_cc: float
-    target_cc: float
-    error: float
-    optimization_path: List[Dict[str, float]]
-
-
-class GapJunctionOptimizer:
-    def __init__(self, tuner):
-        """
-        Initialize the gap junction optimizer
-
-        Parameters:
-        -----------
-        tuner : GapJunctionTuner
-            Instance of the GapJunctionTuner class
-        """
-        self.tuner = tuner
-        self.optimization_history = []
-
-    def _objective_function(self, resistance: float, target_cc: float) -> float:
-        """
-        Calculate error between achieved and target coupling coefficient
-
-        Parameters:
-        -----------
-        resistance : float
-            Gap junction resistance to try
-        target_cc : float
-            Target coupling coefficient to match
-
-        Returns:
-        --------
-        float : Error between achieved and target coupling coefficient
-        """
-        # Run model with current resistance
-        self.tuner.model(resistance)
-
-        # Calculate coupling coefficient
-        achieved_cc = self.tuner.coupling_coefficient(
-            self.tuner.t_vec,
-            self.tuner.soma_v_1,
-            self.tuner.soma_v_2,
-            self.tuner.general_settings["tstart"],
-            self.tuner.general_settings["tstart"] + self.tuner.general_settings["tdur"],
-        )
-
-        # Calculate error
-        error = (achieved_cc - target_cc) ** 2  # MSE
-
-        # Store history
-        self.optimization_history.append(
-            {"resistance": resistance, "achieved_cc": achieved_cc, "error": error}
-        )
-
-        return error
-
-    def optimize_resistance(
-        self, target_cc: float, resistance_bounds: tuple = (1e-4, 1e-2), method: str = "bounded"
-    ) -> GapOptimizationResult:
-        """
-        Optimize gap junction resistance to achieve a target coupling coefficient.
-
-        Parameters:
-        -----------
-        target_cc : float
-            Target coupling coefficient to achieve (between 0 and 1)
-        resistance_bounds : tuple, optional
-            (min, max) bounds for resistance search in MOhm. Default is (1e-4, 1e-2).
-        method : str, optional
-            Optimization method to use. Default is 'bounded' which works well
-            for single-parameter optimization.
-
-        Returns:
-        --------
-        GapOptimizationResult
-            Container with optimization results including:
-            - optimal_resistance: The optimized resistance value
-            - achieved_cc: The coupling coefficient achieved with the optimal resistance
-            - target_cc: The target coupling coefficient
-            - error: The final error (squared difference between target and achieved)
-            - optimization_path: List of all values tried during optimization
-
-        Notes:
-        ------
-        Uses scipy.optimize.minimize_scalar with bounded method, which is
-        appropriate for this single-parameter optimization problem.
-        """
-        self.optimization_history = []
-
-        # Run optimization
-        result = minimize_scalar(
-            self._objective_function, args=(target_cc,), bounds=resistance_bounds, method=method
-        )
-
-        # Run final model with optimal resistance
-        self.tuner.model(result.x)
-        final_cc = self.tuner.coupling_coefficient(
-            self.tuner.t_vec,
-            self.tuner.soma_v_1,
-            self.tuner.soma_v_2,
-            self.tuner.general_settings["tstart"],
-            self.tuner.general_settings["tstart"] + self.tuner.general_settings["tdur"],
-        )
-
-        # Package up our results
-        optimization_result = GapOptimizationResult(
-            optimal_resistance=result.x,
-            achieved_cc=final_cc,
-            target_cc=target_cc,
-            error=result.fun,
-            optimization_path=self.optimization_history,
-        )
-
-        return optimization_result
-
-    def plot_optimization_results(self, result: GapOptimizationResult):
-        """
-        Plot optimization results including convergence and final voltage traces
-
-        Parameters:
-        -----------
-        result : GapOptimizationResult
-            Results from optimization
-        """
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
-
-        # Plot voltage traces
-        t_range = [
-            self.tuner.general_settings["tstart"] - 100.0,
-            self.tuner.general_settings["tstart"] + self.tuner.general_settings["tdur"] + 100.0,
-        ]
-        t = np.array(self.tuner.t_vec)
-        v1 = np.array(self.tuner.soma_v_1)
-        v2 = np.array(self.tuner.soma_v_2)
-        tidx = (t >= t_range[0]) & (t <= t_range[1])
-
-        ax1.plot(t[tidx], v1[tidx], "b", label=f"{self.tuner.cell_name} 1")
-        ax1.plot(t[tidx], v2[tidx], "r", label=f"{self.tuner.cell_name} 2")
-        ax1.set_xlabel("Time (ms)")
-        ax1.set_ylabel("Membrane Voltage (mV)")
-        ax1.legend()
-        ax1.set_title("Optimized Voltage Traces")
-
-        # Plot error convergence
-        errors = [h["error"] for h in result.optimization_path]
-        ax2.plot(errors)
-        ax2.set_xlabel("Iteration")
-        ax2.set_ylabel("Error")
-        ax2.set_title("Error Convergence")
-        ax2.set_yscale("log")
-
-        # Plot resistance convergence
-        resistances = [h["resistance"] for h in result.optimization_path]
-        ax3.plot(resistances)
-        ax3.set_xlabel("Iteration")
-        ax3.set_ylabel("Resistance")
-        ax3.set_title("Resistance Convergence")
-        ax3.set_yscale("log")
-
-        # Print final results
-        result_text = (
-            f"Optimal Resistance: {result.optimal_resistance:.2e}\n"
-            f"Target CC: {result.target_cc:.3f}\n"
-            f"Achieved CC: {result.achieved_cc:.3f}\n"
-            f"Final Error: {result.error:.2e}"
-        )
-        ax4.text(0.1, 0.7, result_text, transform=ax4.transAxes, fontsize=10)
-        ax4.axis("off")
-
-        plt.tight_layout()
-        plt.show()
-
-    def parameter_sweep(self, resistance_range: np.ndarray) -> dict:
-        """
-        Perform a parameter sweep across different resistance values.
-
-        Parameters:
-        -----------
-        resistance_range : np.ndarray
-            Array of resistance values to test.
+        freqs : list, optional
+            List of frequencies to analyze (in Hz). Default covers a wide range from 1-200 Hz.
+        delay : float, optional
+            Delay between pulse trains in ms. Default is 250 ms.
+        plot : bool, optional
+            Whether to plot the results. Default is True.
+        log_plot : bool, optional
+            Whether to use logarithmic scale for frequency axis. Default is True.
 
         Returns:
         --------
         dict
-            Dictionary containing the results of the parameter sweep, with keys:
-            - 'resistance': List of resistance values tested
-            - 'coupling_coefficient': Corresponding coupling coefficients
+            Dictionary containing frequency-dependent metrics with keys:
+            - 'frequencies': List of tested frequencies
+            - 'ppr': Paired-pulse ratios at each frequency
+            - 'simple_ppr': Simple paired-pulse ratios (2nd/1st pulse) at each frequency
+            - 'induction': Induction values at each frequency
+            - 'recovery': Recovery values at each frequency
 
         Notes:
         ------
-        This method is useful for understanding the relationship between gap junction
-        resistance and coupling coefficient before attempting optimization.
+        This method is particularly useful for characterizing the frequency-dependent
+        behavior of synapses, such as identifying facilitating vs. depressing regimes
+        or the frequency at which a synapse transitions between these behaviors.
         """
-        results = {"resistance": [], "coupling_coefficient": []}
+        results = {"frequencies": freqs, "ppr": [], "induction": [], "recovery": [], "simple_ppr": []}
 
-        for resistance in tqdm(resistance_range, desc="Sweeping resistance values"):
-            self.tuner.model(resistance)
-            cc = self.tuner.coupling_coefficient(
-                self.tuner.t_vec,
-                self.tuner.soma_v_1,
-                self.tuner.soma_v_2,
-                self.tuner.general_settings["tstart"],
-                self.tuner.general_settings["tstart"] + self.tuner.general_settings["tdur"],
-            )
+        # Store original state
+        original_ispk = self.ispk
 
-            results["resistance"].append(resistance)
-            results["coupling_coefficient"].append(cc)
+        for freq in tqdm(freqs, desc="Analyzing frequencies"):
+            self._simulate_model(freq, delay)
+            amp = self._response_amplitude()
+            ppr, induction, recovery, simple_ppr = self._calc_ppr_induction_recovery(amp, print_math=False)
+
+            results["ppr"].append(float(ppr))
+            results["induction"].append(float(induction))
+            results["recovery"].append(float(recovery))
+            results["simple_ppr"].append(float(simple_ppr))
+
+        # Restore original state
+        self.ispk = original_ispk
+
+        if plot:
+            self._plot_frequency_analysis(results, log_plot=log_plot)
 
         return results
+
+    def _plot_frequency_analysis(self, results, log_plot):
+        """
+        Plot the frequency-dependent synaptic properties.
+
+        Parameters:
+        -----------
+        results : dict
+            Dictionary containing frequency analysis results with keys:
+            - 'frequencies': List of tested frequencies
+            - 'ppr': Paired-pulse ratios at each frequency
+            - 'simple_ppr': Simple paired-pulse ratios at each frequency
+            - 'induction': Induction values at each frequency
+            - 'recovery': Recovery values at each frequency
+        log_plot : bool
+            Whether to use logarithmic scale for frequency axis
+
+        Notes:
+        ------
+        Creates a figure with three subplots showing:
+        1. Paired-pulse ratios (both normalized and simple) vs. frequency
+        2. Induction vs. frequency
+        3. Recovery vs. frequency
+
+        Each plot includes a horizontal reference line at y=0 or y=1 to indicate
+        the boundary between facilitation and depression.
+        """
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+
+        # Plot both PPR measures
+        if log_plot:
+            ax1.semilogx(results["frequencies"], results["ppr"], "o-", label="Normalized PPR")
+            ax1.semilogx(results["frequencies"], results["simple_ppr"], "s-", label="Simple PPR")
+        else:
+            ax1.plot(results["frequencies"], results["ppr"], "o-", label="Normalized PPR")
+            ax1.plot(results["frequencies"], results["simple_ppr"], "s-", label="Simple PPR")
+        ax1.axhline(y=1, color="gray", linestyle="--", alpha=0.5)
+        ax1.set_xlabel("Frequency (Hz)")
+        ax1.set_ylabel("Paired Pulse Ratio")
+        ax1.set_title("PPR vs Frequency")
+        ax1.legend()
+        ax1.grid(True)
+
+        # Plot Induction
+        if log_plot:
+            ax2.semilogx(results["frequencies"], results["induction"], "o-")
+        else:
+            ax2.plot(results["frequencies"], results["induction"], "o-")
+        ax2.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+        ax2.set_xlabel("Frequency (Hz)")
+        ax2.set_ylabel("Induction")
+        ax2.set_title("Induction vs Frequency")
+        ax2.grid(True)
+
+        # Plot Recovery
+        if log_plot:
+            ax3.semilogx(results["frequencies"], results["recovery"], "o-")
+        else:
+            ax3.plot(results["frequencies"], results["recovery"], "o-")
+        ax3.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+        ax3.set_xlabel("Frequency (Hz)")
+        ax3.set_ylabel("Recovery")
+        ax3.set_title("Recovery vs Frequency")
+        ax3.grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
+    def generate_synaptic_table(self, stp_frequency=50.0, stp_delay=250.0, plot=True):
+        """
+        Generate a comprehensive table of synaptic parameters for all connections.
+        
+        This method iterates through all available connections, runs simulations to 
+        characterize each synapse, and compiles the results into a pandas DataFrame.
+        
+        Parameters:
+        -----------
+        stp_frequency : float, optional
+            Frequency in Hz to use for STP (short-term plasticity) analysis. Default is 50.0 Hz.
+        stp_delay : float, optional
+            Delay in ms between pulse trains for STP analysis. Default is 250.0 ms.
+        plot : bool, optional
+            Whether to display the resulting table. Default is True.
+            
+        Returns:
+        --------
+        pd.DataFrame
+            DataFrame containing synaptic parameters for each connection with columns:
+            - connection: Connection name
+            - rise_time: 20-80% rise time (ms)
+            - decay_time: Decay time constant (ms)
+            - latency: Response latency (ms)
+            - half_width: Response half-width (ms)
+            - peak_amplitude: Peak synaptic current amplitude (pA)
+            - baseline: Baseline current (pA)
+            - ppr: Paired-pulse ratio (normalized)
+            - simple_ppr: Simple paired-pulse ratio (2nd/1st pulse)
+            - induction: STP induction measure
+            - recovery: STP recovery measure
+            
+        Notes:
+        ------
+        This method temporarily switches between connections to characterize each one,
+        then restores the original connection. The STP metrics are calculated at the
+        specified frequency and delay.
+        """
+        # Store original connection to restore later
+        original_connection = self.current_connection
+        
+        # Initialize results list
+        results = []
+        
+        print(f"Analyzing {len(self.conn_type_settings)} connections...")
+        
+        for conn_name in tqdm(self.conn_type_settings.keys(), desc="Analyzing connections"):
+            try:
+                # Switch to this connection
+                self._switch_connection(conn_name)
+                
+                # Run single event analysis
+                self.SingleEvent(plot_and_print=False)
+                
+                # Get synaptic properties from the single event
+                syn_props = self._get_syn_prop()
+                
+                # Run STP analysis at specified frequency
+                stp_results = self.stp_frequency_response(
+                    freqs=[stp_frequency], 
+                    delay=stp_delay, 
+                    plot=False, 
+                    log_plot=False
+                )
+                
+                # Extract STP metrics for this frequency
+                freq_idx = 0  # Only one frequency tested
+                ppr = stp_results['ppr'][freq_idx]
+                induction = stp_results['induction'][freq_idx]
+                recovery = stp_results['recovery'][freq_idx]
+                simple_ppr = stp_results['simple_ppr'][freq_idx]
+                
+                # Compile results for this connection
+                conn_results = {
+                    'connection': conn_name,
+                    'rise_time': float(self.rise_time),
+                    'decay_time': float(self.decay_time),
+                    'latency': float(syn_props.get('latency', 0)),
+                    'half_width': float(syn_props.get('half_width', 0)),
+                    'peak_amplitude': float(syn_props.get('amp', 0)),
+                    'baseline': float(syn_props.get('baseline', 0)),
+                    'ppr': float(ppr),
+                    'simple_ppr': float(simple_ppr),
+                    'induction': float(induction),
+                    'recovery': float(recovery)
+                }
+                
+                results.append(conn_results)
+                
+            except Exception as e:
+                print(f"Warning: Failed to analyze connection '{conn_name}': {e}")
+                # Add partial results if possible
+                results.append({
+                    'connection': conn_name,
+                    'rise_time': float('nan'),
+                    'decay_time': float('nan'),
+                    'latency': float('nan'),
+                    'half_width': float('nan'),
+                    'peak_amplitude': float('nan'),
+                    'baseline': float('nan'),
+                    'ppr': float('nan'),
+                    'simple_ppr': float('nan'),
+                    'induction': float('nan'),
+                    'recovery': float('nan')
+                })
+        
+        # Restore original connection
+        if original_connection in self.conn_type_settings:
+            self._switch_connection(original_connection)
+        
+        # Create DataFrame
+        df = pd.DataFrame(results)
+        
+        # Set connection as index for better display
+        df = df.set_index('connection')
+        
+        if plot:
+            # Display the table
+            print("\nSynaptic Parameters Table:")
+            print("=" * 80)
+            display(df.round(4))
+            
+            # Optional: Create a simple bar plot for key metrics
+            try:
+                fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+                fig.suptitle(f'Synaptic Parameters Across Connections (STP at {stp_frequency}Hz)', fontsize=16)
+                
+                # Plot rise/decay times
+                df[['rise_time', 'decay_time']].plot(kind='bar', ax=axes[0,0])
+                axes[0,0].set_title('Rise and Decay Times')
+                axes[0,0].set_ylabel('Time (ms)')
+                axes[0,0].tick_params(axis='x', rotation=45)
+                
+                # Plot PPR metrics
+                df[['ppr', 'simple_ppr']].plot(kind='bar', ax=axes[0,1])
+                axes[0,1].set_title('Paired-Pulse Ratios')
+                axes[0,1].axhline(y=1, color='gray', linestyle='--', alpha=0.5)
+                axes[0,1].tick_params(axis='x', rotation=45)
+                
+                # Plot induction
+                df['induction'].plot(kind='bar', ax=axes[1,0], color='green')
+                axes[1,0].set_title('STP Induction')
+                axes[1,0].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+                axes[1,0].set_ylabel('Induction')
+                axes[1,0].tick_params(axis='x', rotation=45)
+                
+                # Plot recovery
+                df['recovery'].plot(kind='bar', ax=axes[1,1], color='orange')
+                axes[1,1].set_title('STP Recovery')
+                axes[1,1].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+                axes[1,1].set_ylabel('Recovery')
+                axes[1,1].tick_params(axis='x', rotation=45)
+                
+                plt.tight_layout()
+                plt.show()
+                
+            except Exception as e:
+                print(f"Warning: Could not create plots: {e}")
+        
+        return df
+        
+
+class GapJunctionTuner:
+    def __init__(
+        self,
+        mechanisms_dir: Optional[str] = None,
+        templates_dir: Optional[str] = None,
+        config: Optional[str] = None,
+        general_settings: Optional[dict] = None,
+        conn_type_settings: Optional[dict] = None,
+        hoc_cell: Optional[object] = None,
+    ):
+        """
+        Initialize the GapJunctionTuner class.
+
+        Parameters:
+        -----------
+        mechanisms_dir : str
+            Directory path containing the compiled mod files needed for NEURON mechanisms.
+        templates_dir : str
+            Directory path containing cell template files (.hoc or .py) loaded into NEURON.
+        config : str
+            Path to a BMTK config.json file. Can be used to load mechanisms, templates, and other settings.
+        general_settings : dict
+            General settings dictionary including parameters like simulation time step, duration, and temperature.
+        conn_type_settings : dict
+            A dictionary containing connection-specific settings for gap junctions.
+        hoc_cell : object, optional
+            An already loaded NEURON cell object. If provided, template loading and cell creation will be skipped.
+        """
+        self.hoc_cell = hoc_cell
+
+        if hoc_cell is None:
+            if config is None and (mechanisms_dir is None or templates_dir is None):
+                raise ValueError(
+                    "Either a config file, both mechanisms_dir and templates_dir, or a hoc_cell must be provided."
+                )
+
+            if config is None:
+                neuron.load_mechanisms(mechanisms_dir)
+                h.load_file(templates_dir)
+            else:
+                # this will load both mechs and templates
+                load_templates_from_config(config)
+
+        # Use default general settings if not provided, merge with user-provided
+        if general_settings is None:
+            self.general_settings: dict = DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS.copy()
+        else:
+            self.general_settings = {**DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS, **general_settings}
+        self.conn_type_settings = conn_type_settings
+
+        self._syn_params_cache = {}
+        self.config = config
+        self.available_networks = []
+        self.current_network = None
+        self.last_figure = None
+        if self.conn_type_settings is None and self.config is not None:
+            self.conn_type_settings = self._build_conn_type_settings_from_config(self.config)
+        if self.conn_type_settings is None or len(self.conn_type_settings) == 0:
+            raise ValueError("conn_type_settings must be provided or config must be given to load gap junction connections from")
+        self.current_connection = list(self.conn_type_settings.keys())[0]
+        self.conn = self.conn_type_settings[self.current_connection]
+
+        h.tstop = self.general_settings["tstart"] + self.general_settings["tdur"] + 100.0
+        h.dt = self.general_settings["dt"]  # Time step (resolution) of the simulation in ms
+        h.steps_per_ms = 1 / h.dt
+        h.celsius = self.general_settings["celsius"]
+
+        # Clean up any existing parallel context before setting up gap junctions
+        try:
+            pc_temp = h.ParallelContext()
+            pc_temp.done()  # Clean up any existing parallel context
+        except:
+            pass  # Ignore errors if no existing context
+        
+        # Force cleanup
+        import gc
+        gc.collect()
+
+        # set up gap junctions
+        self.pc = h.ParallelContext()
+
+        # Use provided hoc_cell or create new cells
+        if self.hoc_cell is not None:
+            self.cell1 = self.hoc_cell
+            # For gap junctions, we need two cells, so create a second one if using hoc_cell
+            self.cell_name = self.conn['cell']
+            self.cell2 = getattr(h, self.cell_name)()
+        else:
+            print(self.conn)
+            self.cell_name = self.conn['cell']
+            self.cell1 = getattr(h, self.cell_name)()
+            self.cell2 = getattr(h, self.cell_name)()
+
+        self.icl = h.IClamp(self.cell1.soma[0](0.5))
+        self.icl.delay = self.general_settings["tstart"]
+        self.icl.dur = self.general_settings["tdur"]
+        self.icl.amp = self.general_settings["iclamp_amp"]  # nA
+
+        sec1 = list(self.cell1.all)[self.conn["sec_id"]]
+        sec2 = list(self.cell2.all)[self.conn["sec_id"]]
+
+        # Use unique IDs to avoid conflicts with existing parallel context setups
+        import time
+        unique_id = int(time.time() * 1000) % 10000  # Use timestamp as unique base ID
+        
+        self.pc.source_var(sec1(self.conn["sec_x"])._ref_v, unique_id, sec=sec1)
+        self.gap_junc_1 = h.Gap(sec1(0.5))
+        self.pc.target_var(self.gap_junc_1._ref_vgap, unique_id + 1)
+
+        self.pc.source_var(sec2(self.conn["sec_x"])._ref_v, unique_id + 1, sec=sec2)
+        self.gap_junc_2 = h.Gap(sec2(0.5))
+        self.pc.target_var(self.gap_junc_2._ref_vgap, unique_id)
+
+        self.pc.setup_transfer()
+        
+        # Now it's safe to initialize NEURON
+        h.finitialize()
+
+    def _load_synaptic_params_from_config(self, config: dict, dynamics_params: str) -> dict:
+        try:
+            # Get the synaptic models directory from config
+            synaptic_models_dir = config.get('components', {}).get('synaptic_models_dir', '')
+            if synaptic_models_dir:
+                # Handle path variables
+                if synaptic_models_dir.startswith('$'):
+                    # This is a placeholder, try to resolve it
+                    config_dir = os.path.dirname(config.get('config_path', ''))
+                    synaptic_models_dir = synaptic_models_dir.replace('$COMPONENTS_DIR', 
+                                                                    os.path.join(config_dir, 'components'))
+                    synaptic_models_dir = synaptic_models_dir.replace('$BASE_DIR', config_dir)
+                
+                dynamics_file = os.path.join(synaptic_models_dir, dynamics_params)
+                
+                if os.path.exists(dynamics_file):
+                    with open(dynamics_file, 'r') as f:
+                        return json.load(f)
+                else:
+                    print(f"Warning: Dynamics params file not found: {dynamics_file}")
+        except Exception as e:
+            print(f"Warning: Error loading synaptic parameters: {e}")
+        
+        return {}
+
+    def _load_available_networks(self) -> None:
+        """
+        Load available network names from the config file for the network dropdown feature.
+        
+        This method is automatically called during initialization when a config file is provided.
+        It populates the available_networks list which enables the network dropdown in 
+        InteractiveTuner when multiple networks are available.
+        
+        Network Dropdown Behavior:
+        -------------------------
+        - If only one network exists: No network dropdown is shown
+        - If multiple networks exist: Network dropdown appears next to connection dropdown
+        - Networks are loaded from the edges data in the config file
+        - Current network defaults to the first available if not specified during init
+        """
+        if self.config is None:
+            self.available_networks = []
+            return
+            
+        try:
+            edges = load_edges_from_config(self.config)
+            self.available_networks = list(edges.keys())
+            
+            # Set current network to first available if not specified
+            if self.current_network is None and self.available_networks:
+                self.current_network = self.available_networks[0]
+        except Exception as e:
+            print(f"Warning: Could not load networks from config: {e}")
+            self.available_networks = []
+
+    def _build_conn_type_settings_from_config(self, config_path: str) -> Dict[str, dict]:
+        # Load configuration and get nodes and edges using util.py methods
+        config = load_config(config_path)
+        # Ensure the config dict knows its source path so path substitutions can be resolved
+        try:
+            config['config_path'] = config_path
+        except Exception:
+            pass
+        nodes = load_nodes_from_config(config_path)
+        edges = load_edges_from_config(config_path)
+        
+        conn_type_settings = {}
+        
+        # Process all edge datasets
+        for edge_dataset_name, edge_df in edges.items():
+            if edge_df.empty:
+                continue
+            
+            # Merging with node data to get model templates
+            source_node_df = None
+            target_node_df = None
+            
+            # First, try to deterministically parse the edge_dataset_name for patterns like '<src>_to_<tgt>'
+            if '_to_' in edge_dataset_name:
+                parts = edge_dataset_name.split('_to_')
+                if len(parts) == 2:
+                    src_name, tgt_name = parts
+                    if src_name in nodes:
+                        source_node_df = nodes[src_name].add_prefix('source_')
+                    if tgt_name in nodes:
+                        target_node_df = nodes[tgt_name].add_prefix('target_')
+            
+            # If not found by parsing name, fall back to inspecting a sample edge row
+            if source_node_df is None or target_node_df is None:
+                sample_edge = edge_df.iloc[0] if len(edge_df) > 0 else None
+                if sample_edge is not None:
+                    source_pop_name = sample_edge.get('source_population', '')
+                    target_pop_name = sample_edge.get('target_population', '')
+                    if source_pop_name in nodes:
+                        source_node_df = nodes[source_pop_name].add_prefix('source_')
+                    if target_pop_name in nodes:
+                        target_node_df = nodes[target_pop_name].add_prefix('target_')
+            
+            # As a last resort, attempt to heuristically match
+            if source_node_df is None or target_node_df is None:
+                for pop_name, node_df in nodes.items():
+                    if source_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
+                        source_node_df = node_df.add_prefix('source_')
+                    if target_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
+                        target_node_df = node_df.add_prefix('target_')
+            
+            if source_node_df is None or target_node_df is None:
+                print(f"Warning: Could not find node data for edge dataset {edge_dataset_name}")
+                continue
+            
+            # Merge edge data with source node info
+            edges_with_source = pd.merge(
+                edge_df.reset_index(), 
+                source_node_df, 
+                how='left', 
+                left_on='source_node_id', 
+                right_index=True
+            )
+            
+            # Merge with target node info
+            edges_with_nodes = pd.merge(
+                edges_with_source, 
+                target_node_df, 
+                how='left', 
+                left_on='target_node_id', 
+                right_index=True
+            )
+            
+            # Skip edge datasets that don't have gap junction information
+            if 'is_gap_junction' not in edges_with_nodes.columns:
+                continue
+            
+            # Filter to only gap junction edges
+            # Handle NaN values in is_gap_junction column
+            gap_junction_mask = edges_with_nodes['is_gap_junction'].fillna(False) == True
+            gap_junction_edges = edges_with_nodes[gap_junction_mask]
+            if gap_junction_edges.empty:
+                continue
+            
+            # Get unique edge types from the gap junction edges
+            if 'edge_type_id' in gap_junction_edges.columns:
+                edge_types = gap_junction_edges['edge_type_id'].unique()
+            else:
+                edge_types = [None]  # Single edge type
+            
+            # Process each edge type
+            for edge_type_id in edge_types:
+                # Filter edges for this type
+                if edge_type_id is not None:
+                    edge_type_data = gap_junction_edges[gap_junction_edges['edge_type_id'] == edge_type_id]
+                else:
+                    edge_type_data = gap_junction_edges
+                
+                if len(edge_type_data) == 0:
+                    continue
+                
+                # Get representative edge for this type
+                edge_info = edge_type_data.iloc[0]
+                
+                # Process gap junction
+                source_model_template = edge_info.get('source_model_template', '')
+                target_model_template = edge_info.get('target_model_template', '')
+                
+                source_cell_type = source_model_template.replace('hoc:', '') if source_model_template.startswith('hoc:') else source_model_template
+                target_cell_type = target_model_template.replace('hoc:', '') if target_model_template.startswith('hoc:') else target_model_template
+                
+                if source_cell_type != target_cell_type:
+                    continue  # Only process gap junctions between same cell types
+                
+                source_pop = edge_info.get('source_pop_name', '')
+                target_pop = edge_info.get('target_pop_name', '')
+                
+                conn_name = f"{source_pop}2{target_pop}_gj"
+                if edge_type_id is not None:
+                    conn_name += f"_type_{edge_type_id}"
+                
+                conn_settings = {
+                    'cell': source_cell_type,
+                    'sec_id': 0,
+                    'sec_x': 0.5,
+                    'iclamp_amp': -0.01,
+                    'spec_syn_param': {}
+                }
+                
+                # Load dynamics params
+                dynamics_file_name = edge_info.get('dynamics_params', '')
+                if dynamics_file_name and dynamics_file_name.upper() != 'NULL':
+                    try:
+                        syn_params = self._load_synaptic_params_from_config(config, dynamics_file_name)
+                        conn_settings['spec_syn_param'] = syn_params
+                    except Exception as e:
+                        print(f"Warning: could not load dynamics_params file '{dynamics_file_name}': {e}")
+                
+                conn_type_settings[conn_name] = conn_settings
+        
+        return conn_type_settings
+
+    def _switch_connection(self, new_connection: str) -> None:
+        """
+        Switch to a different gap junction connection and update all related properties.
+        
+        Parameters:
+        -----------
+        new_connection : str
+            Name of the new connection type to switch to.
+        """
+        if new_connection not in self.conn_type_settings:
+            raise ValueError(f"Connection '{new_connection}' not found in conn_type_settings")
+        
+        # Update current connection
+        self.current_connection = new_connection
+        self.conn = self.conn_type_settings[new_connection]
+        
+        # Check if cell type changed
+        new_cell_name = self.conn['cell']
+        if self.cell_name != new_cell_name:
+            self.cell_name = new_cell_name
+            
+            # Recreate cells
+            if self.hoc_cell is None:
+                self.cell1 = getattr(h, self.cell_name)()
+                self.cell2 = getattr(h, self.cell_name)()
+            else:
+                # For hoc_cell, recreate the second cell
+                self.cell2 = getattr(h, self.cell_name)()
+            
+            # Recreate IClamp
+            self.icl = h.IClamp(self.cell1.soma[0](0.5))
+            self.icl.delay = self.general_settings["tstart"]
+            self.icl.dur = self.general_settings["tdur"]
+            self.icl.amp = self.general_settings["iclamp_amp"]
+        else:
+            # Update IClamp parameters even if same cell type
+            self.icl.amp = self.general_settings["iclamp_amp"]
+        
+        # Always recreate gap junctions when switching connections 
+        # (even for same cell type, sec_id or sec_x might differ)
+        
+        # Clean up previous gap junctions and parallel context
+        if hasattr(self, 'gap_junc_1'):
+            del self.gap_junc_1
+        if hasattr(self, 'gap_junc_2'):
+            del self.gap_junc_2
+        
+        # Properly clean up the existing parallel context
+        if hasattr(self, 'pc'):
+            self.pc.done()  # Clean up existing parallel context
+        
+        # Force garbage collection and reset NEURON state
+        import gc
+        gc.collect()
+        h.finitialize()
+        
+        # Create a fresh parallel context after cleanup
+        self.pc = h.ParallelContext()
+        
+        try:
+            sec1 = list(self.cell1.all)[self.conn["sec_id"]]
+            sec2 = list(self.cell2.all)[self.conn["sec_id"]]
+            
+            # Use unique IDs to avoid conflicts with existing parallel context setups
+            import time
+            unique_id = int(time.time() * 1000) % 10000  # Use timestamp as unique base ID
+            
+            self.pc.source_var(sec1(self.conn["sec_x"])._ref_v, unique_id, sec=sec1)
+            self.gap_junc_1 = h.Gap(sec1(0.5))
+            self.pc.target_var(self.gap_junc_1._ref_vgap, unique_id + 1)
+            
+            self.pc.source_var(sec2(self.conn["sec_x"])._ref_v, unique_id + 1, sec=sec2)
+            self.gap_junc_2 = h.Gap(sec2(0.5))
+            self.pc.target_var(self.gap_junc_2._ref_vgap, unique_id)
+            
+            self.pc.setup_transfer()
+        except Exception as e:
+            print(f"Error setting up gap junctions: {e}")
+            # Try to continue with basic setup
+            self.gap_junc_1 = h.Gap(list(self.cell1.all)[self.conn["sec_id"]](0.5))
+            self.gap_junc_2 = h.Gap(list(self.cell2.all)[self.conn["sec_id"]](0.5))
+        
+        # Reset NEURON state after complete setup
+        h.finitialize()
+        
+        print(f"Successfully switched to connection: {new_connection}")
+
+    def model(self, resistance):
+        """
+        Run a simulation with a specified gap junction resistance.
+
+        Parameters:
+        -----------
+        resistance : float
+            The gap junction resistance value (in MOhm) to use for the simulation.
+
+        Notes:
+        ------
+        This method sets up the gap junction resistance, initializes recording vectors for time
+        and membrane voltages of both cells, and runs the NEURON simulation.
+        """
+        self.gap_junc_1.g = resistance
+        self.gap_junc_2.g = resistance
+
+        t_vec = h.Vector()
+        soma_v_1 = h.Vector()
+        soma_v_2 = h.Vector()
+        t_vec.record(h._ref_t)
+        soma_v_1.record(self.cell1.soma[0](0.5)._ref_v)
+        soma_v_2.record(self.cell2.soma[0](0.5)._ref_v)
+
+        self.t_vec = t_vec
+        self.soma_v_1 = soma_v_1
+        self.soma_v_2 = soma_v_2
+
+        h.finitialize(-70 * mV)
+        h.continuerun(h.tstop * ms)
+
+    def plot_model(self):
+        """
+        Plot the voltage traces of both cells to visualize gap junction coupling.
+
+        This method creates a plot showing the membrane potential of both cells over time,
+        highlighting the effect of gap junction coupling when a current step is applied to cell 1.
+        """
+        t_range = [
+            self.general_settings["tstart"] - 100.0,
+            self.general_settings["tstart"] + self.general_settings["tdur"] + 100.0,
+        ]
+        t = np.array(self.t_vec)
+        v1 = np.array(self.soma_v_1)
+        v2 = np.array(self.soma_v_2)
+        tidx = (t >= t_range[0]) & (t <= t_range[1])
+
+        plt.figure()
+        plt.plot(t[tidx], v1[tidx], "b", label=f"{self.cell_name} 1")
+        plt.plot(t[tidx], v2[tidx], "r", label=f"{self.cell_name} 2")
+        plt.title(f"{self.cell_name} gap junction")
+        plt.xlabel("Time (ms)")
+        plt.ylabel("Membrane Voltage (mV)")
+        plt.legend()
+        self.last_figure = plt.gcf()
+
+    def coupling_coefficient(self, t, v1, v2, t_start, t_end, dt=h.dt):
+        """
+        Calculate the coupling coefficient between two cells connected by a gap junction.
+
+        Parameters:
+        -----------
+        t : array-like
+            Time vector.
+        v1 : array-like
+            Voltage trace of the cell receiving the current injection.
+        v2 : array-like
+            Voltage trace of the coupled cell.
+        t_start : float
+            Start time for calculating the steady-state voltage change.
+        t_end : float
+            End time for calculating the steady-state voltage change.
+        dt : float, optional
+            Time step of the simulation. Default is h.dt.
+
+        Returns:
+        --------
+        float
+            The coupling coefficient, defined as the ratio of voltage change in cell 2
+            to voltage change in cell 1 (ΔV₂/ΔV₁).
+        """
+        t = np.asarray(t)
+        v1 = np.asarray(v1)
+        v2 = np

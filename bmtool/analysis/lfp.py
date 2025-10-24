@@ -227,7 +227,7 @@ def fit_fooof(
 
     if plot:
         plt_range = set_range(plt_range)
-        fm.plot(plt_log=plt_log)
+        fm.plot(ax=plt.gca(), plt_log=plt_log)
         plt.xlim(np.log10(plt_range) if plt_log else plt_range)
         # plt.ylim(-8, -5.5)
         if figsize:
