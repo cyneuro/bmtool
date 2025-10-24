@@ -1,6 +1,6 @@
 """Plotting functions for neural spikes and firing rates."""
 
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,13 +15,13 @@ def raster(
     spikes_df: Optional[pd.DataFrame] = None,
     config: Optional[str] = None,
     network_name: Optional[str] = None,
-    groupby: Optional[str] = "pop_name",
+    groupby: str = "pop_name",
     sortby: Optional[str] = None,
     ax: Optional[Axes] = None,
     tstart: Optional[float] = None,
     tstop: Optional[float] = None,
     color_map: Optional[Dict[str, str]] = None,
-    dot_size: Optional[float] = 0.3,
+    dot_size: float = 0.3,
 ) -> Axes:
     """
     Plots a raster plot of neural spikes, with different colors for each population.
@@ -237,10 +237,10 @@ def plot_firing_rate_pop_stats(
 # uses df from bmtool.analysis.spikes compute_firing_rate_stats
 def plot_firing_rate_distribution(
     individual_stats: pd.DataFrame,
-    groupby: Union[str, list],
+    groupby: Union[str, List[str]],
     ax: Optional[Axes] = None,
     color_map: Optional[Dict[str, str]] = None,
-    plot_type: Union[str, list] = "box",
+    plot_type: Union[str, List[str]] = "box",
     swarm_alpha: float = 0.6,
     logscale: bool = False,
 ) -> Axes:
@@ -352,13 +352,13 @@ def plot_firing_rate_distribution(
 
 
 def plot_firing_rate_vs_node_attribute(
-    individual_stats: Optional[pd.DataFrame] = None,
+    individual_stats: pd.DataFrame,
+    groupby: str,
+    attribute: str,
     config: Optional[str] = None,
     nodes: Optional[pd.DataFrame] = None,
-    groupby: Optional[str] = None,
     network_name: Optional[str] = None,
-    attribute: Optional[str] = None,
-    figsize=(12, 8),
+    figsize: Tuple[float, float] = (12, 8),
     dot_size: float = 3,
     color_map: Optional[Dict[str, str]] = None,
 ) -> plt.Figure:
@@ -367,19 +367,19 @@ def plot_firing_rate_vs_node_attribute(
 
     Parameters
     ----------
-    individual_stats : pd.DataFrame, optional
+    individual_stats : pd.DataFrame
         DataFrame containing individual cell firing rates from compute_firing_rate_stats
+    groupby : str
+        Column name in individual_stats to group plots by
+    attribute : str
+        Node attribute column name to plot against firing rate
     config : str, optional
         Path to configuration file for loading node data
     nodes : pd.DataFrame, optional
         Pre-loaded node data as alternative to loading from config
-    groupby : str, optional
-        Column name in individual_stats to group plots by
     network_name : str, optional
         Name of network to load from config file
-    attribute : str, optional
-        Node attribute column name to plot against firing rate
-    figsize : tuple[int, int], optional
+    figsize : Tuple[float, float], optional
         Figure dimensions (width, height) in inches
     dot_size : float, optional
         Size of scatter plot points
@@ -479,7 +479,7 @@ def plot_firing_rate_histogram(
     color_map: Optional[Dict[str, str]] = None,
     bins: int = 30,
     alpha: float = 0.7,
-    figsize=(12, 8),
+    figsize: Tuple[float, float] = (12, 8),
     stacked: bool = False,
     logscale: bool = False,
     min_fr: Optional[float] = None,
@@ -501,7 +501,7 @@ def plot_firing_rate_histogram(
         Number of bins for the histogram (default is 30).
     alpha : float, optional
         Transparency level for the histograms (default is 0.7).
-    figsize : tuple, optional
+    figsize : Tuple[float, float], optional
         Figure size if creating a new figure (default is (12, 8)).
     stacked : bool, optional
         If True, plot all histograms on a single axes stacked (default is False).
