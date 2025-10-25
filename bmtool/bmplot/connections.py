@@ -1,9 +1,16 @@
 """
-Want to be able to take multiple plot names in and plot them all at the same time, to save time
-https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-plots-so-that-the-computation-can-continue
+Connection visualization module for BMTK models.
+
+This module provides functions to visualize connectivity matrices from BMTK simulations,
+including total connections, percent connectivity, connection probabilities, convergence,
+divergence, and gap junctions.
+
+See Also:
+    https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-plots-so-that-the-computation-can-continue
 """
 import re
 import statistics
+from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib
 import matplotlib.cm as cmx
@@ -17,27 +24,24 @@ from neuron import h
 
 from ..util import util
 
-use_description = """
-
-Plot BMTK models easily.
-
-python -m bmtool.plot
-"""
-
-
 def is_notebook() -> bool:
     """
     Detect if code is running in a Jupyter notebook environment.
 
-    Returns:
-    --------
+    Returns
+    -------
     bool
         True if running in a Jupyter notebook, False otherwise.
 
-    Notes:
-    ------
+    Notes
+    -----
     This is used to determine whether to call plt.show() explicitly or
     rely on Jupyter's automatic display functionality.
+
+    Examples
+    --------
+    >>> if is_notebook():
+    ...     plt.show()
     """
     try:
         shell = get_ipython().__class__.__name__
@@ -52,52 +56,65 @@ def is_notebook() -> bool:
 
 
 def total_connection_matrix(
-    config=None,
-    title=None,
-    sources=None,
-    targets=None,
-    sids=None,
-    tids=None,
-    no_prepend_pop=False,
-    save_file=None,
-    synaptic_info="0",
-    include_gap=True,
-):
+    config: str,
+    title: Optional[str] = None,
+    sources: Optional[str] = None,
+    targets: Optional[str] = None,
+    sids: Optional[str] = None,
+    tids: Optional[str] = None,
+    no_prepend_pop: bool = False,
+    save_file: Optional[str] = None,
+    synaptic_info: str = "0",
+    include_gap: bool = True,
+) -> None:
     """
     Generate a plot displaying total connections or other synaptic statistics.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     config : str
         Path to a BMTK simulation config file.
     title : str, optional
         Title for the plot. If None, a default title will be used.
-    sources : str
+    sources : str, optional
         Comma-separated string of network names to use as sources.
-    targets : str
+    targets : str, optional
         Comma-separated string of network names to use as targets.
     sids : str, optional
         Comma-separated string of source node identifiers to filter.
     tids : str, optional
         Comma-separated string of target node identifiers to filter.
     no_prepend_pop : bool, optional
-        If True, don't display population name before sid or tid in the plot.
+        If True, don't display population name before sid or tid in the plot. Default is False.
     save_file : str, optional
         Path to save the plot. If None, plot is not saved.
     synaptic_info : str, optional
-        Type of information to display:
+        Type of information to display. Options:
         - '0': Total connections (default)
         - '1': Mean and standard deviation of connections
         - '2': All synapse .mod files used
         - '3': All synapse .json files used
     include_gap : bool, optional
         If True, include gap junctions and chemical synapses in the analysis.
-        If False, only include chemical synapses.
+        If False, only include chemical synapses. Default is True.
 
-    Returns:
-    --------
+    Returns
+    -------
     None
-        The function generates and displays a plot.
+
+    Raises
+    ------
+    Exception
+        If config is not defined or sources/targets are not defined.
+
+    Examples
+    --------
+    >>> total_connection_matrix(
+    ...     config='config.json',
+    ...     sources='PN',
+    ...     targets='LN',
+    ...     title='PN to LN Connections'
+    ... )
     """
     if not config:
         raise Exception("config not defined")
@@ -138,35 +155,75 @@ def total_connection_matrix(
     plot_connection_info(
         text, num, source_labels, target_labels, title, syn_info=synaptic_info, save_file=save_file
     )
-    return
 
 
 def percent_connection_matrix(
-    config=None,
-    nodes=None,
-    edges=None,
-    title=None,
-    sources=None,
-    targets=None,
-    sids=None,
-    tids=None,
-    no_prepend_pop=False,
-    save_file=None,
-    method="total",
-    include_gap=True,
-    return_dict = False
-):
+    config: str,
+    nodes: Optional[pd.DataFrame] = None,
+    edges: Optional[pd.DataFrame] = None,
+    title: Optional[str] = None,
+    sources: Optional[str] = None,
+    targets: Optional[str] = None,
+    sids: Optional[str] = None,
+    tids: Optional[str] = None,
+    no_prepend_pop: bool = False,
+    save_file: Optional[str] = None,
+    method: str = "total",
+    include_gap: bool = True,
+    return_dict: bool = False,
+) -> Optional[Dict]:
     """
-    Generates a plot showing the percent connectivity of a network
-    config: A BMTK simulation config
-    sources: network name(s) to plot
-    targets: network name(s) to plot
-    sids: source node identifier
-    tids: target node identifier
-    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
-    method: what percent to displace on the graph 'total','uni',or 'bi' for total connections, unidirectional connections or bidirectional connections
-    save_file: If plot should be saved
-    include_gap: Determines if connectivity shown should include gap junctions + chemical synapses. False will only include chemical
+    Generates a plot showing the percent connectivity of a network.
+
+    Parameters
+    ----------
+    config : str
+        Path to a BMTK simulation config file.
+    nodes : pd.DataFrame, optional
+        Pre-loaded node data. If None, will be loaded from config.
+    edges : pd.DataFrame, optional
+        Pre-loaded edge data. If None, will be loaded from config.
+    title : str, optional
+        Title for the plot. If None, a default title will be used.
+    sources : str, optional
+        Comma-separated string of network name(s) to plot.
+    targets : str, optional
+        Comma-separated string of network name(s) to plot.
+    sids : str, optional
+        Comma-separated string of source node identifier(s) to filter.
+    tids : str, optional
+        Comma-separated string of target node identifier(s) to filter.
+    no_prepend_pop : bool, optional
+        If True, population name is not displayed before sid or tid in the plot. Default is False.
+    save_file : str, optional
+        Path to save the plot. If None, plot is not saved.
+    method : str, optional
+        Method for calculating percent connectivity. Options: 'total', 'uni', 'bi'.
+        Default is 'total'.
+    include_gap : bool, optional
+        If True, include gap junctions in analysis. If False, only include chemical synapses.
+        Default is True.
+    return_dict : bool, optional
+        If True, return connection information as a dictionary. Default is False.
+
+    Returns
+    -------
+    dict, optional
+        Dictionary containing connection information if return_dict=True, None otherwise.
+
+    Raises
+    ------
+    Exception
+        If config is not defined or sources/targets are not defined.
+
+    Examples
+    --------
+    >>> result = percent_connection_matrix(
+    ...     config='config.json',
+    ...     sources='PN',
+    ...     targets='LN',
+    ...     return_dict=True
+    ... )
     """
     if not config:
         raise Exception("config not defined")
@@ -199,36 +256,85 @@ def percent_connection_matrix(
         title = "Percent Connectivity"
 
     if return_dict:
-        dict = plot_connection_info(text, num, source_labels, target_labels, title, save_file=save_file, return_dict=return_dict)
-        return dict
+        result_dict = plot_connection_info(
+            text, num, source_labels, target_labels, title, save_file=save_file, return_dict=return_dict
+        )
+        return result_dict
     else:
         plot_connection_info(text, num, source_labels, target_labels, title, save_file=save_file)
-        return
 
 
 def probability_connection_matrix(
-    config=None,
-    nodes=None,
-    edges=None,
-    title=None,
-    sources=None,
-    targets=None,
-    sids=None,
-    tids=None,
-    no_prepend_pop=False,
-    save_file=None,
-    dist_X=True,
-    dist_Y=True,
-    dist_Z=True,
-    bins=8,
-    line_plot=False,
-    verbose=False,
-    include_gap=True,
-):
+    config: str,
+    nodes: Optional[pd.DataFrame] = None,
+    edges: Optional[pd.DataFrame] = None,
+    title: Optional[str] = None,
+    sources: Optional[str] = None,
+    targets: Optional[str] = None,
+    sids: Optional[str] = None,
+    tids: Optional[str] = None,
+    no_prepend_pop: bool = False,
+    save_file: Optional[str] = None,
+    dist_X: bool = True,
+    dist_Y: bool = True,
+    dist_Z: bool = True,
+    bins: int = 8,
+    line_plot: bool = False,
+    verbose: bool = False,
+    include_gap: bool = True,
+) -> None:
     """
-    Generates probability graphs
-    need to look into this more to see what it does
-    needs model_template to be defined to work
+    Generates probability graphs showing connectivity as a function of distance.
+
+    Parameters
+    ----------
+    config : str
+        Path to a BMTK simulation config file.
+    nodes : pd.DataFrame, optional
+        Pre-loaded node data. If None, will be loaded from config.
+    edges : pd.DataFrame, optional
+        Pre-loaded edge data. If None, will be loaded from config.
+    title : str, optional
+        Title for the plot. If None, a default title will be used.
+    sources : str, optional
+        Comma-separated string of network name(s) to plot.
+    targets : str, optional
+        Comma-separated string of network name(s) to plot.
+    sids : str, optional
+        Comma-separated string of source node identifier(s) to filter.
+    tids : str, optional
+        Comma-separated string of target node identifier(s) to filter.
+    no_prepend_pop : bool, optional
+        If True, population name is not displayed before sid or tid. Default is False.
+    save_file : str, optional
+        Path to save the plot. If None, plot is not saved.
+    dist_X : bool, optional
+        If True, include X distance in calculations. Default is True.
+    dist_Y : bool, optional
+        If True, include Y distance in calculations. Default is True.
+    dist_Z : bool, optional
+        If True, include Z distance in calculations. Default is True.
+    bins : int, optional
+        Number of distance bins for the probability calculation. Default is 8.
+    line_plot : bool, optional
+        If True, plot lines instead of bars. Default is False.
+    verbose : bool, optional
+        If True, print debugging information. Default is False.
+    include_gap : bool, optional
+        If True, include gap junctions in analysis. Default is True.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    Exception
+        If config is not defined or sources/targets are not defined.
+
+    Notes
+    -----
+    This function needs model_template to be defined to work properly.
     """
     if not config:
         raise Exception("config not defined")
@@ -277,9 +383,9 @@ def probability_connection_matrix(
     for x in range(num_src):
         for y in range(num_tar):
             ns = data[x][y]["ns"]
-            bins = data[x][y]["bins"]
+            bins_data = data[x][y]["bins"]
 
-            XX = bins[:-1]
+            XX = bins_data[:-1]
             YY = ns[0] / ns[1]
 
             if line_plot:
@@ -305,37 +411,74 @@ def probability_connection_matrix(
     st = fig.suptitle(tt, fontsize=14)
     fig.text(0.5, 0.04, "Target", ha="center")
     fig.text(0.04, 0.5, "Source", va="center", rotation="vertical")
-    notebook = is_notebook
+    notebook = is_notebook()
     if not notebook:
         fig.show()
 
-    return
-
 
 def convergence_connection_matrix(
-    config=None,
-    title=None,
-    sources=None,
-    targets=None,
-    sids=None,
-    tids=None,
-    no_prepend_pop=False,
-    save_file=None,
-    convergence=True,
-    method="mean+std",
-    include_gap=True,
-    return_dict=None,
-):
+    config: str,
+    title: Optional[str] = None,
+    sources: Optional[str] = None,
+    targets: Optional[str] = None,
+    sids: Optional[str] = None,
+    tids: Optional[str] = None,
+    no_prepend_pop: bool = False,
+    save_file: Optional[str] = None,
+    convergence: bool = True,
+    method: str = "mean+std",
+    include_gap: bool = True,
+    return_dict: Optional[bool] = None,
+) -> Optional[Dict]:
     """
-    Generates connection plot displaying convergence data
-    config: A BMTK simulation config
-    sources: network name(s) to plot
-    targets: network name(s) to plot
-    sids: source node identifier
-    tids: target node identifier
-    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
-    save_file: If plot should be saved
-    method: 'mean','min','max','stdev' or 'mean+std' connvergence plot
+    Generates connection plot displaying synaptic convergence data.
+
+    Parameters
+    ----------
+    config : str
+        Path to a BMTK simulation config file.
+    title : str, optional
+        Title for the plot. If None, a default title will be used.
+    sources : str, optional
+        Comma-separated string of network name(s) to plot.
+    targets : str, optional
+        Comma-separated string of network name(s) to plot.
+    sids : str, optional
+        Comma-separated string of source node identifier(s) to filter.
+    tids : str, optional
+        Comma-separated string of target node identifier(s) to filter.
+    no_prepend_pop : bool, optional
+        If True, population name is not displayed before sid or tid. Default is False.
+    save_file : str, optional
+        Path to save the plot. If None, plot is not saved.
+    convergence : bool, optional
+        If True, compute convergence; if False, compute divergence. Default is True.
+    method : str, optional
+        Statistical method for display. Options: 'mean', 'min', 'max', 'stdev', 'mean+std'.
+        Default is 'mean+std'.
+    include_gap : bool, optional
+        If True, include gap junctions in analysis. Default is True.
+    return_dict : bool, optional
+        If True, return connection information as a dictionary. Default is None.
+
+    Returns
+    -------
+    dict, optional
+        Dictionary containing connection information if return_dict=True, None otherwise.
+
+    Raises
+    ------
+    Exception
+        If config is not defined or sources/targets are not defined.
+
+    Examples
+    --------
+    >>> result = convergence_connection_matrix(
+    ...     config='config.json',
+    ...     sources='PN',
+    ...     targets='LN',
+    ...     method='mean+std'
+    ... )
     """
     if not config:
         raise Exception("config not defined")
@@ -358,29 +501,68 @@ def convergence_connection_matrix(
 
 
 def divergence_connection_matrix(
-    config=None,
-    title=None,
-    sources=None,
-    targets=None,
-    sids=None,
-    tids=None,
-    no_prepend_pop=False,
-    save_file=None,
-    convergence=False,
-    method="mean+std",
-    include_gap=True,
-    return_dict=None,
-):
+    config: str,
+    title: Optional[str] = None,
+    sources: Optional[str] = None,
+    targets: Optional[str] = None,
+    sids: Optional[str] = None,
+    tids: Optional[str] = None,
+    no_prepend_pop: bool = False,
+    save_file: Optional[str] = None,
+    convergence: bool = False,
+    method: str = "mean+std",
+    include_gap: bool = True,
+    return_dict: Optional[bool] = None,
+) -> Optional[Dict]:
     """
-    Generates connection plot displaying divergence data
-    config: A BMTK simulation config
-    sources: network name(s) to plot
-    targets: network name(s) to plot
-    sids: source node identifier
-    tids: target node identifier
-    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
-    save_file: If plot should be saved
-    method: 'mean','min','max','stdev', and 'mean+std' for divergence plot
+    Generates connection plot displaying synaptic divergence data.
+
+    Parameters
+    ----------
+    config : str
+        Path to a BMTK simulation config file.
+    title : str, optional
+        Title for the plot. If None, a default title will be used.
+    sources : str, optional
+        Comma-separated string of network name(s) to plot.
+    targets : str, optional
+        Comma-separated string of network name(s) to plot.
+    sids : str, optional
+        Comma-separated string of source node identifier(s) to filter.
+    tids : str, optional
+        Comma-separated string of target node identifier(s) to filter.
+    no_prepend_pop : bool, optional
+        If True, population name is not displayed before sid or tid. Default is False.
+    save_file : str, optional
+        Path to save the plot. If None, plot is not saved.
+    convergence : bool, optional
+        If True, compute convergence; if False, compute divergence. Default is False.
+    method : str, optional
+        Statistical method for display. Options: 'mean', 'min', 'max', 'stdev', 'mean+std'.
+        Default is 'mean+std'.
+    include_gap : bool, optional
+        If True, include gap junctions in analysis. Default is True.
+    return_dict : bool, optional
+        If True, return connection information as a dictionary. Default is None.
+
+    Returns
+    -------
+    dict, optional
+        Dictionary containing connection information if return_dict=True, None otherwise.
+
+    Raises
+    ------
+    Exception
+        If config is not defined or sources/targets are not defined.
+
+    Examples
+    --------
+    >>> result = divergence_connection_matrix(
+    ...     config='config.json',
+    ...     sources='PN',
+    ...     targets='LN',
+    ...     method='mean+std'
+    ... )
     """
     if not config:
         raise Exception("config not defined")
@@ -430,7 +612,7 @@ def divergence_connection_matrix(
         else:
             title = title + "Synaptic Divergence"
     if return_dict:
-        dict = plot_connection_info(
+        result_dict = plot_connection_info(
             syn_info,
             data,
             source_labels,
@@ -439,35 +621,66 @@ def divergence_connection_matrix(
             save_file=save_file,
             return_dict=return_dict,
         )
-        return dict
+        return result_dict
     else:
         plot_connection_info(
             syn_info, data, source_labels, target_labels, title, save_file=save_file
         )
-        return
 
 
 def gap_junction_matrix(
-    config=None,
-    title=None,
-    sources=None,
-    targets=None,
-    sids=None,
-    tids=None,
-    no_prepend_pop=False,
-    save_file=None,
-    method="convergence",
-):
+    config: str,
+    title: Optional[str] = None,
+    sources: Optional[str] = None,
+    targets: Optional[str] = None,
+    sids: Optional[str] = None,
+    tids: Optional[str] = None,
+    no_prepend_pop: bool = False,
+    save_file: Optional[str] = None,
+    method: str = "convergence",
+) -> None:
     """
     Generates connection plot displaying gap junction data.
-    config: A BMTK simulation config
-    sources: network name(s) to plot
-    targets: network name(s) to plot
-    sids: source node identifier
-    tids: target node identifier
-    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
-    save_file: If plot should be saved
-    type:'convergence' or 'percent' connections
+
+    Parameters
+    ----------
+    config : str
+        Path to a BMTK simulation config file.
+    title : str, optional
+        Title for the plot. If None, a default title will be used.
+    sources : str, optional
+        Comma-separated string of network name(s) to plot.
+    targets : str, optional
+        Comma-separated string of network name(s) to plot.
+    sids : str, optional
+        Comma-separated string of source node identifier(s) to filter.
+    tids : str, optional
+        Comma-separated string of target node identifier(s) to filter.
+    no_prepend_pop : bool, optional
+        If True, population name is not displayed before sid or tid. Default is False.
+    save_file : str, optional
+        Path to save the plot. If None, plot is not saved.
+    method : str, optional
+        Method for computing gap junction statistics. Options: 'convergence', 'percent'.
+        Default is 'convergence'.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    Exception
+        If config is not defined, sources/targets are not defined, or method is invalid.
+
+    Examples
+    --------
+    >>> gap_junction_matrix(
+    ...     config='config.json',
+    ...     sources='PN',
+    ...     targets='LN',
+    ...     method='convergence'
+    ... )
     """
     if not config:
         raise Exception("config not defined")
@@ -497,28 +710,34 @@ def gap_junction_matrix(
         method=method,
     )
 
-    def filter_rows(syn_info, data, source_labels, target_labels):
+    def filter_rows(
+        syn_info: np.ndarray,
+        data: np.ndarray,
+        source_labels: List,
+        target_labels: List,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List]:
         """
         Filters out rows in a connectivity matrix that contain only NaN or zero values.
 
-        This function is used to clean up connection matrices by removing rows that have no meaningful data,
-        which helps create more informative visualizations of network connectivity.
+        This function is used to clean up connection matrices by removing rows that have
+        no meaningful data, which helps create more informative visualizations of network connectivity.
 
-        Parameters:
-        -----------
-        syn_info : numpy.ndarray
+        Parameters
+        ----------
+        syn_info : np.ndarray
             Array containing synaptic information corresponding to the data matrix.
-        data : numpy.ndarray
-            2D matrix containing connectivity data with rows representing sources and columns representing targets.
+        data : np.ndarray
+            2D matrix containing connectivity data with rows representing sources
+            and columns representing targets.
         source_labels : list
             List of labels for the source populations corresponding to rows in the data matrix.
         target_labels : list
             List of labels for the target populations corresponding to columns in the data matrix.
 
-        Returns:
-        --------
+        Returns
+        -------
         tuple
-            A tuple containing the filtered (syn_info, data, source_labels, target_labels) with invalid rows removed.
+            A tuple containing (syn_info, data, source_labels, target_labels) with invalid rows removed.
         """
         # Identify rows with all NaN or all zeros
         valid_rows = ~np.all(np.isnan(data), axis=1) & ~np.all(data == 0, axis=1)
@@ -530,7 +749,12 @@ def gap_junction_matrix(
 
         return new_syn_info, new_data, new_source_labels, target_labels
 
-    def filter_rows_and_columns(syn_info, data, source_labels, target_labels):
+    def filter_rows_and_columns(
+        syn_info: np.ndarray,
+        data: np.ndarray,
+        source_labels: List,
+        target_labels: List,
+    ) -> Tuple[np.ndarray, np.ndarray, List, List]:
         """
         Filters out both rows and columns in a connectivity matrix that contain only NaN or zero values.
 
@@ -538,21 +762,22 @@ def gap_junction_matrix(
         then transposing the matrix and removing columns with no data (by treating them as rows).
         This creates a cleaner, more informative connectivity matrix visualization.
 
-        Parameters:
-        -----------
-        syn_info : numpy.ndarray
+        Parameters
+        ----------
+        syn_info : np.ndarray
             Array containing synaptic information corresponding to the data matrix.
-        data : numpy.ndarray
-            2D matrix containing connectivity data with rows representing sources and columns representing targets.
+        data : np.ndarray
+            2D matrix containing connectivity data with rows representing sources
+            and columns representing targets.
         source_labels : list
             List of labels for the source populations corresponding to rows in the data matrix.
         target_labels : list
             List of labels for the target populations corresponding to columns in the data matrix.
 
-        Returns:
-        --------
+        Returns
+        -------
         tuple
-            A tuple containing the filtered (syn_info, data, source_labels, target_labels) with both
+            A tuple containing (syn_info, data, source_labels, target_labels) with both
             invalid rows and columns removed.
         """
         # Filter rows first
@@ -595,75 +820,101 @@ def gap_junction_matrix(
         elif method == "percent":
             title += " Percent Connectivity"
     plot_connection_info(syn_info, data, source_labels, target_labels, title, save_file=save_file)
-    return
 
 
 def connection_histogram(
-    config=None,
-    nodes=None,
-    edges=None,
-    sources=[],
-    targets=[],
-    sids=[],
-    tids=[],
-    no_prepend_pop=True,
-    synaptic_info="0",
-    source_cell=None,
-    target_cell=None,
-    include_gap=True,
-):
+    config: str,
+    nodes: Optional[pd.DataFrame] = None,
+    edges: Optional[pd.DataFrame] = None,
+    sources: Optional[str] = None,
+    targets: Optional[str] = None,
+    sids: Optional[str] = None,
+    tids: Optional[str] = None,
+    no_prepend_pop: bool = True,
+    synaptic_info: str = "0",
+    source_cell: Optional[str] = None,
+    target_cell: Optional[str] = None,
+    include_gap: bool = True,
+) -> None:
     """
-    Generates histogram of number of connections individual cells in a population receieve from another population
-    config: A BMTK simulation config
-    sources: network name(s) to plot
-    targets: network name(s) to plot
-    sids: source node identifier
-    tids: target node identifier
-    no_prepend_pop: dictates if population name is displayed before sid or tid when displaying graph
-    source_cell: where connections are coming from
-    target_cell: where connections on coming onto
-    save_file: If plot should be saved
-    """
+    Generates histogram of the number of connections individual cells receive from another population.
 
-    def connection_pair_histogram(**kwargs):
+    Parameters
+    ----------
+    config : str
+        Path to a BMTK simulation config file.
+    nodes : pd.DataFrame, optional
+        Pre-loaded node data. If None, will be loaded from config.
+    edges : pd.DataFrame, optional
+        Pre-loaded edge data. If None, will be loaded from config.
+    sources : str, optional
+        Comma-separated string of network name(s) to plot as sources.
+    targets : str, optional
+        Comma-separated string of network name(s) to plot as targets.
+    sids : str, optional
+        Comma-separated string of source node identifier(s) to filter by.
+    tids : str, optional
+        Comma-separated string of target node identifier(s) to filter by.
+    no_prepend_pop : bool, optional
+        If True, population name is not prepended to sid or tid. Default is True.
+    synaptic_info : str, optional
+        Type of synaptic information to display. Default is '0'.
+    source_cell : str, optional
+        Specific source cell type to plot connections from.
+    target_cell : str, optional
+        Specific target cell type to plot connections onto.
+    include_gap : bool, optional
+        If True, include gap junctions in analysis. Default is True.
+
+    Returns
+    -------
+    None
+    """
+    if not config:
+        raise Exception("config not defined")
+    if not sources or not targets:
+        raise Exception("Sources or targets not defined")
+    
+    sources_list = sources.split(",") if sources else []
+    targets_list = targets.split(",") if targets else []
+    if sids:
+        sids_list = sids.split(",")
+    else:
+        sids_list = []
+    if tids:
+        tids_list = tids.split(",")
+    else:
+        tids_list = []
+
+    def connection_pair_histogram(**kwargs: Dict) -> None:
         """
-        Creates a histogram showing the distribution of connection counts between a specific source and target cell type.
+        Creates a histogram showing the distribution of connection counts between specific cell types.
 
-        This function is designed to be used with the relation_matrix utility and will only create histograms
-        for the specified source and target cell types, ignoring all other combinations.
+        This function is designed to be used with the relation_matrix utility and will only
+        create histograms for the specified source and target cell types.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         kwargs : dict
-            Dictionary containing the following keys:
+            Dictionary containing edge data and filtering information.
             - edges: DataFrame containing edge information
             - sid: Column name for source ID type in the edges DataFrame
             - tid: Column name for target ID type in the edges DataFrame
             - source_id: Value to filter edges by source ID type
             - target_id: Value to filter edges by target ID type
 
-        Global parameters used:
-        ---------------------
-        source_cell : str
-            The source cell type to plot.
-        target_cell : str
-            The target cell type to plot.
-        include_gap : bool
-            Whether to include gap junctions in the analysis. If False, gap junctions are excluded.
-
-        Returns:
-        --------
+        Returns
+        -------
         None
-            Displays a histogram showing the distribution of connection counts.
         """
-        edges = kwargs["edges"]
+        edges_data = kwargs["edges"]
         source_id_type = kwargs["sid"]
         target_id_type = kwargs["tid"]
         source_id = kwargs["source_id"]
         target_id = kwargs["target_id"]
         if source_id == source_cell and target_id == target_cell:
-            temp = edges[
-                (edges[source_id_type] == source_id) & (edges[target_id_type] == target_id)
+            temp = edges_data[
+                (edges_data[source_id_type] == source_id) & (edges_data[target_id_type] == target_id)
             ]
             if not include_gap:
                 gap_col = temp["is_gap_junction"].fillna(False).astype(bool)
@@ -676,7 +927,7 @@ def connection_histogram(
                 label = "mean {:.2f} std {:.2f} median {:.2f}".format(
                     conn_mean, conn_std, conn_median
                 )
-            except:  # lazy fix for std not calculated with 1 node
+            except (statistics.StatisticsError, ValueError):  # lazy fix for std not calculated with 1 node
                 conn_mean = statistics.mean(node_pairs.values)
                 conn_median = statistics.median(node_pairs.values)
                 label = "mean {:.2f} median {:.2f}".format(conn_mean, conn_median)
@@ -692,24 +943,15 @@ def connection_histogram(
         raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
-    sources = sources.split(",")
-    targets = targets.split(",")
-    if sids:
-        sids = sids.split(",")
-    else:
-        sids = []
-    if tids:
-        tids = tids.split(",")
-    else:
-        tids = []
+    
     util.relation_matrix(
         config,
         nodes,
         edges,
-        sources,
-        targets,
-        sids,
-        tids,
+        sources_list,
+        targets_list,
+        sids_list,
+        tids_list,
         not no_prepend_pop,
         relation_func=connection_pair_histogram,
         synaptic_info=synaptic_info,
@@ -728,15 +970,35 @@ def connection_distance(
     Plots the 3D spatial distribution of target nodes relative to a source node
     and a histogram of distances from the source node to each target node.
 
-    Parameters:
+    Parameters
     ----------
-    config: (str) A BMTK simulation config
-    sources: (str) network name(s) to plot
-    targets: (str) network name(s) to plot
-    source_cell_id : (int) ID of the source cell for calculating distances to target nodes.
-    target_id_type : (str) A string to filter target nodes based off the target_query.
-    ignore_z : (bool) A bool to ignore_z axis or not for when calculating distance default is False
+    config : str
+        Path to a BMTK simulation config file.
+    sources : str
+        Network name(s) to plot as sources.
+    targets : str
+        Network name(s) to plot as targets.
+    source_cell_id : int
+        ID of the source cell for calculating distances to target nodes.
+    target_id_type : str
+        String to filter target nodes based off the target_query.
+    ignore_z : bool, optional
+        If True, ignore Z axis when calculating distance. Default is False.
 
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> connection_distance(
+    ...     config='config.json',
+    ...     sources='PN',
+    ...     targets='LN',
+    ...     source_cell_id=0,
+    ...     target_id_type='LN',
+    ...     ignore_z=False
+    ... )
     """
     if not config:
         raise Exception("config not defined")
@@ -820,46 +1082,45 @@ def connection_distance(
 
 
 def edge_histogram_matrix(
-    config=None,
-    sources=None,
-    targets=None,
-    sids=None,
-    tids=None,
-    no_prepend_pop=None,
-    edge_property=None,
-    time=None,
-    time_compare=None,
-    report=None,
-    title=None,
-    save_file=None,
-):
+    config: str,
+    sources: Optional[str] = None,
+    targets: Optional[str] = None,
+    sids: Optional[str] = None,
+    tids: Optional[str] = None,
+    no_prepend_pop: Optional[bool] = None,
+    edge_property: Optional[str] = None,
+    time: Optional[int] = None,
+    time_compare: Optional[int] = None,
+    report: Optional[str] = None,
+    title: Optional[str] = None,
+    save_file: Optional[str] = None,
+) -> None:
     """
-    Generates a matrix of histograms showing the distribution of edge properties between different populations.
+    Generates a matrix of histograms showing the distribution of edge properties between populations.
 
-    This function creates a grid of histograms where each cell in the grid represents the distribution of a
-    specific edge property (e.g., synaptic weights, delays) between a source population (row) and
-    target population (column).
+    This function creates a grid of histograms where each cell represents the distribution
+    of a specific edge property between source and target populations.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     config : str
         Path to a BMTK simulation config file.
-    sources : str
+    sources : str, optional
         Comma-separated list of source network names.
-    targets : str
+    targets : str, optional
         Comma-separated list of target network names.
     sids : str, optional
         Comma-separated list of source node identifiers to filter by.
     tids : str, optional
         Comma-separated list of target node identifiers to filter by.
     no_prepend_pop : bool, optional
-        If True, population names are not prepended to node identifiers in the display.
-    edge_property : str
-        The edge property to analyze and display in the histograms (e.g., 'syn_weight', 'delay').
+        If True, population names are not prepended to node identifiers.
+    edge_property : str, optional
+        The edge property to analyze (e.g., 'syn_weight', 'delay').
     time : int, optional
         Time point to analyze from a time series report.
     time_compare : int, optional
-        Second time point for comparison with 'time'.
+        Second time point for comparison with time.
     report : str, optional
         Name of the report to analyze.
     title : str, optional
@@ -867,10 +1128,18 @@ def edge_histogram_matrix(
     save_file : str, optional
         Path to save the generated plot.
 
-    Returns:
-    --------
+    Returns
+    -------
     None
-        Displays a matrix of histograms.
+
+    Examples
+    --------
+    >>> edge_histogram_matrix(
+    ...     config='config.json',
+    ...     sources='PN',
+    ...     targets='LN',
+    ...     edge_property='syn_weight'
+    ... )
     """
 
     if not config:
@@ -933,22 +1202,41 @@ def distance_delay_plot(
     simulation_config: str, source: str, target: str, group_by: str, sid: str, tid: str
 ) -> None:
     """
-    Plots the relationship between the distance and delay of connections between nodes in a neural network simulation.
+    Plots the relationship between the distance and delay of connections between nodes in a neural network.
 
-    This function loads the node and edge data from a simulation configuration file, filters nodes by population or group,
-    identifies connections (edges) between source and target node populations, calculates the Euclidean distance between
-    connected nodes, and plots the delay as a function of distance.
+    This function loads node and edge data from a simulation configuration file, filters nodes by population,
+    identifies connections (edges) between source and target node populations, calculates the Euclidean distance
+    between connected nodes, and plots the delay as a function of distance.
 
-    Args:
-        simulation_config (str): Path to the simulation config file
-        source (str): The name of the source population in the edge data.
-        target (str): The name of the target population in the edge data.
-        group_by (str): Column name to group nodes by (e.g., population name).
-        sid (str): Identifier for the source group (e.g., 'PN').
-        tid (str): Identifier for the target group (e.g., 'PN').
+    Parameters
+    ----------
+    simulation_config : str
+        Path to the simulation config file.
+    source : str
+        The name of the source population in the edge data.
+    target : str
+        The name of the target population in the edge data.
+    group_by : str
+        Column name to group nodes by (e.g., population name).
+    sid : str
+        Identifier for the source group (e.g., 'PN').
+    tid : str
+        Identifier for the target group (e.g., 'PN').
 
-    Returns:
-        None: The function creates and displays a scatter plot of distance vs delay.
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> distance_delay_plot(
+    ...     'config.json',
+    ...     'cortex',
+    ...     'cortex',
+    ...     'node_type_id',
+    ...     'E',
+    ...     'E'
+    ... )
     """
     nodes, edges = util.load_nodes_edges_from_config(simulation_config)
     nodes = nodes[target]
@@ -989,37 +1277,56 @@ def distance_delay_plot(
     plt.show()
 
 
-def plot_synapse_location(config: str, source: str, target: str, sids: str, tids: str, syn_feature: str = 'afferent_section_id') -> tuple:
+def plot_synapse_location(
+    config: str,
+    source: str,
+    target: str,
+    sids: str,
+    tids: str,
+    syn_feature: str = "afferent_section_id",
+) -> Tuple[plt.Figure, plt.Axes]:
     """
     Generates a connectivity matrix showing synaptic distribution across different cell sections.
-    Note does exclude gap junctions since they dont have an afferent id stored in the h5 file!
+
+    Note: Excludes gap junctions since they don't have an afferent id stored in the h5 file.
 
     Parameters
     ----------
     config : str
-        Path to BMTK config file
+        Path to BMTK config file.
     source : str
-        The source BMTK network name
+        The source BMTK network name.
     target : str
-        The target BMTK network name
+        The target BMTK network name.
     sids : str
-        Column name in nodes file containing source population identifiers
+        Column name in nodes file containing source population identifiers.
     tids : str
-        Column name in nodes file containing target population identifiers
-    syn_feature : str, default 'afferent_section_id'
-        Synaptic feature to analyze ('afferent_section_id' or 'afferent_section_pos')
+        Column name in nodes file containing target population identifiers.
+    syn_feature : str, optional
+        Synaptic feature to analyze. Default is 'afferent_section_id'.
+        Options: 'afferent_section_id' or 'afferent_section_pos'.
 
     Returns
     -------
     tuple
-        (matplotlib.figure.Figure, matplotlib.axes.Axes) containing the plot
+        (matplotlib.figure.Figure, matplotlib.axes.Axes) containing the plot.
 
     Raises
     ------
     ValueError
-        If required parameters are missing or invalid
+        If required parameters are missing or invalid.
     RuntimeError
-        If template loading or cell instantiation fails
+        If template loading or cell instantiation fails.
+
+    Examples
+    --------
+    >>> fig, ax = plot_synapse_location(
+    ...     config='config.json',
+    ...     source='LGN',
+    ...     target='cortex',
+    ...     sids='node_type_id',
+    ...     tids='node_type_id'
+    ... )
     """
     # Validate inputs
     if not all([config, source, target, sids, tids]):
@@ -1161,11 +1468,47 @@ def plot_synapse_location(config: str, source: str, target: str, sids: str, tids
 
 
 def plot_connection_info(
-    text, num, source_labels, target_labels, title, syn_info="0", save_file=None, return_dict=None
-):
+    text: np.ndarray,
+    num: np.ndarray,
+    source_labels: List[str],
+    target_labels: List[str],
+    title: str,
+    syn_info: str = "0",
+    save_file: Optional[str] = None,
+    return_dict: Optional[bool] = None,
+) -> Union[Tuple, Dict, None]:
     """
-    Function to plot connection information as a heatmap, including handling missing source and target values.
-    If there is no source or target, set the value to 0.
+    Plot connection information as a heatmap with text annotations.
+
+    Parameters
+    ----------
+    text : np.ndarray
+        2D array of text annotations for each cell.
+    num : np.ndarray
+        2D array of numerical values for the heatmap colors.
+    source_labels : list of str
+        Labels for source populations (rows).
+    target_labels : list of str
+        Labels for target populations (columns).
+    title : str
+        Title for the plot.
+    syn_info : str, optional
+        Type of synaptic information being displayed. Options: '0', '1', '2', '3'.
+        Default is '0'.
+    save_file : str, optional
+        Path to save the plot. If None, plot is not saved.
+    return_dict : bool, optional
+        If True, return connection information as a dictionary. Default is None.
+
+    Returns
+    -------
+    Union[Tuple, Dict, None]
+        If return_dict=True, returns a dictionary of connection information.
+        Otherwise, returns a tuple of (Figure, Axes), or None if just displaying.
+
+    Notes
+    -----
+    Handles missing source and target values by setting them to 0.
     """
     # Ensure text dimensions match num dimensions
     num_source = len(source_labels)
@@ -1320,35 +1663,45 @@ def plot_connection_info(
 
 
 def connector_percent_matrix(
-    csv_path: str = None,
-    exclude_strings=None,
-    assemb_key=None,
+    csv_path: Optional[str] = None,
+    exclude_strings: Optional[List[str]] = None,
+    assemb_key: Optional[str] = None,
     title: str = "Percent connection matrix",
-    pop_order=None,
+    pop_order: Optional[List[str]] = None,
 ) -> None:
     """
-    Generates and plots a connection matrix based on connection probabilities from a CSV file produced by bmtool.connector.
+    Generates and plots a connection matrix based on connection probabilities from a CSV file.
 
-    This function is useful for visualizing percent connectivity while factoring in population distance and other parameters.
-    It processes the connection data by filtering the 'Source' and 'Target' columns in the CSV, and displays the percentage of
-    connected pairs for each population combination in a matrix.
+    This function visualizes percent connectivity while factoring in population distance and other parameters.
+    It processes connection data by filtering 'Source' and 'Target' columns in the CSV and displays the
+    percentage of connected pairs for each population combination in a matrix.
 
-    Parameters:
-    -----------
-    csv_path : str
-        Path to the CSV file containing the connection data. The CSV should be an output from the bmtool.connector
-        classes, specifically generated by the `save_connection_report()` function.
+    Parameters
+    ----------
+    csv_path : str, optional
+        Path to the CSV file containing connection data. The CSV should be an output from the
+        bmtool.connector classes, specifically generated by the `save_connection_report()` function.
     exclude_strings : list of str, optional
         List of strings to exclude rows where 'Source' or 'Target' contain these strings.
-    title : str, optional, default='Percent connection matrix'
-        Title for the generated plot.
+    assemb_key : str, optional
+        Key to identify and process assembly connections.
+    title : str, optional
+        Title for the generated plot. Default is 'Percent connection matrix'.
     pop_order : list of str, optional
-        List of population labels to specify the order for the x- and y-ticks in the plot.
+        List of population labels to specify the order for x- and y-ticks in the plot.
 
-    Returns:
-    --------
+    Returns
+    -------
     None
-        Displays a heatmap plot of the connection matrix, showing the percentage of connected pairs between populations.
+        Displays a heatmap plot of the connection matrix.
+
+    Examples
+    --------
+    >>> connector_percent_matrix(
+    ...     csv_path='connections.csv',
+    ...     exclude_strings=['Gap'],
+    ...     title='Network Connectivity'
+    ... )
     """
     # Read the CSV data
     df = pd.read_csv(csv_path)
@@ -1496,17 +1849,44 @@ def connector_percent_matrix(
     plt.show()
 
 
-def plot_3d_positions(config=None, sources=None, sid=None, title=None, save_file=None, subset=None):
+def plot_3d_positions(
+    config: Optional[str] = None,
+    sources: Optional[str] = None,
+    sid: Optional[str] = None,
+    title: Optional[str] = None,
+    save_file: Optional[str] = None,
+    subset: Optional[int] = None,
+) -> None:
     """
     Plots a 3D graph of all cells with x, y, z location.
 
-    Parameters:
-    - config: A BMTK simulation config
-    - sources: Which network(s) to plot
-    - sid: How to name cell groups
-    - title: Plot title
-    - save_file: If plot should be saved
-    - subset: Take every Nth row. This will make plotting large network graphs easier to see.
+    Parameters
+    ----------
+    config : str, optional
+        Path to a BMTK simulation config file.
+    sources : str, optional
+        Which network(s) to plot. If None or 'all', plots all networks.
+    sid : str, optional
+        Column name to group cell types (node grouping criteria).
+    title : str, optional
+        Plot title. Default is '3D positions'.
+    save_file : str, optional
+        Path to save the plot. If None, plot is not saved.
+    subset : int, optional
+        Take every Nth row. This makes plotting large networks easier to visualize.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> plot_3d_positions(
+    ...     config='config.json',
+    ...     sources='cortex',
+    ...     sid='node_type_id',
+    ...     title='3D Neuron Positions'
+    ... )
     """
 
     if not config:
@@ -1610,16 +1990,53 @@ def plot_3d_positions(config=None, sources=None, sid=None, title=None, save_file
 
 
 def plot_3d_cell_rotation(
-    config=None,
-    sources=None,
-    sids=None,
-    title=None,
-    save_file=None,
-    quiver_length=None,
-    arrow_length_ratio=None,
-    group=None,
-    subset=None,
-):
+    config: Optional[str] = None,
+    sources: Optional[List[str]] = None,
+    sids: Optional[str] = None,
+    title: Optional[str] = None,
+    save_file: Optional[str] = None,
+    quiver_length: Optional[float] = None,
+    arrow_length_ratio: Optional[float] = None,
+    group: Optional[str] = None,
+    subset: Optional[int] = None,
+) -> None:
+    """
+    Plot 3D visualization of cell rotations with quiver arrows showing rotation orientations.
+
+    Parameters
+    ----------
+    config : str, optional
+        Path to a BMTK simulation config file.
+    sources : list of str, optional
+        Network names to plot. If None or contains 'all', plots all networks.
+    sids : str, optional
+        Comma-separated column names to group cell types.
+    title : str, optional
+        Plot title. Default is 'Cell rotations'.
+    save_file : str, optional
+        Path to save the plot. If None, plot is not saved.
+    quiver_length : float, optional
+        Length of the quiver arrows. If None, use matplotlib default.
+    arrow_length_ratio : float, optional
+        Ratio of arrow head size to quiver length.
+    group : str, optional
+        Comma-separated group names to include. If None, include all groups.
+    subset : int, optional
+        Take every Nth row. Useful for visualizing large networks.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> plot_3d_cell_rotation(
+    ...     config='config.json',
+    ...     sources=['cortex'],
+    ...     sids='node_type_id',
+    ...     title='Cell Rotation Vectors'
+    ... )
+    """
     from scipy.spatial.transform import Rotation as R
 
     if not config:
