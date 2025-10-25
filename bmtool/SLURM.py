@@ -409,6 +409,16 @@ class BlockRunner:
         self.param_name = param_name
         self.json_file_path = json_file_path
         self.syn_dict = syn_dict
+        # Store original component paths to restore later
+        self.original_component_paths = [block.component_path for block in self.blocks]
+
+    def restore_component_paths(self):
+        """
+        Restores all blocks' component_path to their original values.
+        """
+        for i, block in enumerate(self.blocks):
+            block.component_path = self.original_component_paths[i]
+        print("Component paths restored to original values.", flush=True)
 
     def submit_blocks_sequentially(self):
         """
@@ -473,6 +483,8 @@ class BlockRunner:
 
             print(f"Block {block.block_name} completed.", flush=True)
         print("All blocks are done!", flush=True)
+        # Restore component paths to their original values
+        self.restore_component_paths()
         if self.webhook:
             message = "SIMULATION UPDATE: Simulation are Done!"
             send_teams_message(self.webhook, message)
@@ -531,6 +543,9 @@ class BlockRunner:
                     print(f"Waiting for the last block {i} to complete...")
                     time.sleep(self.check_interval)
 
+        print("All blocks are done!", flush=True)
+        # Restore component paths to their original values
+        self.restore_component_paths()
         if self.webhook:
             message = "SIMULATION UPDATE: Simulations are Done!"
             send_teams_message(self.webhook, message)
