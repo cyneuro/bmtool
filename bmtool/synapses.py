@@ -3455,7 +3455,7 @@ class SynapseOptimizer:
             self.tuner.ispk = None
             self.tuner.SingleEvent(plot_and_print=True)
 
-# dataclass means just init the typehints as self.typehint. looks a bit cleaner
+# dataclass decorator automatically generates __init__ from type-annotated class variables for cleaner code
 @dataclass
 class GapOptimizationResult:
     """Container for gap junction optimization results"""
