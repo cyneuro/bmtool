@@ -3349,7 +3349,7 @@ class SynapseOptimizer:
         elif init_guess == "middle_guess":
             x0 = [(b[0] + b[1]) / 2 for b in bounds]
         else:
-            raise Exception("Pick a vaid init guess method either random or midde_guess")
+            raise Exception("Pick a valid init guess method: either 'random' or 'middle_guess'")
         normalized_x0 = self._normalize_params(np.array(x0), param_names)
 
         # Run optimization
