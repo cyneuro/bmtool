@@ -4,7 +4,7 @@ from fooof.sim.gen import gen_aperiodic
 from typing import Optional, List, Dict, Tuple, Any
 import pandas as pd
 from ..analysis.spikes import get_population_spike_rate
-from ..analysis.lfp import get_lfp_power, load_ecp_to_xarray, ecp_to_lfp
+from ..analysis.lfp import get_lfp_power
 from matplotlib.figure import Figure
 
 
@@ -16,6 +16,8 @@ def plot_spectrogram(
     clr_freq_range: Optional[Tuple[float, float]] = None,
     pad: float = 0.03,
     ax: Optional[plt.Axes] = None,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
 ) -> Figure:
     """
     Plot a power spectrogram with optional aperiodic removal and frequency-based coloring.
@@ -36,6 +38,10 @@ def plot_spectrogram(
         Padding for colorbar. Default is 0.03.
     ax : matplotlib.axes.Axes, optional
         Axes to plot on. If None, creates a new figure and axes.
+    vmin : float, optional
+        Minimum value for colorbar scaling. If None, computed from data.
+    vmax : float, optional
+        Maximum value for colorbar scaling. If None, computed from data.
 
     Returns
     -------
@@ -74,11 +80,19 @@ def plot_spectrogram(
     if plt_range.size == 1:
         plt_range = [f[0 if f[0] else 1] if log_power else 0.0, plt_range.item()]
     f_idx = (f >= plt_range[0]) & (f <= plt_range[1])
-    if clr_freq_range is None:
-        vmin, vmax = None, None
-    else:
-        c_idx = (f >= clr_freq_range[0]) & (f <= clr_freq_range[1])
-        vmin, vmax = sxx[c_idx, :].min(), sxx[c_idx, :].max()
+    
+    # Determine vmin and vmax: explicit parameters take precedence, then clr_freq_range, then None
+    if vmin is None or vmax is None:
+        if clr_freq_range is None:
+            vmin_computed, vmax_computed = None, None
+        else:
+            c_idx = (f >= clr_freq_range[0]) & (f <= clr_freq_range[1])
+            vmin_computed, vmax_computed = sxx[c_idx, :].min(), sxx[c_idx, :].max()
+        
+        if vmin is None:
+            vmin = vmin_computed
+        if vmax is None:
+            vmax = vmax_computed
 
     f = f[f_idx]
     pcm = ax.pcolormesh(t, f, sxx[f_idx, :], shading="gouraud", vmin=vmin, vmax=vmax, rasterized=True)
@@ -97,13 +111,13 @@ def plot_spectrogram(
 
 def plot_population_spike_rates_with_lfp(
     spikes_df: pd.DataFrame,
+    lfp: Any,
     freq_of_interest: List[float],
     freq_labels: List[str],
     freq_colors: List[str],
     time_range: Tuple[float, float],
     pop_names: List[str],
     pop_color: Dict[str, str],
-    trial_path: str,
     filter_column: Optional[str] = None,
     filter_value: Optional[Any] = None,
 ) -> Optional[Figure]:
@@ -114,6 +128,8 @@ def plot_population_spike_rates_with_lfp(
     ----------
     spikes_df : pd.DataFrame
         DataFrame with spike data.
+    lfp : array-like
+        LFP data (xarray or similar format).
     freq_of_interest : list of float
         List of frequencies for LFP power analysis (required).
     freq_labels : list of str
@@ -126,8 +142,6 @@ def plot_population_spike_rates_with_lfp(
         List of population names (required).
     pop_color : dict
         Dictionary mapping population names to colors (required).
-    trial_path : str
-        Path to trial data (required).
     filter_column : str, optional
         Column name to filter spikes_df on (optional).
     filter_value : any, optional
@@ -141,9 +155,9 @@ def plot_population_spike_rates_with_lfp(
     Examples
     --------
     >>> fig = plot_population_spike_rates_with_lfp(
-    ...     spikes_df, [40, 80], ['Beta', 'Gamma'],
+    ...     spikes_df, lfp, [40, 80], ['Beta', 'Gamma'],
     ...     ['blue', 'red'], (0, 10), ['PV', 'SST'],
-    ...     {'PV': 'blue', 'SST': 'red'}, 'trial_data.h5'
+    ...     {'PV': 'blue', 'SST': 'red'}
     ... )
     """
     # Compute spike rates based on filtering
@@ -161,9 +175,7 @@ def plot_population_spike_rates_with_lfp(
         plot_title = 'Overall Spike Rates'
         save_suffix = '_overall'
 
-    # Load LFP data and compute power for each frequency of interest
-    ecp = load_ecp_to_xarray(ecp_file=trial_path + "/ecp.h5")
-    lfp = ecp_to_lfp(ecp)
+    # Compute power for each frequency of interest
     powers = [
         get_lfp_power(lfp, freq_of_interest=freq, fs=lfp.fs, filter_method="wavelet", bandwidth=1.0)
         for freq in freq_of_interest
