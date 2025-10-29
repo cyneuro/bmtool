@@ -10,7 +10,7 @@ See Also:
 """
 import re
 import statistics
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import matplotlib
 import matplotlib.cm as cmx
@@ -63,10 +63,9 @@ def total_connection_matrix(
     sids: Optional[str] = None,
     tids: Optional[str] = None,
     no_prepend_pop: bool = False,
-    save_file: Optional[str] = None,
     synaptic_info: str = "0",
     include_gap: bool = True,
-) -> None:
+) -> Tuple[Any, Any]:
     """
     Generate a plot displaying total connections or other synaptic statistics.
 
@@ -86,8 +85,6 @@ def total_connection_matrix(
         Comma-separated string of target node identifiers to filter.
     no_prepend_pop : bool, optional
         If True, don't display population name before sid or tid in the plot. Default is False.
-    save_file : str, optional
-        Path to save the plot. If None, plot is not saved.
     synaptic_info : str, optional
         Type of information to display. Options:
         - '0': Total connections (default)
@@ -100,7 +97,8 @@ def total_connection_matrix(
 
     Returns
     -------
-    None
+    tuple of (Figure, Axes)
+        The matplotlib Figure and Axes objects for further customization or saving.
 
     Raises
     ------
@@ -152,8 +150,8 @@ def total_connection_matrix(
     if synaptic_info == "3":
         title = "All Synapse .json Files Used"
     
-    plot_connection_info(
-        text, num, source_labels, target_labels, title, syn_info=synaptic_info, save_file=save_file
+    return plot_connection_info(
+        text, num, source_labels, target_labels, title, syn_info=synaptic_info
     )
 
 
@@ -167,11 +165,10 @@ def percent_connection_matrix(
     sids: Optional[str] = None,
     tids: Optional[str] = None,
     no_prepend_pop: bool = False,
-    save_file: Optional[str] = None,
     method: str = "total",
     include_gap: bool = True,
     return_dict: bool = False,
-) -> Optional[Dict]:
+) -> Union[Tuple[Any, Any], Dict]:
     """
     Generates a plot showing the percent connectivity of a network.
 
@@ -195,8 +192,6 @@ def percent_connection_matrix(
         Comma-separated string of target node identifier(s) to filter.
     no_prepend_pop : bool, optional
         If True, population name is not displayed before sid or tid in the plot. Default is False.
-    save_file : str, optional
-        Path to save the plot. If None, plot is not saved.
     method : str, optional
         Method for calculating percent connectivity. Options: 'total', 'uni', 'bi'.
         Default is 'total'.
@@ -208,8 +203,9 @@ def percent_connection_matrix(
 
     Returns
     -------
-    dict, optional
-        Dictionary containing connection information if return_dict=True, None otherwise.
+    Union[Tuple[Figure, Axes], Dict]
+        If return_dict=True, returns a dictionary of connection information.
+        Otherwise, returns a tuple of (Figure, Axes) for further customization or saving.
 
     Raises
     ------
@@ -257,11 +253,11 @@ def percent_connection_matrix(
 
     if return_dict:
         result_dict = plot_connection_info(
-            text, num, source_labels, target_labels, title, save_file=save_file, return_dict=return_dict
+            text, num, source_labels, target_labels, title, return_dict=return_dict
         )
         return result_dict
     else:
-        plot_connection_info(text, num, source_labels, target_labels, title, save_file=save_file)
+        return plot_connection_info(text, num, source_labels, target_labels, title)
 
 
 def probability_connection_matrix(
@@ -274,7 +270,6 @@ def probability_connection_matrix(
     sids: Optional[str] = None,
     tids: Optional[str] = None,
     no_prepend_pop: bool = False,
-    save_file: Optional[str] = None,
     dist_X: bool = True,
     dist_Y: bool = True,
     dist_Z: bool = True,
@@ -282,7 +277,7 @@ def probability_connection_matrix(
     line_plot: bool = False,
     verbose: bool = False,
     include_gap: bool = True,
-) -> None:
+) -> Tuple[Any, Any]:
     """
     Generates probability graphs showing connectivity as a function of distance.
 
@@ -411,9 +406,8 @@ def probability_connection_matrix(
     st = fig.suptitle(tt, fontsize=14)
     fig.text(0.5, 0.04, "Target", ha="center")
     fig.text(0.04, 0.5, "Source", va="center", rotation="vertical")
-    notebook = is_notebook()
-    if not notebook:
-        fig.show()
+    
+    return fig, axes
 
 
 def convergence_connection_matrix(
@@ -424,12 +418,11 @@ def convergence_connection_matrix(
     sids: Optional[str] = None,
     tids: Optional[str] = None,
     no_prepend_pop: bool = False,
-    save_file: Optional[str] = None,
     convergence: bool = True,
     method: str = "mean+std",
     include_gap: bool = True,
     return_dict: Optional[bool] = None,
-) -> Optional[Dict]:
+) -> Union[Tuple[Any, Any], Dict, None]:
     """
     Generates connection plot displaying synaptic convergence data.
 
@@ -463,8 +456,9 @@ def convergence_connection_matrix(
 
     Returns
     -------
-    dict, optional
-        Dictionary containing connection information if return_dict=True, None otherwise.
+    Union[Tuple[Figure, Axes], Dict, None]
+        If return_dict=True, returns a dictionary of connection information.
+        Otherwise, returns a tuple of (Figure, Axes) for further customization or saving.
 
     Raises
     ------
@@ -492,7 +486,6 @@ def convergence_connection_matrix(
         sids,
         tids,
         no_prepend_pop,
-        save_file,
         convergence,
         method,
         include_gap=include_gap,
@@ -508,12 +501,11 @@ def divergence_connection_matrix(
     sids: Optional[str] = None,
     tids: Optional[str] = None,
     no_prepend_pop: bool = False,
-    save_file: Optional[str] = None,
     convergence: bool = False,
     method: str = "mean+std",
     include_gap: bool = True,
     return_dict: Optional[bool] = None,
-) -> Optional[Dict]:
+) -> Union[Tuple[Any, Any], Dict, None]:
     """
     Generates connection plot displaying synaptic divergence data.
 
@@ -547,8 +539,9 @@ def divergence_connection_matrix(
 
     Returns
     -------
-    dict, optional
-        Dictionary containing connection information if return_dict=True, None otherwise.
+    Union[Tuple[Figure, Axes], Dict, None]
+        If return_dict=True, returns a dictionary of connection information.
+        Otherwise, returns a tuple of (Figure, Axes) for further customization or saving.
 
     Raises
     ------
@@ -618,13 +611,12 @@ def divergence_connection_matrix(
             source_labels,
             target_labels,
             title,
-            save_file=save_file,
             return_dict=return_dict,
         )
         return result_dict
     else:
-        plot_connection_info(
-            syn_info, data, source_labels, target_labels, title, save_file=save_file
+        return plot_connection_info(
+            syn_info, data, source_labels, target_labels, title
         )
 
 
@@ -636,9 +628,8 @@ def gap_junction_matrix(
     sids: Optional[str] = None,
     tids: Optional[str] = None,
     no_prepend_pop: bool = False,
-    save_file: Optional[str] = None,
     method: str = "convergence",
-) -> None:
+) -> Tuple[Any, Any]:
     """
     Generates connection plot displaying gap junction data.
 
@@ -819,7 +810,7 @@ def gap_junction_matrix(
             title += " Syn Convergence"
         elif method == "percent":
             title += " Percent Connectivity"
-    plot_connection_info(syn_info, data, source_labels, target_labels, title, save_file=save_file)
+    return plot_connection_info(syn_info, data, source_labels, target_labels, title)
 
 
 def connection_histogram(
@@ -835,7 +826,7 @@ def connection_histogram(
     source_cell: Optional[str] = None,
     target_cell: Optional[str] = None,
     include_gap: bool = True,
-) -> None:
+) -> Tuple[Any, Any]:
     """
     Generates histogram of the number of connections individual cells receive from another population.
 
@@ -868,7 +859,8 @@ def connection_histogram(
 
     Returns
     -------
-    None
+    tuple
+        (matplotlib.figure.Figure, matplotlib.axes.Axes) containing the histogram.
     """
     if not config:
         raise Exception("config not defined")
@@ -935,7 +927,6 @@ def connection_histogram(
             plt.legend()
             plt.xlabel("# of conns from {} to {}".format(source_cell, target_cell))
             plt.ylabel("# of cells")
-            plt.show()
         else:  # dont care about other cell pairs so pass
             pass
 
@@ -943,6 +934,9 @@ def connection_histogram(
         raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
+    
+    # Create figure for the histogram
+    fig, ax = plt.subplots()
     
     util.relation_matrix(
         config,
@@ -956,6 +950,8 @@ def connection_histogram(
         relation_func=connection_pair_histogram,
         synaptic_info=synaptic_info,
     )
+    
+    return fig, ax
 
 
 def connection_distance(
@@ -965,7 +961,7 @@ def connection_distance(
     source_cell_id: int,
     target_id_type: str,
     ignore_z: bool = False,
-) -> None:
+) -> Tuple[Tuple[Any, Any], Tuple[Any, Any]]:
     """
     Plots the 3D spatial distribution of target nodes relative to a source node
     and a histogram of distances from the source node to each target node.
@@ -987,11 +983,14 @@ def connection_distance(
 
     Returns
     -------
-    None
+    tuple
+        Two tuples, each containing (matplotlib.figure.Figure, matplotlib.axes.Axes):
+        - First tuple: 3D/2D scatter plot of node positions
+        - Second tuple: Histogram of distances
 
     Examples
     --------
-    >>> connection_distance(
+    >>> (fig1, ax1), (fig2, ax2) = connection_distance(
     ...     config='config.json',
     ...     sources='PN',
     ...     targets='LN',
@@ -1069,16 +1068,16 @@ def connection_distance(
     #             f'{distance:.2f}', color='black', fontsize=8, ha='center')
 
     plt.legend()
-    plt.show()
 
     # Plot distances in a separate 2D plot
-    plt.figure(figsize=(8, 6))
-    plt.hist(distances, bins=20, color="blue", edgecolor="black")
-    plt.xlabel("Distance")
-    plt.ylabel("Count")
-    plt.title("Distance from Source Node to Each Target Node")
-    plt.grid(True)
-    plt.show()
+    fig2, ax2 = plt.subplots(figsize=(8, 6))
+    ax2.hist(distances, bins=20, color="blue", edgecolor="black")
+    ax2.set_xlabel("Distance")
+    ax2.set_ylabel("Count")
+    ax2.set_title("Distance from Source Node to Each Target Node")
+    ax2.grid(True)
+    
+    return (fig, ax), (fig2, ax2)
 
 
 def edge_histogram_matrix(
@@ -1093,8 +1092,8 @@ def edge_histogram_matrix(
     time_compare: Optional[int] = None,
     report: Optional[str] = None,
     title: Optional[str] = None,
-    save_file: Optional[str] = None,
-) -> None:
+    
+) -> Tuple[Any, Any]:
     """
     Generates a matrix of histograms showing the distribution of edge properties between populations.
 
@@ -1130,11 +1129,12 @@ def edge_histogram_matrix(
 
     Returns
     -------
-    None
+    tuple
+        (matplotlib.figure.Figure, matplotlib.axes.Axes) containing the histogram matrix.
 
     Examples
     --------
-    >>> edge_histogram_matrix(
+    >>> fig, axes = edge_histogram_matrix(
     ...     config='config.json',
     ...     sources='PN',
     ...     targets='LN',
@@ -1196,11 +1196,13 @@ def edge_histogram_matrix(
     fig.text(0.5, 0.04, "Target", ha="center")
     fig.text(0.04, 0.5, "Source", va="center", rotation="vertical")
     plt.draw()
+    
+    return fig, axes
 
 
 def distance_delay_plot(
     simulation_config: str, source: str, target: str, group_by: str, sid: str, tid: str
-) -> None:
+) -> Tuple[Any, Any]:
     """
     Plots the relationship between the distance and delay of connections between nodes in a neural network.
 
@@ -1225,11 +1227,12 @@ def distance_delay_plot(
 
     Returns
     -------
-    None
+    tuple
+        (matplotlib.figure.Figure, matplotlib.axes.Axes) containing the scatter plot.
 
     Examples
     --------
-    >>> distance_delay_plot(
+    >>> fig, ax = distance_delay_plot(
     ...     'config.json',
     ...     'cortex',
     ...     'cortex',
@@ -1270,11 +1273,13 @@ def distance_delay_plot(
         except Exception as e:
             print(f"Unexpected error at edge index {index}: {e}")
 
-    plt.scatter([x[0] for x in stuff_to_plot], [x[1] for x in stuff_to_plot])
-    plt.xlabel("Distance")
-    plt.ylabel("Delay")
-    plt.title(f"Distance vs Delay for edge between {sid} and {tid}")
-    plt.show()
+    fig, ax = plt.subplots()
+    ax.scatter([x[0] for x in stuff_to_plot], [x[1] for x in stuff_to_plot])
+    ax.set_xlabel("Distance")
+    ax.set_ylabel("Delay")
+    ax.set_title(f"Distance vs Delay for edge between {sid} and {tid}")
+    
+    return fig, ax
 
 
 def plot_synapse_location(
@@ -1284,7 +1289,7 @@ def plot_synapse_location(
     sids: str,
     tids: str,
     syn_feature: str = "afferent_section_id",
-) -> Tuple[plt.Figure, plt.Axes]:
+) -> Tuple[Any, Any]:
     """
     Generates a connectivity matrix showing synaptic distribution across different cell sections.
 
@@ -1461,10 +1466,7 @@ def plot_synapse_location(
         title=title,
         syn_info="1",
     )
-    if is_notebook():
-        plt.show()
-    else:
-        return fig, ax
+    return fig, ax
 
 
 def plot_connection_info(
@@ -1474,7 +1476,7 @@ def plot_connection_info(
     target_labels: List[str],
     title: str,
     syn_info: str = "0",
-    save_file: Optional[str] = None,
+    
     return_dict: Optional[bool] = None,
 ) -> Union[Tuple, Dict, None]:
     """
@@ -1653,9 +1655,6 @@ def plot_connection_info(
     if not notebook:
         plt.show()
 
-    if save_file:
-        plt.savefig(save_file, dpi=300, bbox_inches="tight", pad_inches=0.1)
-
     if return_dict:
         return graph_dict
     else:
@@ -1668,7 +1667,7 @@ def connector_percent_matrix(
     assemb_key: Optional[str] = None,
     title: str = "Percent connection matrix",
     pop_order: Optional[List[str]] = None,
-) -> None:
+) -> Tuple[Any, Any]:
     """
     Generates and plots a connection matrix based on connection probabilities from a CSV file.
 
@@ -1692,12 +1691,12 @@ def connector_percent_matrix(
 
     Returns
     -------
-    None
-        Displays a heatmap plot of the connection matrix.
+    tuple
+        (matplotlib.figure.Figure, matplotlib.axes.Axes) containing the heatmap.
 
     Examples
     --------
-    >>> connector_percent_matrix(
+    >>> fig, ax = connector_percent_matrix(
     ...     csv_path='connections.csv',
     ...     exclude_strings=['Gap'],
     ...     title='Network Connectivity'
@@ -1846,7 +1845,8 @@ def connector_percent_matrix(
     ax.set_yticklabels(populations, size=12, weight="semibold")
 
     plt.tight_layout()
-    plt.show()
+    
+    return fig, ax
 
 
 def plot_3d_positions(
@@ -1854,9 +1854,9 @@ def plot_3d_positions(
     sources: Optional[str] = None,
     sid: Optional[str] = None,
     title: Optional[str] = None,
-    save_file: Optional[str] = None,
+    
     subset: Optional[int] = None,
-) -> None:
+) -> Tuple[Any, Any]:
     """
     Plots a 3D graph of all cells with x, y, z location.
 
@@ -1870,18 +1870,17 @@ def plot_3d_positions(
         Column name to group cell types (node grouping criteria).
     title : str, optional
         Plot title. Default is '3D positions'.
-    save_file : str, optional
-        Path to save the plot. If None, plot is not saved.
     subset : int, optional
         Take every Nth row. This makes plotting large networks easier to visualize.
 
     Returns
     -------
-    None
+    tuple
+        (matplotlib.figure.Figure, matplotlib.axes.Axes) containing the 3D plot.
 
     Examples
     --------
-    >>> plot_3d_positions(
+    >>> fig, ax = plot_3d_positions(
     ...     config='config.json',
     ...     sources='cortex',
     ...     sid='node_type_id',
@@ -1965,7 +1964,7 @@ def plot_3d_positions(
 
     if not handles:
         print("No data to plot.")
-        return
+        return fig, ax
 
     # Set plot title and legend
     plt.title(title)
@@ -1980,13 +1979,7 @@ def plot_3d_positions(
     plt.draw()
     plt.tight_layout()
 
-    # Save the plot if save_file is provided
-    if save_file:
-        plt.savefig(save_file)
-
-    # Show if running in notebook
-    if is_notebook:
-        plt.show()
+    return fig, ax
 
 
 def plot_3d_cell_rotation(
@@ -1994,12 +1987,12 @@ def plot_3d_cell_rotation(
     sources: Optional[List[str]] = None,
     sids: Optional[str] = None,
     title: Optional[str] = None,
-    save_file: Optional[str] = None,
+    
     quiver_length: Optional[float] = None,
     arrow_length_ratio: Optional[float] = None,
     group: Optional[str] = None,
     subset: Optional[int] = None,
-) -> None:
+) -> Tuple[Any, Any]:
     """
     Plot 3D visualization of cell rotations with quiver arrows showing rotation orientations.
 
@@ -2013,8 +2006,6 @@ def plot_3d_cell_rotation(
         Comma-separated column names to group cell types.
     title : str, optional
         Plot title. Default is 'Cell rotations'.
-    save_file : str, optional
-        Path to save the plot. If None, plot is not saved.
     quiver_length : float, optional
         Length of the quiver arrows. If None, use matplotlib default.
     arrow_length_ratio : float, optional
@@ -2026,11 +2017,12 @@ def plot_3d_cell_rotation(
 
     Returns
     -------
-    None
+    tuple
+        (matplotlib.figure.Figure, matplotlib.axes.Axes) containing the 3D plot.
 
     Examples
     --------
-    >>> plot_3d_cell_rotation(
+    >>> fig, ax = plot_3d_cell_rotation(
     ...     config='config.json',
     ...     sources=['cortex'],
     ...     sids='node_type_id',
@@ -2137,14 +2129,10 @@ def plot_3d_cell_rotation(
             handles.append(h)
 
     if not handles:
-        return
+        return fig, ax
 
     plt.title(title)
     plt.legend(handles=handles)
     plt.draw()
 
-    if save_file:
-        plt.savefig(save_file)
-    notebook = is_notebook
-    if not notebook:
-        plt.show()
+    return fig, ax
