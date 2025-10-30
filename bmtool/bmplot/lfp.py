@@ -115,14 +115,15 @@ def plot_population_spike_rates_with_lfp(
     freq_of_interest: List[float],
     freq_labels: List[str],
     freq_colors: List[str],
-    time_range: Tuple[float, float],
+    time_range: Any,
     pop_names: List[str],
     pop_color: Dict[str, str],
-    filter_column: Optional[str] = None,
-    filter_value: Optional[Any] = None,
+    pop_groups: Optional[List[List[str]]] = None,
+    FR_type: str = 'smoothed',
+    stimulus_time: Optional[float] = None,
 ) -> Optional[Figure]:
     """
-    Plot population spike rates with LFP power overlays.
+    Plot population spike rates with LFP power overlays, with optional trial averaging.
 
     Parameters
     ----------
@@ -136,16 +137,25 @@ def plot_population_spike_rates_with_lfp(
         Labels for the frequencies (required).
     freq_colors : list of str
         Colors for the frequency plots (required).
-    time_range : tuple of float
-        Tuple (start, end) for x-axis time limits (required).
+    time_range : tuple of float or list of tuple
+        If tuple (start, end): plots continuous data in that time range.
+        If list of tuples: trial times for averaging. E.g., [(1000,2000), (2500,3500)].
+        For trial averaging, mean is computed across trials (required).
     pop_names : list of str
         List of population names (required).
     pop_color : dict
         Dictionary mapping population names to colors (required).
-    filter_column : str, optional
-        Column name to filter spikes_df on (optional).
-    filter_value : any, optional
-        Value to filter for in filter_column (optional).
+    pop_groups : list of list of str, optional
+        List of population groups to plot on the same subplot. 
+        E.g., [['PV', 'SST'], ['ET', 'IT']] plots PV and SST on one plot, ET and IT on another.
+        If None, each population gets its own subplot (default).
+    FR_type : str, optional
+        Type of firing rate to plot ('raw', 'smoothed', etc.). Default is 'smoothed'.
+    stimulus_time : float, optional
+        Time of stimulus onset. 
+        For trial averaging: relative to the start of the trial window (e.g., stimulus_time=200 means 200ms after trial start).
+        For continuous plots: absolute time value (e.g., stimulus_time=2500 means stimulus at 2500ms).
+        When provided, the x-axis will be relative to stimulus time (0 = stimulus onset). Default is None.
 
     Returns
     -------
@@ -154,26 +164,24 @@ def plot_population_spike_rates_with_lfp(
 
     Examples
     --------
+    >>> # Continuous plot
     >>> fig = plot_population_spike_rates_with_lfp(
     ...     spikes_df, lfp, [40, 80], ['Beta', 'Gamma'],
     ...     ['blue', 'red'], (0, 10), ['PV', 'SST'],
-    ...     {'PV': 'blue', 'SST': 'red'}
+    ...     {'PV': 'blue', 'SST': 'red'},
+    ...     pop_groups=[['PV', 'SST']]
+    ... )
+    
+    >>> # Trial-averaged plot
+    >>> fig = plot_population_spike_rates_with_lfp(
+    ...     spikes_df, lfp, [40, 80], ['Beta', 'Gamma'],
+    ...     ['blue', 'red'], [(1000,2000), (2500,3500)], ['PV', 'SST'],
+    ...     {'PV': 'blue', 'SST': 'red'},
+    ...     pop_groups=[['PV', 'SST']]
     ... )
     """
-    # Compute spike rates based on filtering
-    if filter_column and filter_column in spikes_df.columns:
-        filtered_df = spikes_df[spikes_df[filter_column] == filter_value]
-        if not filtered_df.empty:
-            spike_rate = get_population_spike_rate(filtered_df, fs=400, network_name='cortex')
-            plot_title = f'{filter_column} {filter_value}'
-            save_suffix = f'_{filter_column}_{filter_value}'
-        else:
-            print(f"No data found for {filter_column} == {filter_value}.")
-            return
-    else:
-        spike_rate = get_population_spike_rate(spikes_df, fs=400, network_name='cortex')
-        plot_title = 'Overall Spike Rates'
-        save_suffix = '_overall'
+    # Compute spike rates
+    spike_rate = get_population_spike_rate(spikes_df, fs=400, network_name='cortex')
 
     # Compute power for each frequency of interest
     powers = [
@@ -181,26 +189,294 @@ def plot_population_spike_rates_with_lfp(
         for freq in freq_of_interest
     ]
     
-    # Plotting
-    fig, axes = plt.subplots(len(spike_rate.population), 1, figsize=(12, 10))
-    for i, pop in enumerate(pop_names):
-        if pop in spike_rate.population.values:
-            ax = axes.flat[i]
-            spike_rate.sel(type='raw', population=pop).plot(ax=ax, color=pop_color[pop])
-            ax.set_title(f'{pop}')
-            ax.set_ylabel('Spike Rate (Hz)', color=pop_color[pop])
-            ax.tick_params(axis='y', labelcolor=pop_color[pop])
-            
-            # Twin axis for LFP power
-            ax2 = ax.twinx()
-            for power, label, color in zip(powers, freq_labels, freq_colors):
-                ax2.plot(power['time'], power.values.squeeze(), color=color, label=label)
-            ax2.set_ylabel('LFP Power', color='black')
-            ax2.tick_params(axis='y', labelcolor='black')
-            ax2.legend(loc='upper right')
-            
-            ax.set_xlim(time_range)
+    # Determine if we're doing trial averaging
+    is_trial_avg = isinstance(time_range, list) and len(time_range) > 0 and isinstance(time_range[0], tuple)
     
-    fig.suptitle(plot_title, fontsize=16, y=0.98)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    # Extract and align trials if needed
+    spike_rate_trials: Optional[List] = None
+    power_trials: Optional[List] = None
+    target_length: Optional[int] = None
+    trial_start: float = 0.0
+    trial_duration: float = 0.0
+    if is_trial_avg:
+        spike_rate_trials, power_trials, trial_times = _extract_trials(
+            spike_rate, powers, time_range
+        )
+        # trial_times from _extract_trials is normalized (0 to 1)
+        # Convert to actual milliseconds based on first trial duration
+        trial_start = float(time_range[0][0])
+        trial_end = float(time_range[0][1])
+        trial_duration = trial_end - trial_start
+        
+        # Convert normalized times to milliseconds
+        plot_time = trial_times * trial_duration
+        
+        # Adjust for stimulus if provided (stimulus_time is relative to trial start)
+        if stimulus_time is not None:
+            plot_time = plot_time - stimulus_time
+        
+        target_length = len(trial_times)
+    else:
+        # For continuous plots, time_range is a tuple (start, end)
+        # We'll just pass the time_range for now; actual shifting happens during plotting
+        plot_time = time_range
+    
+    # Determine plot groups
+    if pop_groups is None:
+        # Default: each population gets its own subplot
+        plot_groups = [[pop] for pop in pop_names]
+    else:
+        plot_groups = pop_groups
+    
+    # Plotting
+    num_subplots = len(plot_groups)
+    fig, axes = plt.subplots(num_subplots, 1, figsize=(12, 3.5 * num_subplots))
+    if num_subplots == 1:
+        axes = [axes]
+    
+    for ax_idx, group in enumerate(plot_groups):
+        ax = axes[ax_idx]
+        
+        # Filter valid populations in this group
+        valid_pops = [pop for pop in group if pop in spike_rate.population.values]
+        
+        if not valid_pops:
+            continue
+        
+        # Plot spike rates for each population in the group
+        fr_handles = []
+        if is_trial_avg and spike_rate_trials is not None:
+            # Plot trial-averaged firing rates with SEM shading
+            for pop in valid_pops:
+                fr_mean, fr_sem = _compute_trial_average(spike_rate_trials, pop, FR_type, target_length=target_length)
+                line, = ax.plot(plot_time, fr_mean,
+                               color=pop_color[pop], 
+                               label=f'{pop} FR',
+                               linewidth=2)
+                ax.fill_between(plot_time, fr_mean - fr_sem, fr_mean + fr_sem,
+                               color=pop_color[pop], alpha=0.2)
+                fr_handles.append(line)
+        else:
+            # Plot continuous firing rates
+            plot_time_values = spike_rate.time.values
+            if stimulus_time is not None and not is_trial_avg:
+                # Shift time axis relative to stimulus
+                plot_time_values = plot_time_values - stimulus_time
+            
+            for pop in valid_pops:
+                line, = ax.plot(plot_time_values, 
+                               spike_rate.sel(type=FR_type, population=pop).values,
+                               color=pop_color[pop], 
+                               label=f'{pop} FR',
+                               linewidth=2)
+                fr_handles.append(line)
+        
+        # Set labels and title
+        group_title = ' + '.join(valid_pops)
+        avg_text = ' (Trial Avg)' if is_trial_avg else ''
+        ax.set_title(group_title + avg_text, fontsize=12)
+        ax.set_ylabel('Spike Rate (Hz)', fontsize=11)
+        ax.tick_params(axis='y')
+        
+        # Twin axis for LFP power
+        ax2 = ax.twinx()
+        lfp_handles = []
+        if is_trial_avg and power_trials is not None:
+            # Plot trial-averaged LFP power with SEM shading
+            for power_trial, label, color in zip(power_trials, freq_labels, freq_colors):
+                power_mean, power_sem = _compute_trial_average_power(power_trial, target_length=target_length)
+                line, = ax2.plot(plot_time, power_mean,
+                                color=color, label=label, linestyle='--', linewidth=2)
+                ax2.fill_between(plot_time, power_mean - power_sem, power_mean + power_sem,
+                                color=color, alpha=0.1)
+                lfp_handles.append(line)
+        else:
+            # Plot continuous LFP power
+            for power, label, color in zip(powers, freq_labels, freq_colors):
+                plot_time_lfp = power['time'].values
+                if stimulus_time is not None and not is_trial_avg:
+                    # Shift time axis relative to stimulus
+                    plot_time_lfp = plot_time_lfp - stimulus_time
+                
+                line, = ax2.plot(plot_time_lfp, power.values.squeeze(), 
+                                color=color, label=label, linestyle='--', linewidth=2)
+                lfp_handles.append(line)
+        
+        ax2.set_ylabel('LFP Power', fontsize=11)
+        ax2.tick_params(axis='y')
+        
+        # Combined legend
+        all_handles = fr_handles + lfp_handles
+        all_labels = [h.get_label() for h in all_handles]
+        ax.legend(all_handles, all_labels, loc='upper right', fontsize=10)
+        
+        if is_trial_avg:
+            ax.set_xlim(plot_time[0], plot_time[-1])
+            if stimulus_time is not None:
+                ax.set_xlabel('Time relative to stimulus (ms)', fontsize=11)
+            else:
+                ax.set_xlabel('Time from trial start (ms)', fontsize=11)
+        else:
+            # For continuous plots
+            if stimulus_time is not None:
+                # Shift xlim by stimulus time
+                xlim = (plot_time[0] - stimulus_time, plot_time[1] - stimulus_time)
+                ax.set_xlim(xlim)
+                ax.set_xlabel('Time relative to stimulus (ms)', fontsize=11)
+            else:
+                ax.set_xlim(plot_time)
+                ax.set_xlabel('Time (ms)', fontsize=11)
+    
+    plt.tight_layout()
     return fig
+
+
+def _extract_trials(spike_rate: Any, powers: List[Any], time_range: List[Tuple[float, float]]) -> Tuple[List, List, np.ndarray]:
+    """
+    Extract data segments for each trial and align them.
+    
+    Parameters
+    ----------
+    spike_rate : xarray.DataArray
+        Spike rate data with time dimension.
+    powers : list of xarray.DataArray
+        LFP power data for each frequency.
+    time_range : list of tuple
+        List of (start, end) tuples for each trial.
+    
+    Returns
+    -------
+    spike_rate_trials : list of arrays
+        Firing rate data for each trial, shape (n_trials, n_populations, n_timepoints).
+    power_trials : list of list of arrays
+        Power data for each trial and frequency.
+    trial_times : np.ndarray
+        Time array for a single trial (relative to trial start).
+    """
+    spike_rate_trials = []
+    power_trials = [[] for _ in powers]
+    trial_lengths = []
+    
+    # Extract data for each trial and track actual trial lengths
+    for trial_start, trial_end in time_range:
+        # Extract spike rate for this trial
+        sr_trial = spike_rate.sel(time=slice(trial_start, trial_end))
+        if len(sr_trial.time) == 0:
+            continue
+        spike_rate_trials.append(sr_trial)
+        trial_lengths.append(len(sr_trial.time))
+        
+        # Extract power for this trial
+        for i, power in enumerate(powers):
+            p_trial = power.sel(time=slice(trial_start, trial_end))
+            if len(p_trial.time) > 0:
+                power_trials[i].append(p_trial.values.squeeze())
+    
+    # Use the maximum trial length to create a common time axis and resample all data
+    if trial_lengths:
+        max_length = max(trial_lengths)
+        # Create a normalized time axis (0 to 1) for interpolation
+        trial_times = np.linspace(0, 1, max_length)
+    else:
+        trial_times = np.array([])
+    
+    return spike_rate_trials, power_trials, trial_times
+
+
+def _compute_trial_average(spike_rate_trials: List[Any], pop_name: str, data_type: str = 'smoothed', target_length: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute mean and SEM of firing rates across trials, resampling to a common length.
+    
+    Parameters
+    ----------
+    spike_rate_trials : list of xarray.DataArray
+        Spike rate data for each trial.
+    pop_name : str
+        Population name to extract.
+    data_type : str
+        Type of data ('raw', 'smoothed', etc.). Default is 'smoothed'.
+    target_length : int, optional
+        Target length for resampling. If None, uses max length.
+    
+    Returns
+    -------
+    mean : np.ndarray
+        Mean firing rate across trials.
+    sem : np.ndarray
+        Standard error of the mean across trials.
+    """
+    # Extract data for this population from each trial
+    trial_data = []
+    for sr_trial in spike_rate_trials:
+        if pop_name in sr_trial.population.values:
+            pop_data = sr_trial.sel(type=data_type, population=pop_name).values
+            trial_data.append(pop_data)
+    
+    if not trial_data:
+        return np.array([]), np.array([])
+    
+    # Determine target length if not provided
+    if target_length is None:
+        target_length = max(len(d) for d in trial_data)
+    
+    # Resample all trials to target length
+    resampled_data = []
+    for data in trial_data:
+        if len(data) != target_length:
+            # Resample using linear interpolation
+            x_old = np.linspace(0, 1, len(data))
+            x_new = np.linspace(0, 1, target_length)
+            resampled = np.interp(x_new, x_old, data)
+        else:
+            resampled = data
+        resampled_data.append(resampled)
+    
+    trial_array = np.array(resampled_data)
+    mean = np.mean(trial_array, axis=0)
+    sem = np.std(trial_array, axis=0) / np.sqrt(len(trial_array))
+    
+    return mean, sem
+
+
+def _compute_trial_average_power(power_trials: List[np.ndarray], target_length: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute mean and SEM of LFP power across trials, resampling to a common length.
+    
+    Parameters
+    ----------
+    power_trials : list of np.ndarray
+        Power data for each trial.
+    target_length : int, optional
+        Target length for resampling. If None, uses max length.
+    
+    Returns
+    -------
+    mean : np.ndarray
+        Mean power across trials.
+    sem : np.ndarray
+        Standard error of the mean across trials.
+    """
+    if not power_trials:
+        return np.array([]), np.array([])
+    
+    # Determine target length if not provided
+    if target_length is None:
+        target_length = max(len(p) for p in power_trials)
+    
+    # Resample all trials to target length
+    resampled_power = []
+    for power in power_trials:
+        if len(power) != target_length:
+            # Resample using linear interpolation
+            x_old = np.linspace(0, 1, len(power))
+            x_new = np.linspace(0, 1, target_length)
+            resampled = np.interp(x_new, x_old, power)
+        else:
+            resampled = power
+        resampled_power.append(resampled)
+    
+    power_array = np.array(resampled_power)
+    mean = np.mean(power_array, axis=0)
+    sem = np.std(power_array, axis=0) / np.sqrt(len(power_array))
+    
+    return mean, sem
