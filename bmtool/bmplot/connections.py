@@ -878,7 +878,7 @@ def connection_histogram(
     else:
         tids_list = []
 
-    def connection_pair_histogram(**kwargs: Dict) -> None:
+    def connection_pair_histogram(ax=None, **kwargs: Dict) -> None:
         """
         Creates a histogram showing the distribution of connection counts between specific cell types.
 
@@ -887,6 +887,8 @@ def connection_histogram(
 
         Parameters
         ----------
+        ax : matplotlib.axes.Axes, optional
+            The axes object on which to create the histogram. If None, uses current axes.
         kwargs : dict
             Dictionary containing edge data and filtering information.
             - edges: DataFrame containing edge information
@@ -899,6 +901,8 @@ def connection_histogram(
         -------
         None
         """
+        if ax is None:
+            ax = plt.gca()
         edges_data = kwargs["edges"]
         source_id_type = kwargs["sid"]
         target_id_type = kwargs["tid"]
@@ -923,10 +927,10 @@ def connection_histogram(
                 conn_mean = statistics.mean(node_pairs.values)
                 conn_median = statistics.median(node_pairs.values)
                 label = "mean {:.2f} median {:.2f}".format(conn_mean, conn_median)
-            plt.hist(node_pairs.values, density=False, bins="auto", stacked=True, label=label)
-            plt.legend()
-            plt.xlabel("# of conns from {} to {}".format(source_cell, target_cell))
-            plt.ylabel("# of cells")
+            ax.hist(node_pairs.values, density=False, bins="auto", stacked=True, label=label)
+            ax.legend()
+            ax.set_xlabel("# of conns from {} to {}".format(source_cell, target_cell))
+            ax.set_ylabel("# of cells")
         else:  # dont care about other cell pairs so pass
             pass
 
@@ -938,6 +942,10 @@ def connection_histogram(
     # Create figure for the histogram
     fig, ax = plt.subplots()
     
+    # Wrapper to pass ax to the connection_pair_histogram function
+    def relation_func_wrapper(**kwargs):
+        return connection_pair_histogram(ax=ax, **kwargs)
+    
     util.relation_matrix(
         config,
         nodes,
@@ -947,7 +955,7 @@ def connection_histogram(
         sids_list,
         tids_list,
         not no_prepend_pop,
-        relation_func=connection_pair_histogram,
+        relation_func=relation_func_wrapper,
         synaptic_info=synaptic_info,
     )
     

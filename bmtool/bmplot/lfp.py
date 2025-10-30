@@ -82,17 +82,15 @@ def plot_spectrogram(
     f_idx = (f >= plt_range[0]) & (f <= plt_range[1])
     
     # Determine vmin and vmax: explicit parameters take precedence, then clr_freq_range, then None
-    if vmin is None or vmax is None:
-        if clr_freq_range is None:
-            vmin_computed, vmax_computed = None, None
-        else:
+    if vmin is None:
+        if clr_freq_range is not None:
             c_idx = (f >= clr_freq_range[0]) & (f <= clr_freq_range[1])
-            vmin_computed, vmax_computed = sxx[c_idx, :].min(), sxx[c_idx, :].max()
-        
-        if vmin is None:
-            vmin = vmin_computed
-        if vmax is None:
-            vmax = vmax_computed
+            vmin = sxx[c_idx, :].min()
+    
+    if vmax is None:
+        if clr_freq_range is not None:
+            c_idx = (f >= clr_freq_range[0]) & (f <= clr_freq_range[1])
+            vmax = sxx[c_idx, :].max()
 
     f = f[f_idx]
     pcm = ax.pcolormesh(t, f, sxx[f_idx, :], shading="gouraud", vmin=vmin, vmax=vmax, rasterized=True)
