@@ -263,6 +263,59 @@ class GaussianDropoff(DistantDependentProbability):
     def probability(self):
         pass  # to be set up in set_probability_func()
 
+    def compute_ptotal_integral(self, num_points=1000):
+        """
+        Compute the total integrated probability by numerically integrating
+        the Gaussian probability function over the ptotal_dist_range.
+        
+        This is useful when ptotal was not explicitly set and needs to be
+        calculated from the distribution parameters (pmax, stdev, etc.).
+        
+        Parameters:
+        -----------
+        num_points : int, optional
+            Number of points to use for numerical integration (default: 1000).
+        
+        Returns:
+        --------
+        float
+            The integrated total probability over the ptotal_dist_range.
+        
+        Notes:
+        ------
+        For cylindrical distance: integrates p(r) * 2πr over the range,
+        normalized by the total cylindrical area.
+        For spherical distance: integrates p(r) * 4πr² over the range,
+        normalized by the total spherical volume.
+        """
+        from scipy.integrate import trapz
+        
+        # Handle both range objects and tuples
+        if isinstance(self.ptotal_dist_range, range):
+            r1 = self.ptotal_dist_range.start if self.ptotal_dist_range.start is not None else 0
+            r2 = self.ptotal_dist_range.stop
+        else:
+            r1, r2 = self.ptotal_dist_range[0], self.ptotal_dist_range[1]
+        
+        distances = np.linspace(r1, r2, num_points)
+        probabilities = self.probability(distances)
+        
+        if self.dist_type == "cylindrical":
+            # For cylindrical: weight by 2πr (density at radius r in 2D)
+            weights = 2 * np.pi * distances
+            # Normalize by total cylindrical area in the range
+            total_area = np.pi * (r2**2 - r1**2)
+            integrand = probabilities * weights / total_area
+        else:  # spherical
+            # For spherical: weight by 4πr² (density at radius r in 3D)
+            weights = 4 * np.pi * distances ** 2
+            # Normalize by total spherical volume in the range
+            total_volume = (4/3) * np.pi * (r2**3 - r1**3)
+            integrand = probabilities * weights / total_volume
+        
+        ptotal = trapz(integrand, distances)
+        return ptotal
+
     def set_probability_func(self):
         """Set up function for calculating probability"""
         keys = ["mean", "stdev", "pmax"]
