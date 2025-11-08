@@ -14,10 +14,104 @@ from bmtool.analysis import spikes as bmspikes
 from bmtool.analysis.lfp import get_lfp_power
 
 
+def calculate_trial_statistics(
+    data: np.ndarray,
+    error_type: str = "ci",
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Calculate mean and error statistics across trials.
+
+    Computes trial-averaged statistics with proper handling of NaN values. Supports
+    three error types: 95% confidence intervals (via t-distribution), standard error
+    of the mean (SEM), and standard deviation (SD).
+
+    Parameters
+    ----------
+    data : np.ndarray
+        2D array of shape (n_trials, n_values) containing trial-wise data.
+        Can contain NaN values which are ignored in calculations.
+    error_type : str, optional
+        Type of error to compute: "ci" for 95% confidence interval, "sem" for
+        standard error of the mean, or "std" for standard deviation (default: "ci").
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray]
+        - mean_values : 1D array of mean values across trials (one per value).
+        - error_values : 1D array of error bounds/bars corresponding to each mean.
+          For "ci", represents the half-width of the 95% confidence interval.
+          For "sem" and "std", represents the error magnitude.
+
+    Raises
+    ------
+    ValueError
+        If error_type is not 'ci', 'sem', or 'std'.
+        If data is not 2D or is empty.
+
+    Notes
+    -----
+    - NaN values are ignored using numpy's nanmean and nanstd functions.
+    - For "ci", uses the t-distribution with degrees of freedom = min(valid_counts) - 1.
+    - Confidence intervals are computed at 95% (α = 0.05, two-tailed).
+    - If fewer than 2 valid trials exist for a value, error is set to NaN.
+
+    Examples
+    --------
+    >>> data = np.array([[1, 2, 3], [1.1, 2.2, 3.1], [0.9, 1.9, 3.2]])  # 3 trials, 3 values
+    >>> mean, error = calculate_trial_statistics(data, error_type='ci')
+    >>> print(mean, error)
+    """
+    if error_type not in ["ci", "sem", "std"]:
+        raise ValueError(
+            "error_type must be 'ci' for confidence interval, 'sem' for standard error, "
+            "or 'std' for standard deviation."
+        )
+
+    if data.ndim != 2 or data.size == 0:
+        raise ValueError("data must be a non-empty 2D array of shape (n_trials, n_values).")
+
+    # Calculate mean across trials, ignoring NaNs
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean_values = np.nanmean(data, axis=0)
+
+        # Count valid trials per value (trials without NaN)
+        valid_counts = np.sum(~np.isnan(data), axis=0)
+
+        # Calculate standard deviation across trials, ignoring NaNs
+        std_values = np.nanstd(data, axis=0, ddof=1)
+
+        if error_type == "ci":
+            # Calculate 95% confidence interval using t-distribution
+            # SEM = std / sqrt(n_valid)
+            sem_values = std_values / np.sqrt(np.maximum(valid_counts, 1))
+
+            # Find the minimum valid count to use a conservative t-value
+            # (all values use the same t-value for consistency)
+            min_valid = np.min(valid_counts[valid_counts > 1])
+
+            if min_valid > 1:
+                # Two-tailed t-distribution at 95% confidence level
+                t_value = stats.t.ppf(0.975, min_valid - 1)
+                error_values = t_value * sem_values
+            else:
+                # Insufficient data for meaningful CI
+                error_values = np.full_like(mean_values, np.nan)
+
+        elif error_type == "sem":
+            # Standard error of the mean
+            sem_values = std_values / np.sqrt(np.maximum(valid_counts, 1))
+            error_values = sem_values
+
+        else:  # error_type == "std"
+            # Standard deviation (no division by sqrt(n))
+            error_values = std_values
+
+    return mean_values, error_values
+
+
 def plot_spike_power_correlation(
     spike_df: pd.DataFrame,
     lfp_data: xr.DataArray,
-    firing_quantile: float,
     fs: float,
     pop_names: List[str],
     filter_method: str = "wavelet",
@@ -27,88 +121,64 @@ def plot_spike_power_correlation(
     freq_range: Tuple[float, float] = (10, 100),
     freq_step: float = 5,
     type_name: str = "raw",
-    time_windows: Optional[List[Tuple[float, float]]] = None,
-    error_type: str = "ci",
-):
+    figsize: Tuple[float, float] = (12, 8),
+) -> Figure:
     """
-    Calculate and plot correlation between population spike rates and LFP power across frequencies.
-    Supports both single-signal and trial-based analysis with error bars.
+    Calculate and plot spike rate-LFP power correlation across frequencies for full signal.
+
+    Analyzes the relationship between population spike rates and LFP power across a range
+    of frequencies, using Spearman correlation for the entire signal duration.
 
     Parameters
     ----------
     spike_df : pd.DataFrame
         DataFrame containing spike data with columns 'timestamps', 'node_ids', and 'pop_name'.
     lfp_data : xr.DataArray
-        LFP data
-    firing_quantile : float
-        Upper quantile threshold for selecting high-firing cells (e.g., 0.8 for top 20%)
+        LFP data with time dimension.
     fs : float
-        Sampling frequency
+        Sampling frequency in Hz.
     pop_names : List[str]
-        List of population names to analyze
+        List of population names to analyze.
     filter_method : str, optional
-        Filtering method to use, either 'wavelet' or 'butter' (default: 'wavelet')
+        Filtering method: 'wavelet' or 'butter' (default: 'wavelet').
     bandwidth : float, optional
-        Bandwidth parameter for wavelet filter when method='wavelet' (default: 2.0)
+        Bandwidth parameter for wavelet filter (default: 2.0).
     lowcut : float, optional
-        Lower frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
+        Lower frequency bound (Hz) for butterworth filter. Required if filter_method='butter'.
     highcut : float, optional
-        Upper frequency bound (Hz) for butterworth bandpass filter, required if filter_method='butter'
+        Upper frequency bound (Hz) for butterworth filter. Required if filter_method='butter'.
     freq_range : Tuple[float, float], optional
-        Min and max frequency to analyze (default: (10, 100))
+        Min and max frequency to analyze in Hz (default: (10, 100)).
     freq_step : float, optional
-        Step size for frequency analysis (default: 5)
+        Step size for frequency analysis in Hz (default: 5).
     type_name : str, optional
-        Which type of spike rate to use if 'type' dimension exists (default: 'raw')
-    time_windows : List[Tuple[float, float]], optional
-        List of (start, end) time tuples for trial-based analysis. If None, analyze entire signal
-    error_type : str, optional
-        Type of error bars to plot: "ci" for 95% confidence interval, "sem" for standard error, "std" for standard deviation
+        Which type of spike rate to use (default: 'raw').
+    figsize : Tuple[float, float], optional
+        Figure size (width, height) in inches (default: (12, 8)).
 
     Returns
     -------
     matplotlib.figure.Figure
-        The figure containing the correlation plot
+        Figure containing the correlation plot.
+
+    Notes
+    -----
+    - Uses Spearman correlation (rank-based, robust to outliers).
+    - Pre-computes LFP power at all frequencies for efficiency.
+
+    Examples
+    --------
+    >>> fig = plot_spike_power_correlation(
+    ...     spike_df=spike_df,
+    ...     lfp_data=lfp,
+    ...     fs=400,
+    ...     pop_names=['PV', 'SST'],
+    ...     freq_range=(10, 100),
+    ...     freq_step=5
+    ... )
     """
-
-    if not (0 <= firing_quantile < 1):
-        raise ValueError("firing_quantile must be between 0 and 1")
-
-    if error_type not in ["ci", "sem", "std"]:
-        raise ValueError(
-            "error_type must be 'ci' for confidence interval, 'sem' for standard error, or 'std' for standard deviation"
-        )
-
-    # Setup
-    is_trial_based = time_windows is not None
-
-    # Convert spike_df to spike rate with trial-based filtering of high firing cells
-    if is_trial_based:
-        # Initialize storage for trial-based spike rates
-        trial_rates = []
-
-        for start_time, end_time in time_windows:
-            # Get spikes for this trial
-            trial_spikes = spike_df[
-                (spike_df["timestamps"] >= start_time) & (spike_df["timestamps"] <= end_time)
-            ].copy()
-
-            # Filter for high firing cells within this trial
-            trial_spikes = bmspikes.find_highest_firing_cells(
-                trial_spikes, upper_quantile=firing_quantile
-            )
-            # Calculate rate for this trial's filtered spikes
-            trial_rate = bmspikes.get_population_spike_rate(
-                trial_spikes, fs=fs, t_start=start_time, t_stop=end_time
-            )
-            trial_rates.append(trial_rate)
-
-        # Combine all trial rates
-        spike_rate = xr.concat(trial_rates, dim="trial")
-    else:
-        # For non-trial analysis, proceed as before
-        spike_df = bmspikes.find_highest_firing_cells(spike_df, upper_quantile=firing_quantile)
-        spike_rate = bmspikes.get_population_spike_rate(spike_df)
+    # Compute spike rate for all spikes
+    spike_rate = bmspikes.get_population_spike_rate(spike_df, fs=fs)
 
     # Setup frequencies for analysis
     frequencies = np.arange(freq_range[0], freq_range[1] + 1, freq_step)
@@ -120,175 +190,307 @@ def plot_spike_power_correlation(
             lfp_data, freq, fs, filter_method, lowcut=lowcut, highcut=highcut, bandwidth=bandwidth
         )
 
-    # Calculate correlations
+    # Calculate correlations for each population and frequency
     results = {}
     for pop in pop_names:
-        pop_spike_rate = spike_rate.sel(population=pop, type=type_name)
         results[pop] = {}
+        pop_spike_rate = spike_rate.sel(population=pop, type=type_name)
 
         for freq in frequencies:
             lfp_power = power_by_freq[freq]
 
-            if not is_trial_based:
-                # Single signal analysis
-                if len(pop_spike_rate) != len(lfp_power):
-                    print(f"Warning: Length mismatch for {pop} at {freq} Hz")
-                    continue
+            if len(pop_spike_rate) != len(lfp_power):
+                print(f"Warning: Length mismatch for {pop} at {freq} Hz")
+                continue
 
-                corr, p_val = stats.spearmanr(pop_spike_rate, lfp_power)
-                results[pop][freq] = {
-                    "correlation": corr,
-                    "p_value": p_val,
-                }
-            else:
-                # Trial-based analysis using pre-filtered trial rates
-                trial_correlations = []
+            corr, p_val = stats.spearmanr(pop_spike_rate.values, lfp_power.values)
+            results[pop][freq] = {"correlation": corr, "p_value": p_val}
 
-                for trial_idx in range(len(time_windows)):
-                    # Get time window first
-                    start_time, end_time = time_windows[trial_idx]
-
-                    # Get the pre-filtered spike rate for this trial
-                    trial_spike_rate = pop_spike_rate.sel(trial=trial_idx)
-
-                    # Get corresponding LFP power for this trial window
-                    trial_lfp_power = lfp_power.sel(time=slice(start_time, end_time))
-
-                    # Ensure both signals have same time points
-                    common_times = np.intersect1d(trial_spike_rate.time, trial_lfp_power.time)
-
-                    if len(common_times) > 0:
-                        trial_sr = trial_spike_rate.sel(time=common_times).values
-                        trial_lfp = trial_lfp_power.sel(time=common_times).values
-
-                        if (
-                            len(trial_sr) > 1 and len(trial_lfp) > 1
-                        ):  # Need at least 2 points for correlation
-                            corr, _ = stats.spearmanr(trial_sr, trial_lfp)
-                            if not np.isnan(corr):
-                                trial_correlations.append(corr)
-
-                # Calculate trial statistics
-                if len(trial_correlations) > 0:
-                    trial_correlations = np.array(trial_correlations)
-                    mean_corr = np.mean(trial_correlations)
-
-                    if len(trial_correlations) > 1:
-                        if error_type == "ci":
-                            # Calculate 95% confidence interval using t-distribution
-                            df = len(trial_correlations) - 1
-                            sem = stats.sem(trial_correlations)
-                            t_critical = stats.t.ppf(0.975, df)  # 95% CI, two-tailed
-                            error_val = t_critical * sem
-                            error_lower = mean_corr - error_val
-                            error_upper = mean_corr + error_val
-                        elif error_type == "sem":
-                            # Calculate standard error of the mean
-                            sem = stats.sem(trial_correlations)
-                            error_lower = mean_corr - sem
-                            error_upper = mean_corr + sem
-                        elif error_type == "std":
-                            # Calculate standard deviation
-                            std = np.std(trial_correlations, ddof=1)
-                            error_lower = mean_corr - std
-                            error_upper = mean_corr + std
-                    else:
-                        error_lower = error_upper = mean_corr
-
-                    results[pop][freq] = {
-                        "correlation": mean_corr,
-                        "error_lower": error_lower,
-                        "error_upper": error_upper,
-                        "n_trials": len(trial_correlations),
-                        "trial_correlations": trial_correlations,
-                    }
-                else:
-                    # No valid trials
-                    results[pop][freq] = {
-                        "correlation": np.nan,
-                        "error_lower": np.nan,
-                        "error_upper": np.nan,
-                        "n_trials": 0,
-                        "trial_correlations": np.array([]),
-                    }
-
-    # Plotting
+    # Create plot
     sns.set_style("whitegrid")
-    fig = plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=figsize)
 
+    colors = plt.get_cmap("tab10")
     for i, pop in enumerate(pop_names):
-        # Extract data for plotting
         plot_freqs = []
         plot_corrs = []
-        plot_ci_lower = []
-        plot_ci_upper = []
 
         for freq in frequencies:
             if freq in results[pop] and not np.isnan(results[pop][freq]["correlation"]):
                 plot_freqs.append(freq)
                 plot_corrs.append(results[pop][freq]["correlation"])
 
-                if is_trial_based:
-                    plot_ci_lower.append(results[pop][freq]["error_lower"])
-                    plot_ci_upper.append(results[pop][freq]["error_upper"])
-
         if len(plot_freqs) == 0:
             continue
 
-        # Convert to arrays
         plot_freqs = np.array(plot_freqs)
         plot_corrs = np.array(plot_corrs)
-
-        # Get color for this population
-        colors = plt.get_cmap("tab10")
         color = colors(i)
 
-        # Plot main line
         plt.plot(
             plot_freqs, plot_corrs, marker="o", label=pop, linewidth=2, markersize=6, color=color
         )
-
-        # Plot error bands for trial-based analysis
-        if is_trial_based and len(plot_ci_lower) > 0:
-            plot_ci_lower = np.array(plot_ci_lower)
-            plot_ci_upper = np.array(plot_ci_upper)
-            plt.fill_between(plot_freqs, plot_ci_lower, plot_ci_upper, alpha=0.2, color=color)
 
     # Formatting
     plt.xlabel("Frequency (Hz)", fontsize=12)
     plt.ylabel("Spike Rate-Power Correlation", fontsize=12)
 
-    # Calculate percentage for title
-    firing_percentage = round(float((1 - firing_quantile) * 100), 1)
-    if is_trial_based:
-        title = f"Trial-averaged Spike Rate-LFP Power Correlation\nTop {firing_percentage}% Firing Cells (95% CI)"
-    else:
-        title = f"Spike Rate-LFP Power Correlation\nTop {firing_percentage}% Firing Cells"
-
-    plt.title(title, fontsize=14)
+    plt.title(
+        "Spike Rate-LFP Power Correlation",
+        fontsize=14,
+    )
     plt.grid(True, alpha=0.3)
     plt.axhline(y=0, color="gray", linestyle="-", alpha=0.5)
 
-    # Legend
-    # Create legend elements for each population
+    # Setup legend
     from matplotlib.lines import Line2D
 
-    colors = plt.get_cmap("tab10")
     legend_elements = [
         Line2D([0], [0], color=colors(i), marker="o", linestyle="-", label=pop)
         for i, pop in enumerate(pop_names)
     ]
+    plt.legend(handles=legend_elements, fontsize=10, loc="best")
 
-    # Add error band legend element for trial-based analysis
-    if is_trial_based:
-        # Map error type to legend label
-        error_labels = {"ci": "95% CI", "sem": "±SEM", "std": "±1 SD"}
-        error_label = error_labels[error_type]
+    # Axis formatting
+    if len(frequencies) > 10:
+        plt.xticks(frequencies[::2])
+    else:
+        plt.xticks(frequencies)
+    plt.xlim(frequencies[0], frequencies[-1])
 
-        legend_elements.append(
-            Line2D([0], [0], color="gray", alpha=0.3, linewidth=10, label=error_label)
+    y_min, y_max = plt.ylim()
+    plt.ylim(min(y_min, -0.1), max(y_max, 0.1))
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_trial_avg_spike_power_correlation(
+    spike_df: pd.DataFrame,
+    lfp_data: xr.DataArray,
+    time_windows: List[Tuple[float, float]],
+    fs: float,
+    pop_names: List[str],
+    filter_method: str = "wavelet",
+    bandwidth: float = 2.0,
+    lowcut: Optional[float] = None,
+    highcut: Optional[float] = None,
+    freq_range: Tuple[float, float] = (10, 100),
+    freq_step: float = 5,
+    type_name: str = "raw",
+    error_type: str = "ci",
+    figsize: Tuple[float, float] = (12, 8),
+) -> Figure:
+    """
+    Calculate and plot trial-averaged spike rate-LFP power correlation across frequencies.
+
+    Computes spike rate-LFP power correlation for each trial separately, then averages
+    results across trials with optional error bands.
+
+    Parameters
+    ----------
+    spike_df : pd.DataFrame
+        DataFrame containing spike data with columns 'timestamps', 'node_ids', and 'pop_name'.
+    lfp_data : xr.DataArray
+        LFP data with time dimension.
+    time_windows : List[Tuple[float, float]]
+        List of (start, end) time tuples in milliseconds for each trial.
+    fs : float
+        Sampling frequency in Hz.
+    pop_names : List[str]
+        List of population names to analyze.
+    filter_method : str, optional
+        Filtering method: 'wavelet' or 'butter' (default: 'wavelet').
+    bandwidth : float, optional
+        Bandwidth parameter for wavelet filter (default: 2.0).
+    lowcut : float, optional
+        Lower frequency bound (Hz) for butterworth filter.
+    highcut : float, optional
+        Upper frequency bound (Hz) for butterworth filter.
+    freq_range : Tuple[float, float], optional
+        Min and max frequency to analyze in Hz (default: (10, 100)).
+    freq_step : float, optional
+        Step size for frequency analysis in Hz (default: 5).
+    type_name : str, optional
+        Which type of spike rate to use (default: 'raw').
+    error_type : str, optional
+        Type of error bars: "ci" for 95% CI, "sem" for SEM, or "std" for SD (default: "ci").
+    figsize : Tuple[float, float], optional
+        Figure size (width, height) in inches (default: (12, 8)).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure containing the trial-averaged correlation plot.
+
+    Raises
+    ------
+    ValueError
+        If error_type is invalid.
+
+    Notes
+    -----
+    - Uses calculate_trial_statistics helper for consistent error computation.
+    - NaN values are handled gracefully with warnings for problematic trials.
+
+    Examples
+    --------
+    >>> time_windows = [(1000, 2000), (2500, 3500), (4000, 5000)]
+    >>> fig = plot_trial_avg_spike_power_correlation(
+    ...     spike_df=spike_df,
+    ...     lfp_data=lfp,
+    ...     time_windows=time_windows,
+    ...     fs=400,
+    ...     pop_names=['PV', 'SST'],
+    ...     error_type='ci'
+    ... )
+    """
+    if error_type not in ["ci", "sem", "std"]:
+        raise ValueError(
+            "error_type must be 'ci' for confidence interval, 'sem' for standard error, "
+            "or 'std' for standard deviation"
         )
 
+    # Setup frequencies for analysis
+    frequencies = np.arange(freq_range[0], freq_range[1] + 1, freq_step)
+
+    # Pre-calculate LFP power for all frequencies (same for all trials)
+    power_by_freq = {}
+    for freq in frequencies:
+        power_by_freq[freq] = get_lfp_power(
+            lfp_data, freq, fs, filter_method, lowcut=lowcut, highcut=highcut, bandwidth=bandwidth
+        )
+
+    # Storage: dict of pop_name -> list of trial_correlations per frequency
+    all_correlations = {pop: {freq: [] for freq in frequencies} for pop in pop_names}
+
+    # Process each trial
+    for trial_idx, (start_time, end_time) in enumerate(time_windows):
+        # Extract spikes for this trial
+        trial_spikes = spike_df[
+            (spike_df["timestamps"] >= start_time) & (spike_df["timestamps"] <= end_time)
+        ].copy()
+
+        if len(trial_spikes) == 0:
+            print(f"Warning: No spikes found in trial {trial_idx} ({start_time}-{end_time} ms)")
+            continue
+
+        # Compute spike rate for this trial
+        trial_spike_rate = bmspikes.get_population_spike_rate(
+            trial_spikes, fs=fs, t_start=start_time, t_stop=end_time
+        )
+
+        # Calculate correlations for each population and frequency
+        for pop in pop_names:
+            if pop not in trial_spike_rate.population.values:
+                print(f"Warning: Population {pop} not found in trial {trial_idx}")
+                continue
+
+            pop_spike_rate = trial_spike_rate.sel(population=pop, type=type_name)
+
+            for freq in frequencies:
+                try:
+                    lfp_power = power_by_freq[freq]
+                    trial_lfp_power = lfp_power.sel(time=slice(start_time, end_time))
+
+                    if len(trial_lfp_power) < 2 or len(pop_spike_rate) < 2:
+                        continue
+
+                    # Align time coordinates
+                    common_times = np.intersect1d(pop_spike_rate.time.values,
+                                                 trial_lfp_power.time.values)
+                    if len(common_times) < 2:
+                        continue
+
+                    trial_sr = pop_spike_rate.sel(time=common_times).values
+                    trial_lfp = trial_lfp_power.sel(time=common_times).values
+
+                    # Compute correlation
+                    corr, _ = stats.spearmanr(trial_sr, trial_lfp)
+                    if not np.isnan(corr):
+                        all_correlations[pop][freq].append(corr)
+
+                except Exception as e:
+                    print(
+                        f"Warning: Error computing correlation for {pop} at {freq} Hz "
+                        f"in trial {trial_idx}: {e}"
+                    )
+                    continue
+
+    # Calculate trial statistics for each population/frequency
+    results = {pop: {} for pop in pop_names}
+    for pop in pop_names:
+        for freq in frequencies:
+            if len(all_correlations[pop][freq]) > 0:
+                freq_data = np.array(all_correlations[pop][freq])
+                mean_corr, error_corr = calculate_trial_statistics(
+                    freq_data.reshape(-1, 1), error_type=error_type
+                )
+                results[pop][freq] = {
+                    "mean": mean_corr[0],
+                    "error": error_corr[0],
+                    "n_trials": len(freq_data),
+                }
+
+    # Create plot
+    sns.set_style("whitegrid")
+    fig = plt.figure(figsize=figsize)
+
+    colors = plt.get_cmap("tab10")
+    for i, pop in enumerate(pop_names):
+        plot_freqs = []
+        plot_means = []
+        plot_errors = []
+
+        for freq in frequencies:
+            if freq in results[pop] and "mean" in results[pop][freq]:
+                plot_freqs.append(freq)
+                plot_means.append(results[pop][freq]["mean"])
+                plot_errors.append(results[pop][freq]["error"])
+
+        if len(plot_freqs) == 0:
+            continue
+
+        plot_freqs = np.array(plot_freqs)
+        plot_means = np.array(plot_means)
+        plot_errors = np.array(plot_errors)
+        color = colors(i)
+
+        # Plot line
+        plt.plot(
+            plot_freqs, plot_means, marker="o", label=pop, linewidth=2, markersize=6, color=color
+        )
+
+        # Plot error band
+        plt.fill_between(
+            plot_freqs,
+            plot_means - plot_errors,
+            plot_means + plot_errors,
+            alpha=0.2,
+            color=color,
+        )
+
+    # Formatting
+    plt.xlabel("Frequency (Hz)", fontsize=12)
+    plt.ylabel("Spike Rate-Power Correlation", fontsize=12)
+
+    error_labels = {"ci": "95% CI", "sem": "±SEM", "std": "±1 SD"}
+    error_label = error_labels[error_type]
+    plt.title(
+        f"Trial-Averaged Spike Rate-LFP Power Correlation ({error_label})",
+        fontsize=14,
+    )
+    plt.grid(True, alpha=0.3)
+    plt.axhline(y=0, color="gray", linestyle="-", alpha=0.5)
+
+    # Setup legend
+    from matplotlib.lines import Line2D
+
+    legend_elements = [
+        Line2D([0], [0], color=colors(i), marker="o", linestyle="-", label=pop)
+        for i, pop in enumerate(pop_names)
+    ]
+    legend_elements.append(Line2D([0], [0], color="gray", alpha=0.3, linewidth=10, label=error_label))
     plt.legend(handles=legend_elements, fontsize=10, loc="best")
 
     # Axis formatting
@@ -803,34 +1005,10 @@ def plot_trial_avg_entrainment(
     for pop_name in pop_names:
         all_plv_data[pop_name] = np.array(all_plv_data[pop_name])  # Shape: (n_trials, n_freqs)
 
-        # Calculate statistics across trials, ignoring NaN values
-        with np.errstate(invalid="ignore"):  # Suppress warnings for all-NaN slices
-            mean_plv[pop_name] = np.nanmean(all_plv_data[pop_name], axis=0)
-
-            if error_type == "ci":
-                # Calculate 95% confidence intervals using SEM
-                valid_counts = np.sum(~np.isnan(all_plv_data[pop_name]), axis=0)
-                sem_plv = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1) / np.sqrt(valid_counts)
-
-                # For 95% CI, multiply SEM by appropriate t-value
-                # Use minimum valid count across frequencies for conservative t-value
-                min_valid_trials = np.min(valid_counts[valid_counts > 1])  # Avoid division by zero
-                if min_valid_trials > 1:
-                    t_value = stats.t.ppf(0.975, min_valid_trials - 1)  # 95% CI, two-tailed
-                    error_plv[pop_name] = t_value * sem_plv
-                else:
-                    error_plv[pop_name] = np.full_like(sem_plv, np.nan)
-
-            elif error_type == "sem":
-                # Calculate standard error of the mean
-                valid_counts = np.sum(~np.isnan(all_plv_data[pop_name]), axis=0)
-                error_plv[pop_name] = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1) / np.sqrt(
-                    valid_counts
-                )
-
-            elif error_type == "std":
-                # Calculate standard deviation
-                error_plv[pop_name] = np.nanstd(all_plv_data[pop_name], axis=0, ddof=1)
+        # Use helper function to calculate trial statistics
+        mean_plv[pop_name], error_plv[pop_name] = calculate_trial_statistics(
+            all_plv_data[pop_name], error_type=error_type
+        )
 
     # Create the combined plot
     fig = plt.figure(figsize=(12, 8))
@@ -983,3 +1161,256 @@ def plot_fr_hist_phase_amplitude(
                         label='Firing rate (% Change)', pad=0.02)
     
     return fig, axs
+
+
+def plot_trial_avg_spike_rate_plv(
+    spike_rate: xr.DataArray,
+    time_windows: List[Tuple[float, float]],
+    pop_names: List[str],
+    freqs: Union[List[float], np.ndarray],
+    pop_pairs: Optional[List[Tuple[str, str]]] = None,
+    error_type: str = "ci",
+    figsize: Tuple[float, float] = (12, 8),
+    filter_method: str = "wavelet",
+    bandwidth: float = 1.0,
+) -> Figure:
+    """
+    Plot trial-averaged Phase Locking Value (PLV) between spike rate pairs across frequencies.
+
+    This function computes PLV between spike rates of different population pairs for each trial,
+    then averages the results across trials with optional error bars/bands.
+
+    Parameters
+    ----------
+    spike_rate : xr.DataArray
+        Pre-computed spike rate data with dimensions (time, population, type).
+        Must have an 'fs' attribute (sampling frequency in Hz).
+        Time dimension should be in milliseconds.
+    time_windows : List[Tuple[float, float]]
+        List of (start, end) time tuples in milliseconds for each trial window.
+    pop_names : List[str]
+        List of population names to consider (must match 'population' coords in spike_rate).
+    freqs : Union[List[float], np.ndarray]
+        Array of frequencies (Hz) to analyze.
+    pop_pairs : Optional[List[Tuple[str, str]]], optional
+        List of (pop1, pop2) tuples specifying population pairs to analyze.
+        If None, all unique pairs from pop_names are generated (default: None).
+    error_type : str, optional
+        Type of error bars to plot: "ci" for 95% confidence interval, "sem" for standard error,
+        or "std" for standard deviation (default: "ci").
+    figsize : Tuple[float, float], optional
+        Figure size (width, height) in inches (default: (12, 8)).
+    filter_method : str, optional
+        Filtering method for PLV calculation: 'wavelet' or 'butter' (default: 'wavelet').
+    bandwidth : float, optional
+        Bandwidth parameter for wavelet filter (default: 1.0).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure containing the trial-averaged PLV plot.
+
+    Raises
+    ------
+    ValueError
+        If error_type is not 'ci', 'sem', or 'std'.
+        If pop_pairs contains invalid population names.
+        If spike_rate does not have required dimensions/attributes.
+
+    Notes
+    -----
+    - Uses 'raw' type from spike_rate dimension (hardcoded for spike rate analysis).
+    - Time units in time_windows must match spike_rate.time units (milliseconds).
+    - Generates all unique population pairs if pop_pairs is None.
+
+    Examples
+    --------
+    >>> fig = plot_trial_avg_spike_rate_plv(
+    ...     spike_rate=spike_rate,
+    ...     time_windows=[(1000, 2000), (2500, 3500), (4000, 5000)],
+    ...     pop_names=['ET', 'IT', 'PV', 'SST'],
+    ...     freqs=[10, 20, 30, 40, 50],
+    ...     error_type='ci'
+    ... )
+    """
+    sns.set_style("whitegrid")
+
+    # Validate inputs
+    if error_type not in ["ci", "sem", "std"]:
+        raise ValueError(
+            "error_type must be 'ci' for confidence interval, 'sem' for standard error, or 'std' for standard deviation"
+        )
+
+    if "fs" not in spike_rate.attrs:
+        raise ValueError("spike_rate must have 'fs' attribute (sampling frequency).")
+
+    if "time" not in spike_rate.dims or "population" not in spike_rate.dims:
+        raise ValueError("spike_rate must have 'time' and 'population' dimensions.")
+
+    # Convert freqs to numpy array
+    freqs = np.array(freqs)
+
+    # Generate population pairs if not provided
+    if pop_pairs is None:
+        n_pops = len(pop_names)
+        pop_pairs = [
+            (pop_names[i], pop_names[j]) for i in range(n_pops) for j in range(i + 1, n_pops)
+        ]
+
+    # Validate population pairs
+    available_pops = set(spike_rate.population.values)
+    for pop1, pop2 in pop_pairs:
+        if pop1 not in available_pops or pop2 not in available_pops:
+            raise ValueError(
+                f"Population pair ({pop1}, {pop2}) contains names not in spike_rate. "
+                f"Available: {available_pops}"
+            )
+
+    # Get sampling frequency
+    fs = spike_rate.fs
+
+    # Storage for PLV data: dict of pair -> list of trials -> list of freqs
+    all_plv_data = {f"{p1}-{p2}": [] for p1, p2 in pop_pairs}
+
+    # Loop through each trial window
+    for trial_idx, (start_time, end_time) in enumerate(time_windows):
+        try:
+            # Slice spike rate data for this trial window
+            trial_data = spike_rate.sel(time=slice(start_time, end_time), type="raw")
+
+            if trial_data.time.size == 0:
+                print(f"Warning: No data in trial {trial_idx} for window ({start_time}, {end_time})")
+                for pair_key in all_plv_data.keys():
+                    all_plv_data[pair_key].append([np.nan] * len(freqs))
+                continue
+
+            # Calculate PLV for each population pair at each frequency
+            trial_plv_values = {}
+            for pop1, pop2 in pop_pairs:
+                pair_key = f"{pop1}-{pop2}"
+                trial_plv_values[pair_key] = []
+
+                try:
+                    # Extract spike rate signals for this pair
+                    sr1 = trial_data.sel(population=pop1).values
+                    sr2 = trial_data.sel(population=pop2).values
+
+                    if len(sr1) < 2 or len(sr2) < 2:
+                        print(
+                            f"Warning: Insufficient data for {pair_key} in trial {trial_idx}"
+                        )
+                        trial_plv_values[pair_key] = [np.nan] * len(freqs)
+                        continue
+
+                    # Calculate PLV for each frequency
+                    for freq in freqs:
+                        try:
+                            plv = bmentr.calculate_signal_signal_plv(
+                                sr1,
+                                sr2,
+                                fs=fs,
+                                freq_of_interest=freq,
+                                filter_method=filter_method,
+                                bandwidth=bandwidth,
+                            )
+                            trial_plv_values[pair_key].append(plv)
+                        except Exception as e:
+                            print(
+                                f"Warning: Error calculating PLV for {pair_key} at {freq} Hz in trial {trial_idx}: {e}"
+                            )
+                            trial_plv_values[pair_key].append(np.nan)
+
+                except Exception as e:
+                    print(f"Warning: Error processing {pair_key} in trial {trial_idx}: {e}")
+                    trial_plv_values[pair_key] = [np.nan] * len(freqs)
+
+            # Store trial results
+            for pair_key in all_plv_data.keys():
+                if pair_key in trial_plv_values and len(trial_plv_values[pair_key]) == len(freqs):
+                    all_plv_data[pair_key].append(trial_plv_values[pair_key])
+                else:
+                    all_plv_data[pair_key].append([np.nan] * len(freqs))
+
+        except Exception as e:
+            print(f"Warning: Error processing trial {trial_idx}: {e}")
+            for pair_key in all_plv_data.keys():
+                all_plv_data[pair_key].append([np.nan] * len(freqs))
+
+    # Convert to numpy arrays and calculate statistics
+    mean_plv = {}
+    error_plv = {}
+
+    for pair_key in all_plv_data.keys():
+        all_plv_data[pair_key] = np.array(all_plv_data[pair_key])  # Shape: (n_trials, n_freqs)
+
+        # Use helper function to calculate trial statistics
+        mean_plv[pair_key], error_plv[pair_key] = calculate_trial_statistics(
+            all_plv_data[pair_key], error_type=error_type
+        )
+
+    # Create plot
+    fig = plt.figure(figsize=figsize)
+
+    # Determine subplot layout if many pairs
+    n_pairs = len(pop_pairs)
+    if n_pairs <= 3:
+        # Single row for up to 3 pairs
+        n_rows, n_cols = 1, n_pairs
+    else:
+        # Multiple rows for more pairs
+        n_cols = min(n_pairs, 3)
+        n_rows = (n_pairs + n_cols - 1) // n_cols
+
+    # Define markers and colors for different pairs
+    markers = ["o-", "s-", "^-", "D-", "v-", "<-", ">-", "p-"]
+    colors = sns.color_palette(n_colors=n_pairs)
+
+    # Plot each population pair
+    if n_rows == 1 and n_cols == 1:
+        axes = [plt.subplot(n_rows, n_cols, 1)]
+    elif n_rows == 1:
+        axes = [plt.subplot(n_rows, n_cols, i + 1) for i in range(n_cols)]
+    else:
+        axes = [plt.subplot(n_rows, n_cols, i + 1) for i in range(n_pairs)]
+
+    for pair_idx, (pop1, pop2) in enumerate(pop_pairs):
+        pair_key = f"{pop1}-{pop2}"
+        marker = markers[pair_idx % len(markers)]
+        color = colors[pair_idx]
+        ax = axes[pair_idx] if isinstance(axes, list) else axes
+
+        # Only plot if we have valid data
+        valid_mask = ~np.isnan(mean_plv[pair_key])
+        if np.any(valid_mask):
+            ax.plot(
+                freqs[valid_mask],
+                mean_plv[pair_key][valid_mask],
+                marker,
+                linewidth=2,
+                label=pair_key,
+                color=color,
+                markersize=6,
+            )
+
+            # Add error bars/shading if available
+            if not np.all(np.isnan(error_plv[pair_key])):
+                ax.fill_between(
+                    freqs[valid_mask],
+                    (mean_plv[pair_key] - error_plv[pair_key])[valid_mask],
+                    (mean_plv[pair_key] + error_plv[pair_key])[valid_mask],
+                    alpha=0.3,
+                    color=color,
+                )
+
+        ax.set_xlabel("Frequency (Hz)", fontsize=11)
+        ax.set_ylabel("PLV", fontsize=11)
+        ax.set_title(f"{pair_key}", fontsize=12)
+        ax.grid(True, alpha=0.3)
+
+    # Add overall title
+    error_labels = {"ci": "95% CI", "sem": "±SEM", "std": "±1 SD"}
+    error_label = error_labels[error_type]
+    fig.suptitle(f"Trial-Averaged Spike Rate PLV ({error_label})", fontsize=14, y=0.995)
+
+    plt.tight_layout()
+    return fig
