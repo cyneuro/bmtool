@@ -478,3 +478,132 @@ def _compute_trial_average_power(power_trials: List[np.ndarray], target_length: 
     sem = np.std(power_array, axis=0) / np.sqrt(len(power_array))
     
     return mean, sem
+
+
+def plot_spike_rate_coherence(
+    spike_rates: Any,
+    fooof_params: Optional[Dict] = None,
+    plt_range: Optional[Tuple[float, float]] = None,
+    plt_log: bool = False,
+    plt_db: bool = True,
+    figsize: Tuple[int, int] = (10, 3),
+    ax: Optional[plt.Axes] = None,
+) -> Figure:
+    """
+    Plot coherence between spike rate populations.
+    
+    Computes coherence exactly like Analyze_PSD_ziao notebook: calculates coherence
+    between population pairs and applies FOOOF fitting to coherence spectra.
+    
+    Parameters
+    ----------
+    spike_rates : xr.DataArray
+        Spike rate data with dimensions (population, time) and 'fs' attribute
+    fooof_params : dict, optional
+        Parameters for FOOOF fitting. If None, uses default parameters
+    plt_range : tuple, optional
+        Frequency range to display (default: [2, 100])
+    plt_log : bool
+        Use log scale for frequency axis, default: False
+    plt_db : bool
+        Plot power in dB, default: True
+    figsize : tuple
+        Figure size, default: (10, 3)
+    ax : matplotlib.axes.Axes, optional
+        Axes to plot on. If None, creates new figure
+    
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure object containing the coherence plots
+    
+    Examples
+    --------
+    >>> fig = plot_spike_rate_coherence(spike_rates=spike_rate_data)
+    """
+    from scipy import signal
+    from ..analysis.lfp import fit_fooof
+    
+    # Extract fs from spike_rates attributes
+    if not hasattr(spike_rates, 'attrs') or 'fs' not in spike_rates.attrs:
+        raise ValueError("spike_rates must have 'fs' attribute")
+    fs = spike_rates.attrs['fs']
+    
+    # Set default parameters
+    if fooof_params is None:
+        fooof_params = dict(aperiodic_mode='knee', freq_range=(1, 100), 
+                           peak_width_limits=100., max_n_peaks=1, dB_threshold=0.05)
+    
+    if plt_range is None:
+        plt_range = [2., 100.]
+    
+    # Get population pairs like in Analyze_PSD_ziao
+    pop_names = spike_rates.population.values
+    n_pops = len(pop_names)
+    grp_pairs = [[i, j] for i in range(n_pops) for j in range(i+1, n_pops)]
+    npairs = len(grp_pairs)
+    
+    if npairs == 0:
+        raise ValueError("Need at least 2 populations for coherence analysis")
+    
+    # Create figure with max 3 plots per row
+    if ax is None:
+        ncols = min(npairs, 3)
+        nrows = (npairs + ncols - 1) // ncols
+        fig, axes = plt.subplots(nrows, ncols, figsize=(figsize[0], figsize[1]))
+    else:
+        fig = ax.get_figure()
+        axes = [ax]
+    
+    if npairs == 1:
+        axes = [axes] if not isinstance(axes, (list, np.ndarray)) else axes
+    
+    # Calculate coherence for each pair
+    for i, grp_pair in enumerate(grp_pairs):
+        if isinstance(axes, np.ndarray):
+            ax = axes.flat[i]
+        else:
+            ax = axes[i]
+        
+        pop1_name = pop_names[grp_pair[0]]
+        pop2_name = pop_names[grp_pair[1]]
+        
+        # Get spike rate data for the pair
+        signal1 = spike_rates.sel(type='smoothed', population=pop1_name).values
+        signal2 = spike_rates.sel(type='smoothed', population=pop2_name).values
+        
+        # Check if both populations have non-zero std
+        if np.std(signal1) == 0 or np.std(signal2) == 0:
+            ax.text(0.5, 0.5, 'No variation in data', ha='center', va='center',
+                   transform=ax.transAxes)
+            ax.set_title(f'Coherence {pop1_name}-{pop2_name}')
+            continue
+        
+        # Calculate coherence over entire time series
+        f, cxy = signal.coherence(signal1, signal2, fs=fs)
+        
+        # Filter valid coherence values (positive and not NaN)
+        idx = (cxy > 0) & np.isfinite(cxy)
+        if not np.any(idx):
+            ax.text(0.5, 0.5, 'No valid coherence', ha='center', va='center',
+                   transform=ax.transAxes)
+            ax.set_title(f'Coherence {pop1_name}-{pop2_name}')
+            continue
+        
+        # Apply FOOOF to coherence (exactly like Analyze_PSD_ziao)
+        f_filtered = f[idx]
+        cxy_filtered = cxy[idx]
+        
+        plt.sca(ax)
+        fooof_results, fm = fit_fooof(f_filtered, cxy_filtered, **fooof_params, 
+                                   report=False, plot=True)
+        
+        # Formatting like Analyze_PSD_ziao
+        ax.set_xlabel('Frequency (Hz)')
+        ax.set_ylabel('Coherence')
+        ax.set_title(f'Coherence {pop1_name}-{pop2_name}')
+        ax.set_xlim(plt_range)
+        ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig

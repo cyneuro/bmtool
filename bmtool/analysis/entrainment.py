@@ -122,6 +122,8 @@ def calculate_signal_signal_plv(
 
     # Calculate PLV from standard equation from Measuring phase synchrony in brain signals(1999)
     plv = np.abs(np.mean(np.exp(1j * phase_diff), axis=-1))
+    #avg phase lag
+    phase_lag = np.angle(np.mean(np.exp(1j * phase_diff)))
 
     return plv
 
