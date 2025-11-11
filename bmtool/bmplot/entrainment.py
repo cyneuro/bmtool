@@ -201,6 +201,7 @@ def plot_spike_power_correlation(
 
             if len(pop_spike_rate) != len(lfp_power):
                 print(f"Warning: Length mismatch for {pop} at {freq} Hz")
+                print(f"{len(pop_spike_rate)} {len(lfp_power)}")
                 continue
 
             corr, p_val = stats.spearmanr(pop_spike_rate.values, lfp_power.values)
@@ -349,6 +350,12 @@ def plot_trial_avg_spike_power_correlation(
         raise ValueError(
             "error_type must be 'ci' for confidence interval, 'sem' for standard error, "
             "or 'std' for standard deviation"
+        )
+
+    # Validate that fs matches LFP data sampling rate if available
+    if hasattr(lfp_data, 'fs') and lfp_data.fs != fs:
+        raise ValueError(
+            f"Provided fs ({fs} Hz) does not match LFP data sampling rate ({lfp_data.fs} Hz). "
         )
 
     # Setup frequencies for analysis
