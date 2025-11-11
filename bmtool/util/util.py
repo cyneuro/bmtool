@@ -1,5 +1,4 @@
 import argparse
-from logging import raiseExceptions
 import math
 import os
 import smtplib
@@ -10,15 +9,14 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import COMMASPACE, formatdate
 from os.path import basename
+from pathlib import Path
+from typing import Dict, List, Union
 
 import h5py
 import neuron
 import numpy as np
 import pandas as pd
 from neuron import h
-
-from typing import Dict, List, Optional, Union, Any
-from pathlib import Path
 
 # from bmtk.utils.io.cell_vars import CellVarsFile
 # from bmtk.analyzer.cell_vars import _get_cell_report
@@ -439,7 +437,7 @@ def load_edges_from_paths(
                     templates = df['model_template'].dropna().unique()
                     print(f"  Model templates: {list(templates)}")
                 if 'afferent_section_id' in df.columns:
-                    print(f"  afferent_section_id available")
+                    print("  afferent_section_id available")
             else:
                 print(f"{key}: No data loaded (error occurred)")
     

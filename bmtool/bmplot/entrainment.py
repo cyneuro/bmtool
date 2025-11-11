@@ -1,11 +1,11 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import xarray as xr
+from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 from scipy import stats
 

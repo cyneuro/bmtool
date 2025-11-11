@@ -19,7 +19,12 @@ from scipy.optimize import curve_fit, minimize, minimize_scalar
 from scipy.signal import find_peaks
 from tqdm.notebook import tqdm
 
-from bmtool.util.util import load_templates_from_config, load_nodes_from_config, load_edges_from_config, load_config
+from bmtool.util.util import (
+    load_config,
+    load_edges_from_config,
+    load_nodes_from_config,
+    load_templates_from_config,
+)
 
 DEFAULT_GENERAL_SETTINGS = {
     "vclamp": False,

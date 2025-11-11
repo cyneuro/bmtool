@@ -1,11 +1,13 @@
+from typing import Any, Dict, List, Optional, Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
-from fooof.sim.gen import gen_aperiodic
-from typing import Optional, List, Dict, Tuple, Any
 import pandas as pd
-from ..analysis.spikes import get_population_spike_rate
-from ..analysis.lfp import get_lfp_power
+from fooof.sim.gen import gen_aperiodic
 from matplotlib.figure import Figure
+
+from ..analysis.lfp import get_lfp_power
+from ..analysis.spikes import get_population_spike_rate
 
 
 def plot_spectrogram(
@@ -522,6 +524,7 @@ def plot_spike_rate_coherence(
     >>> fig = plot_spike_rate_coherence(spike_rates=spike_rate_data)
     """
     from scipy import signal
+
     from ..analysis.lfp import fit_fooof
     
     # Extract fs from spike_rates attributes
