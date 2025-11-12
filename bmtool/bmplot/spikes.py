@@ -113,28 +113,30 @@ def raster(
     # Plot each population with its specified or generated color
     legend_handles = []
     y_offset = 0  # Track y-position offset for stacking populations
-    
+
     for pop_name, group in spikes_df.groupby(groupby):
         if sortby:
             # Sort by the specified column, putting NaN values at the end
-            group_sorted = group.sort_values(by=sortby, na_position='last')
+            group_sorted = group.sort_values(by=sortby, na_position="last")
             # Create a mapping from node_ids to consecutive y-positions based on sorted order
             # Use the sorted order to maintain the same sequence for all spikes from same node
-            unique_nodes_sorted = group_sorted['node_ids'].drop_duplicates()
+            unique_nodes_sorted = group_sorted["node_ids"].drop_duplicates()
             node_to_y = {node_id: y_offset + i for i, node_id in enumerate(unique_nodes_sorted)}
             # Map node_ids to new y-positions for ALL spikes (not just the sorted group)
-            y_positions = group['node_ids'].map(node_to_y)
+            y_positions = group["node_ids"].map(node_to_y)
             # Verify no data was lost
             assert len(y_positions) == len(group), f"Data loss detected in population {pop_name}"
-            assert y_positions.isna().sum() == 0, f"Unmapped node_ids found in population {pop_name}"
+            assert y_positions.isna().sum() == 0, (
+                f"Unmapped node_ids found in population {pop_name}"
+            )
         else:
-            y_positions = group['node_ids']
-            
+            y_positions = group["node_ids"]
+
         ax.scatter(group["timestamps"], y_positions, color=color_map[pop_name], s=dot_size)
         # Dummy scatter for consistent legend appearance
         handle = ax.scatter([], [], color=color_map[pop_name], label=pop_name, s=20)
         legend_handles.append(handle)
-        
+
         # Update y_offset for next population if sortby is used
         if sortby:
             y_offset += len(unique_nodes_sorted)
@@ -346,7 +348,7 @@ def plot_firing_rate_distribution(
     ax.grid(axis="y", linestyle="--", alpha=0.7)
 
     if logscale:
-        ax.set_yscale('log')
+        ax.set_yscale("log")
 
     return ax
 
@@ -455,10 +457,12 @@ def plot_firing_rate_vs_node_attribute(
     # Plot each group
     for i, group in enumerate(unique_groups):
         group_df = merged_df[merged_df[groupby] == group]
-        axes[i].scatter(group_df["firing_rate"], group_df[attribute], s=dot_size, color=color_map[group])
+        axes[i].scatter(
+            group_df["firing_rate"], group_df[attribute], s=dot_size, color=color_map[group]
+        )
         axes[i].set_xlabel("Firing Rate (Hz)")
         axes[i].set_ylabel(attribute)
-        
+
         # Calculate and display mean firing rate in legend
         mean_fr = group_df["firing_rate"].mean()
         axes[i].legend([f"Mean FR: {mean_fr:.2f} Hz"], loc="upper right")
@@ -553,28 +557,31 @@ def plot_firing_rate_histogram(
         fig, ax = plt.subplots(figsize=figsize)
 
     if stacked:
-        ax.hist(pop_fr.values(), bins=bins_array, label=list(pop_fr.keys()),
-                color=[color_map[p] for p in pop_fr.keys()], stacked=True)
+        ax.hist(
+            pop_fr.values(),
+            bins=bins_array,
+            label=list(pop_fr.keys()),
+            color=[color_map[p] for p in pop_fr.keys()],
+            stacked=True,
+        )
     else:
         for p, fr_vals in pop_fr.items():
             ax.hist(fr_vals, bins=bins_array, label=p, color=color_map[p], alpha=alpha)
 
     if logscale:
-        ax.set_xscale('log')
+        ax.set_xscale("log")
         plt.draw()
         xt = ax.get_xticks()
-        xtl = [f'{x:g}' for x in xt]
+        xtl = [f"{x:g}" for x in xt]
         if min_fr is not None:
             xt = np.append(xt, min_fr)
-            xtl.append('0')
+            xtl.append("0")
         ax.set_xticks(xt)
         ax.set_xticklabels(xtl)
 
     ax.set_xlim(bins_array[0], bins_array[-1])
-    ax.legend(loc='upper right')
-    ax.set_title('Firing Rate Histogram')
-    ax.set_xlabel('Frequency (Hz)')
-    ax.set_ylabel('Count')
+    ax.legend(loc="upper right")
+    ax.set_title("Firing Rate Histogram")
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel("Count")
     return fig
-
-

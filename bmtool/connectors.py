@@ -2,9 +2,11 @@ import time
 import types
 from abc import ABC, abstractmethod
 from functools import partial
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
+from numpy.typing import ArrayLike, NDArray
 from scipy.optimize import minimize_scalar
 from scipy.special import erf
 
@@ -17,7 +19,7 @@ report_name = "conn.csv"
 
 
 # Utility Functions
-def num_prop(ratio, N):
+def num_prop(ratio: ArrayLike, N: int) -> NDArray[np.integer]:
     """
     Calculate numbers of total N in proportion to ratio.
 
@@ -38,7 +40,7 @@ def num_prop(ratio, N):
     return np.diff(np.round(N / p[-1] * p).astype(int)).reshape(ratio.shape)
 
 
-def decision(prob, size=None):
+def decision(prob: float, size: Optional[Union[int, tuple]] = None) -> Union[bool, NDArray[np.bool_]]:
     """
     Make random decision(s) based on input probability.
 
@@ -58,7 +60,7 @@ def decision(prob, size=None):
     return rng.random(size) < prob
 
 
-def decisions(prob):
+def decisions(prob: ArrayLike) -> NDArray[np.bool_]:
     """
     Make multiple random decisions based on input probabilities.
 
@@ -77,7 +79,7 @@ def decisions(prob):
     return rng.random(prob.shape) < prob
 
 
-def euclid_dist(p1, p2):
+def euclid_dist(p1: ArrayLike, p2: ArrayLike) -> float:
     """
     Euclidean distance between two points
     p1, p2: Coordinates in numpy array
@@ -86,12 +88,12 @@ def euclid_dist(p1, p2):
     return (dvec @ dvec) ** 0.5
 
 
-def spherical_dist(node1, node2):
+def spherical_dist(node1: dict, node2: dict) -> float:
     """Spherical distance between two input nodes"""
     return euclid_dist(node1["positions"], node2["positions"]).item()
 
 
-def cylindrical_dist_z(node1, node2):
+def cylindrical_dist_z(node1: dict, node2: dict) -> float:
     """Cylindircal distance between two input nodes (ignoring z-axis)"""
     return euclid_dist(node1["positions"][:2], node2["positions"][:2]).item()
 
@@ -267,20 +269,20 @@ class GaussianDropoff(DistantDependentProbability):
         """
         Compute the total integrated probability by numerically integrating
         the Gaussian probability function over the ptotal_dist_range.
-        
+
         This is useful when ptotal was not explicitly set and needs to be
         calculated from the distribution parameters (pmax, stdev, etc.).
-        
+
         Parameters:
         -----------
         num_points : int, optional
             Number of points to use for numerical integration (default: 1000).
-        
+
         Returns:
         --------
         float
             The integrated total probability over the ptotal_dist_range.
-        
+
         Notes:
         ------
         For cylindrical distance: integrates p(r) * 2πr over the range,
@@ -289,17 +291,17 @@ class GaussianDropoff(DistantDependentProbability):
         normalized by the total spherical volume.
         """
         from scipy.integrate import trapz
-        
+
         # Handle both range objects and tuples
         if isinstance(self.ptotal_dist_range, range):
             r1 = self.ptotal_dist_range.start if self.ptotal_dist_range.start is not None else 0
             r2 = self.ptotal_dist_range.stop
         else:
             r1, r2 = self.ptotal_dist_range[0], self.ptotal_dist_range[1]
-        
+
         distances = np.linspace(r1, r2, num_points)
         probabilities = self.probability(distances)
-        
+
         if self.dist_type == "cylindrical":
             # For cylindrical: weight by 2πr (density at radius r in 2D)
             weights = 2 * np.pi * distances
@@ -308,11 +310,11 @@ class GaussianDropoff(DistantDependentProbability):
             integrand = probabilities * weights / total_area
         else:  # spherical
             # For spherical: weight by 4πr² (density at radius r in 3D)
-            weights = 4 * np.pi * distances ** 2
+            weights = 4 * np.pi * distances**2
             # Normalize by total spherical volume in the range
-            total_volume = (4/3) * np.pi * (r2**3 - r1**3)
+            total_volume = (4 / 3) * np.pi * (r2**3 - r1**3)
             integrand = probabilities * weights / total_volume
-        
+
         ptotal = trapz(integrand, distances)
         return ptotal
 
@@ -1073,8 +1075,7 @@ class ReciprocalConnector(AbstractConnector):
                 rho = (self.pr() * n - p0p1_sum) / norm_fac_sum
                 if abs(rho) > 1:
                     print(
-                        "\nWarning: Estimated value of rho=%.3f "
-                        "outside the range [-1, 1]." % rho,
+                        "\nWarning: Estimated value of rho=%.3f outside the range [-1, 1]." % rho,
                         flush=True,
                     )
                     rho = np.clip(rho, -1, 1).item()
@@ -1657,7 +1658,8 @@ class CorrelatedGapJunction(GapJunction):
             if self.save_report:
                 self.save_connection_report()
         return nsyns
-    
+
+
 class GapJunctionConditionalReciprocalConnector(AbstractConnector):
     """
     Object for building reciprocal chemical synapses in BMTK network model with
@@ -1748,17 +1750,47 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
                     'nonelec': {'pairs': int, 'uni': int, 'recp': int}}
     """
 
-    def __init__(self, gap_connector, p0_elec, p1_elec, pr_elec, p0_nonelec, p1_nonelec, pr_nonelec, 
-                 p0_elec_arg=None, p1_elec_arg=None, pr_elec_arg=None,
-                 p0_nonelec_arg=None, p1_nonelec_arg=None, pr_nonelec_arg=None,
-                 n_syn0=1, n_syn1=1, verbose=True, save_report=True, report_name=None):
+    def __init__(
+        self,
+        gap_connector,
+        p0_elec,
+        p1_elec,
+        pr_elec,
+        p0_nonelec,
+        p1_nonelec,
+        pr_nonelec,
+        p0_elec_arg=None,
+        p1_elec_arg=None,
+        pr_elec_arg=None,
+        p0_nonelec_arg=None,
+        p1_nonelec_arg=None,
+        pr_nonelec_arg=None,
+        n_syn0=1,
+        n_syn1=1,
+        verbose=True,
+        save_report=True,
+        report_name=None,
+    ):
         # Store original parameters like ReciprocalConnector
         args = locals()
-        var_set = ("p0_elec", "p0_elec_arg", "p1_elec", "p1_elec_arg", "pr_elec", "pr_elec_arg",
-                   "p0_nonelec", "p0_nonelec_arg", "p1_nonelec", "p1_nonelec_arg", "pr_nonelec", "pr_nonelec_arg",
-                   "n_syn0", "n_syn1")
+        var_set = (
+            "p0_elec",
+            "p0_elec_arg",
+            "p1_elec",
+            "p1_elec_arg",
+            "pr_elec",
+            "pr_elec_arg",
+            "p0_nonelec",
+            "p0_nonelec_arg",
+            "p1_nonelec",
+            "p1_nonelec_arg",
+            "pr_nonelec",
+            "pr_nonelec_arg",
+            "n_syn0",
+            "n_syn1",
+        )
         self.vars = {key: args[key] for key in var_set}
-        
+
         self.gap_connector = gap_connector
         self.verbose = verbose
         self.save_report = save_report
@@ -1767,8 +1799,10 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
         self.stage = 0
         # Track gap junction decisions and connections for detailed reporting
         self.gap_decisions = {}
-        self.connection_stats = {'elec': {'pairs': 0, 'uni': 0, 'recp': 0}, 
-                               'nonelec': {'pairs': 0, 'uni': 0, 'recp': 0}}
+        self.connection_stats = {
+            "elec": {"pairs": 0, "uni": 0, "recp": 0},
+            "nonelec": {"pairs": 0, "uni": 0, "recp": 0},
+        }
 
     def setup_variables(self):
         """Set up variables like ReciprocalConnector does"""
@@ -1786,25 +1820,43 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
         # Make callable variables accept index input instead of node input
         # Exclude probability functions (p0_elec, p1_elec, pr_elec, p0_nonelec, p1_nonelec, pr_nonelec)
         # as they are called with arguments from _arg functions
-        for name in callable_set - {"p0_elec", "p1_elec", "pr_elec", "p0_nonelec", "p1_nonelec", "pr_nonelec"}:
+        for name in callable_set - {
+            "p0_elec",
+            "p1_elec",
+            "pr_elec",
+            "p0_nonelec",
+            "p1_nonelec",
+            "pr_nonelec",
+        }:
             var = getattr(self, name)  # Get the already converted function
-            setattr(self, name, self.node_2_idx_input(var, '1' in name and name.startswith(('p1_', 'pr_', 'n_syn1'))))
+            setattr(
+                self,
+                name,
+                self.node_2_idx_input(
+                    var, "1" in name and name.startswith(("p1_", "pr_", "n_syn1"))
+                ),
+            )
 
     @staticmethod
     def constant_function(val):
         """Convert a constant to a constant function"""
+
         def constant(*arg):
             return val
+
         return constant
 
     def node_2_idx_input(self, var_func, reverse=False):
         """Convert a function that accept nodes as input to accept indices as input"""
         if reverse:
+
             def idx_2_var(j, i):
                 return var_func(self.target_list[j], self.source_list[i])
         else:
+
             def idx_2_var(i, j):
                 return var_func(self.source_list[i], self.target_list[j])
+
         return idx_2_var
 
     def setup_nodes(self, source, target):
@@ -1845,11 +1897,12 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
         """Check if a gap junction exists between two cells by checking the gap_connector's connections"""
         sid = source_node.node_id
         tid = target_node.node_id
-        
+
         # Check if this pair has a gap junction recorded in the gap_connector
         # Since gap junctions are bidirectional, check both directions
-        return (sid in self.gap_connector.conn_prop and tid in self.gap_connector.conn_prop[sid]) or \
-               (tid in self.gap_connector.conn_prop and sid in self.gap_connector.conn_prop[tid])
+        return (
+            sid in self.gap_connector.conn_prop and tid in self.gap_connector.conn_prop[sid]
+        ) or (tid in self.gap_connector.conn_prop and sid in self.gap_connector.conn_prop[tid])
 
     def cond_backward_prob(self, forward, p0, p1, pr):
         """Calculate conditional probability of backward connection given forward result"""
@@ -1858,7 +1911,7 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
             pr_min = max(0, p0 + p1 - 1)
             pr_max = min(p0, p1)
             pr = max(pr_min, min(pr_max, pr))
-            
+
             if forward:
                 return pr / p0
             else:
@@ -1867,7 +1920,7 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
             return p1
 
     def make_forward_connection(self, source, targets, *args, **kwargs):
-        if not hasattr(self, 'conn_mat'):
+        if not hasattr(self, "conn_mat"):
             self.initialize()
         stage_idx = self.stage - 1
         nsyns = self.conn_mat[stage_idx, self.iter_count, :]
@@ -1903,66 +1956,66 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
         shape = (self.end_stage + 1, self.n_source, self.n_target)
         self.conn_mat = np.zeros(shape, dtype=np.uint8)
         self.iter_count = 0
-        
+
         if self.verbose:
             self.timer = Timer()
-            
+
         # Pre-generate gap junction connections for consistency
         # Store gap decisions with symmetric pair keys
         self.gap_decisions = {}
-        
+
         # Generate connections using proper bivariate Bernoulli distribution
         for i in range(self.n_source):
             for j in range(self.n_target):
                 # Skip self-connections for recurrent networks
                 if self.recurrent and i >= j:
                     continue
-                    
+
                 sid = self.source_ids[i]
                 tid = self.target_ids[j]
                 source_node = self.source_list[i]
                 target_node = self.target_list[j]
-                
+
                 # Check or generate gap junction decision with symmetric key
                 pair_key = (min(sid, tid), max(sid, tid))  # Ensure consistent ordering
                 if pair_key not in self.gap_decisions:
                     self.gap_decisions[pair_key] = self.has_gap(source_node, target_node)
                 has_gap = self.gap_decisions[pair_key]
-                
+
                 # Track pair counts for statistics
                 if has_gap:
-                    self.connection_stats['elec']['pairs'] += 1
+                    self.connection_stats["elec"]["pairs"] += 1
                     p0, p1, pr = self.calc_pair(i, j, True)
                 else:
-                    self.connection_stats['nonelec']['pairs'] += 1
+                    self.connection_stats["nonelec"]["pairs"] += 1
                     p0, p1, pr = self.calc_pair(i, j, False)
-                
+
                 # First decide forward connection
                 forward = decision(p0)
-                
+
                 # Then decide backward connection based on forward result
                 backward_prob = self.cond_backward_prob(forward, p0, p1, pr)
                 backward = decision(backward_prob)
-                
+
                 # Track connection statistics
                 if forward and backward:
                     # Reciprocal connection
                     if has_gap:
-                        self.connection_stats['elec']['recp'] += 1
+                        self.connection_stats["elec"]["recp"] += 1
                     else:
-                        self.connection_stats['nonelec']['recp'] += 1
+                        self.connection_stats["nonelec"]["recp"] += 1
                 elif forward or backward:
                     # Unidirectional connection
                     if has_gap:
-                        self.connection_stats['elec']['uni'] += 1
+                        self.connection_stats["elec"]["uni"] += 1
                     else:
-                        self.connection_stats['nonelec']['uni'] += 1
-                
+                        self.connection_stats["nonelec"]["uni"] += 1
+
                 # Set connections in matrix
                 if forward:
                     self.conn_mat[0, i, j] = self.n_syn0(i, j)
                     self.add_conn_prop(i, j, None, 0)
-                    
+
                 if backward:
                     if self.recurrent:
                         self.conn_mat[0, j, i] = self.n_syn1(j, i)
@@ -1970,7 +2023,7 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
                     else:
                         self.conn_mat[1, i, j] = self.n_syn1(i, j)
                         self.add_conn_prop(i, j, None, 1)
-                        
+
         if self.verbose:
             self.timer.report("Time for creating connection matrix")
         if self.save_report:
@@ -1986,63 +2039,76 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
 
     def connection_number_info(self):
         conn_mat = self.conn_mat.astype(bool)
-        
+
         if self.recurrent:
             # Calculate total pairs (upper triangle only to avoid double counting)
             n_pairs = (self.n_source * (self.n_source - 1)) // 2
-            
+
             # Count reciprocal connections (both i->j and j->i exist)
             n_recp = np.count_nonzero(conn_mat[0] & conn_mat[0].T) // 2
             # Count total connections
             n_total = np.count_nonzero(conn_mat[0])
             # Unidirectional = total - 2*reciprocal
             n_uni = n_total - 2 * n_recp
-            
+
             # Print detailed breakdown by electrical coupling
             print("Detailed connection statistics by electrical coupling:")
             print("=" * 60)
-            
+
             # Electrically coupled pairs
-            elec_pairs = self.connection_stats['elec']['pairs']
-            elec_uni = self.connection_stats['elec']['uni'] 
-            elec_recp = self.connection_stats['elec']['recp']
-            
-            print(f"Electrically coupled pairs ({elec_pairs} pairs, {elec_pairs/n_pairs:.1%} of total):")
-            print(f"  Unidirectional: {elec_uni} ({elec_uni/elec_pairs:.1%} of elec pairs)")
-            print(f"  Bidirectional:  {elec_recp} ({elec_recp/elec_pairs:.1%} of elec pairs)")
-            print(f"  No connection:  {elec_pairs - elec_uni - elec_recp} ({(elec_pairs - elec_uni - elec_recp)/elec_pairs:.1%} of elec pairs)")
-            
-            # Non-electrically coupled pairs  
-            nonelec_pairs = self.connection_stats['nonelec']['pairs']
-            nonelec_uni = self.connection_stats['nonelec']['uni']
-            nonelec_recp = self.connection_stats['nonelec']['recp']
-            
-            print(f"\nNon-electrically coupled pairs ({nonelec_pairs} pairs, {nonelec_pairs/n_pairs:.1%} of total):")
-            print(f"  Unidirectional: {nonelec_uni} ({nonelec_uni/nonelec_pairs:.1%} of nonelec pairs)")
-            print(f"  Bidirectional:  {nonelec_recp} ({nonelec_recp/nonelec_pairs:.1%} of nonelec pairs)")
-            print(f"  No connection:  {nonelec_pairs - nonelec_uni - nonelec_recp} ({(nonelec_pairs - nonelec_uni - nonelec_recp)/nonelec_pairs:.1%} of nonelec pairs)")
-            
-            print(f"\nOverall chemical connectivity:")
-            print(f"  Numbers of connections: unidirectional, reciprocal")
+            elec_pairs = self.connection_stats["elec"]["pairs"]
+            elec_uni = self.connection_stats["elec"]["uni"]
+            elec_recp = self.connection_stats["elec"]["recp"]
+
+            print(
+                f"Electrically coupled pairs ({elec_pairs} pairs, {elec_pairs / n_pairs:.1%} of total):"
+            )
+            print(f"  Unidirectional: {elec_uni} ({elec_uni / elec_pairs:.1%} of elec pairs)")
+            print(f"  Bidirectional:  {elec_recp} ({elec_recp / elec_pairs:.1%} of elec pairs)")
+            print(
+                f"  No connection:  {elec_pairs - elec_uni - elec_recp} ({(elec_pairs - elec_uni - elec_recp) / elec_pairs:.1%} of elec pairs)"
+            )
+
+            # Non-electrically coupled pairs
+            nonelec_pairs = self.connection_stats["nonelec"]["pairs"]
+            nonelec_uni = self.connection_stats["nonelec"]["uni"]
+            nonelec_recp = self.connection_stats["nonelec"]["recp"]
+
+            print(
+                f"\nNon-electrically coupled pairs ({nonelec_pairs} pairs, {nonelec_pairs / n_pairs:.1%} of total):"
+            )
+            print(
+                f"  Unidirectional: {nonelec_uni} ({nonelec_uni / nonelec_pairs:.1%} of nonelec pairs)"
+            )
+            print(
+                f"  Bidirectional:  {nonelec_recp} ({nonelec_recp / nonelec_pairs:.1%} of nonelec pairs)"
+            )
+            print(
+                f"  No connection:  {nonelec_pairs - nonelec_uni - nonelec_recp} ({(nonelec_pairs - nonelec_uni - nonelec_recp) / nonelec_pairs:.1%} of nonelec pairs)"
+            )
+
+            print("\nOverall chemical connectivity:")
+            print("  Numbers of connections: unidirectional, reciprocal")
             print(f"  Number of connected pairs: ({n_uni}, {n_recp})")
-            print(f"  Fraction of connected pairs: ({n_uni/n_pairs:.2%}, {n_recp/n_pairs:.2%})")
-            print(f"  Total chemical connectivity: {(n_uni + n_recp)/n_pairs:.2%}")
-            
+            print(f"  Fraction of connected pairs: ({n_uni / n_pairs:.2%}, {n_recp / n_pairs:.2%})")
+            print(f"  Total chemical connectivity: {(n_uni + n_recp) / n_pairs:.2%}")
+
         else:
             # For non-recurrent networks
             n_pairs = self.n_source * self.n_target
             n_forward = np.count_nonzero(conn_mat[0])
             n_backward = np.count_nonzero(conn_mat[1])
             n_recp = np.count_nonzero(conn_mat[0] & conn_mat[1])
-            
+
             print("Numbers of connections: forward, backward, reciprocal")
             print(f"Number of connected pairs: ({n_forward}, {n_backward}, {n_recp})")
-            print(f"Fraction of connected pairs: ({n_forward/n_pairs:.2%}, {n_backward/n_pairs:.2%}, {n_recp/n_pairs:.2%})")
+            print(
+                f"Fraction of connected pairs: ({n_forward / n_pairs:.2%}, {n_backward / n_pairs:.2%}, {n_recp / n_pairs:.2%})"
+            )
 
     def save_connection_report(self):
         # Implement similar to ReciprocalConnector if needed
         pass
-
 
 
 class OneToOneSequentialConnector(AbstractConnector):

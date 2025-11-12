@@ -1,11 +1,11 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import xarray as xr
+from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
 from scipy import stats
 
@@ -353,7 +353,7 @@ def plot_trial_avg_spike_power_correlation(
         )
 
     # Validate that fs matches LFP data sampling rate if available
-    if hasattr(lfp_data, 'fs') and lfp_data.fs != fs:
+    if hasattr(lfp_data, "fs") and lfp_data.fs != fs:
         raise ValueError(
             f"Provided fs ({fs} Hz) does not match LFP data sampling rate ({lfp_data.fs} Hz). "
         )
@@ -404,8 +404,9 @@ def plot_trial_avg_spike_power_correlation(
                         continue
 
                     # Align time coordinates
-                    common_times = np.intersect1d(pop_spike_rate.time.values,
-                                                 trial_lfp_power.time.values)
+                    common_times = np.intersect1d(
+                        pop_spike_rate.time.values, trial_lfp_power.time.values
+                    )
                     if len(common_times) < 2:
                         continue
 
@@ -497,7 +498,9 @@ def plot_trial_avg_spike_power_correlation(
         Line2D([0], [0], color=colors(i), marker="o", linestyle="-", label=pop)
         for i, pop in enumerate(pop_names)
     ]
-    legend_elements.append(Line2D([0], [0], color="gray", alpha=0.3, linewidth=10, label=error_label))
+    legend_elements.append(
+        Line2D([0], [0], color="gray", alpha=0.3, linewidth=10, label=error_label)
+    )
     plt.legend(handles=legend_elements, fontsize=10, loc="best")
 
     # Axis formatting
@@ -584,7 +587,13 @@ def plot_cycle_with_spike_histograms(phase_data, pop_names: List[str], bins: int
     return fig
 
 
-def plot_entrainment_by_population(ppc_dict: Dict[str, Dict[str, Dict[float, float]]], pop_names: List[str], freqs: List[float], figsize: Tuple[float, float] = (15, 8), title: Optional[str] = None):
+def plot_entrainment_by_population(
+    ppc_dict: Dict[str, Dict[str, Dict[float, float]]],
+    pop_names: List[str],
+    freqs: List[float],
+    figsize: Tuple[float, float] = (15, 8),
+    title: Optional[str] = None,
+):
     """
     Plot PPC for all node populations on one graph with mean and standard error.
 
@@ -673,7 +682,13 @@ def plot_entrainment_by_population(ppc_dict: Dict[str, Dict[str, Dict[float, flo
     return fig
 
 
-def plot_entrainment_swarm_plot(ppc_dict: Dict[str, Dict[str, Dict[float, float]]], pop_names: List[str], freq: Union[float, int], save_path: Optional[str] = None, title: Optional[str] = None):
+def plot_entrainment_swarm_plot(
+    ppc_dict: Dict[str, Dict[str, Dict[float, float]]],
+    pop_names: List[str],
+    freq: Union[float, int],
+    save_path: Optional[str] = None,
+    title: Optional[str] = None,
+):
     """
     Plot a swarm plot of the entrainment for different populations at a single frequency.
 
@@ -1071,21 +1086,21 @@ def plot_trial_avg_entrainment(
 
 
 def plot_fr_hist_phase_amplitude(
-    fr_hist: np.ndarray, 
-    pop_names: List[str], 
-    freq_labels: List[str], 
-    nbins_pha: int = 16, 
+    fr_hist: np.ndarray,
+    pop_names: List[str],
+    freq_labels: List[str],
+    nbins_pha: int = 16,
     nbins_amp: int = 16,
-    common_clim: bool = True, 
+    common_clim: bool = True,
     figsize: Tuple[float, float] = (3, 2),
-    cmap: str = 'viridis',
-    title: Optional[str] = None
+    cmap: str = "viridis",
+    title: Optional[str] = None,
 ) -> Tuple[plt.Figure, np.ndarray]:
     """
-    Plot firing rate histograms binned by LFP phase and amplitude. 
+    Plot firing rate histograms binned by LFP phase and amplitude.
     Check out the bmtool/bmtool/analysis/entrainment.py function
     compute_fr_hist_phase_amplitude
-    
+
     Parameters
     ----------
     fr_hist : np.ndarray
@@ -1106,67 +1121,69 @@ def plot_fr_hist_phase_amplitude(
         Colormap to use
     title : Optional[str], default=None
         Overall title for the figure
-        
+
     Returns
     -------
     Tuple[plt.Figure, np.ndarray]
         Figure and axes objects
-        
+
     Examples
     --------
     >>> fig, axs = plot_fr_hist_phase_amplitude(
-    ...     fr_hist, ['PV', 'SST'], ['Beta', 'Gamma'], 
+    ...     fr_hist, ['PV', 'SST'], ['Beta', 'Gamma'],
     ...     common_clim=True, cmap='RdBu_r', title='LFP Phase-Amplitude Coupling'
     ... )
     """
     pha_bins = np.linspace(-np.pi, np.pi, nbins_pha + 1)
     quantiles = np.linspace(0, 1, nbins_amp + 1)
-    
+
     n_pop = len(pop_names)
     n_freq = len(freq_labels)
-    
-    fig, axs = plt.subplots(n_pop, n_freq, 
-                           figsize=(figsize[0] * n_freq, figsize[1] * n_pop),
-                           squeeze=False)
 
-    
+    fig, axs = plt.subplots(
+        n_pop, n_freq, figsize=(figsize[0] * n_freq, figsize[1] * n_pop), squeeze=False
+    )
+
     # Add overall title if provided
     if title:
         fig.suptitle(title, fontsize=14, y=0.98)
-    
+
     for i, p in enumerate(pop_names):
         if common_clim:
             vmin, vmax = fr_hist.min(), fr_hist.max()
         else:
             vmin, vmax = None, None
-            
+
         for j, freq_label in enumerate(freq_labels):
             ax = axs[i, j]
-            pcm = ax.pcolormesh(pha_bins, quantiles, fr_hist[i, j].T, 
-                               vmin=vmin, vmax=vmax, cmap=cmap)
+            pcm = ax.pcolormesh(
+                pha_bins, quantiles, fr_hist[i, j].T, vmin=vmin, vmax=vmax, cmap=cmap
+            )
             ax.set_title(p)
-            
+
             if i < n_pop - 1:
                 ax.get_xaxis().set_visible(False)
             else:
-                ax.set_xlabel(freq_label.title() + ' Phase')
+                ax.set_xlabel(freq_label.title() + " Phase")
                 ax.set_xticks((-np.pi, 0, np.pi))
-                ax.set_xticklabels([r'$-\pi$', '0', r'$\pi$'])
-                
+                ax.set_xticklabels([r"$-\pi$", "0", r"$\pi$"])
+
             if j > 0:
                 ax.get_yaxis().set_visible(False)
             else:
-                ax.set_ylabel('Amplitude (quantile)')
-                
+                ax.set_ylabel("Amplitude (quantile)")
+
             if not common_clim:
-                plt.colorbar(mappable=pcm, ax=ax, 
-                           label='Firing rate (% Change)' if j == n_freq - 1 else None, 
-                           pad=0.02)
-                           
+                plt.colorbar(
+                    mappable=pcm,
+                    ax=ax,
+                    label="Firing rate (% Change)" if j == n_freq - 1 else None,
+                    pad=0.02,
+                )
+
         if common_clim:
-            plt.colorbar(mappable=pcm, ax=axs[i], 
-                        label='Firing rate (% Change)', pad=0.02)
-    
+            plt.colorbar(mappable=pcm, ax=axs[i], label="Firing rate (% Change)", pad=0.02)
+
     return fig, axs
 
 
@@ -1286,7 +1303,9 @@ def plot_trial_avg_spike_rate_plv(
             trial_data = spike_rate.sel(time=slice(start_time, end_time), type="raw")
 
             if trial_data.time.size == 0:
-                print(f"Warning: No data in trial {trial_idx} for window ({start_time}, {end_time})")
+                print(
+                    f"Warning: No data in trial {trial_idx} for window ({start_time}, {end_time})"
+                )
                 for pair_key in all_plv_data.keys():
                     all_plv_data[pair_key].append([np.nan] * len(freqs))
                 continue
@@ -1303,9 +1322,7 @@ def plot_trial_avg_spike_rate_plv(
                     sr2 = trial_data.sel(population=pop2).values
 
                     if len(sr1) < 2 or len(sr2) < 2:
-                        print(
-                            f"Warning: Insufficient data for {pair_key} in trial {trial_idx}"
-                        )
+                        print(f"Warning: Insufficient data for {pair_key} in trial {trial_idx}")
                         trial_plv_values[pair_key] = [np.nan] * len(freqs)
                         continue
 

@@ -122,7 +122,7 @@ def calculate_signal_signal_plv(
 
     # Calculate PLV from standard equation from Measuring phase synchrony in brain signals(1999)
     plv = np.abs(np.mean(np.exp(1j * phase_diff), axis=-1))
-    #avg phase lag
+    # avg phase lag
     phase_lag = np.angle(np.mean(np.exp(1j * phase_diff)))
 
     return plv
@@ -630,7 +630,7 @@ def calculate_entrainment_per_cell(
                     )
 
         print(
-            f"Calculated {entrainment_method.upper()} for {pop} population with {len(nodes)-skip_count} valid cells, skipped {skip_count} cells for lack of spikes"
+            f"Calculated {entrainment_method.upper()} for {pop} population with {len(nodes) - skip_count} valid cells, skipped {skip_count} cells for lack of spikes"
         )
 
     return entrainment_dict
@@ -702,24 +702,24 @@ def get_spikes_in_cycle(
 
 
 def compute_fr_hist_phase_amplitude(
-    spike_df: pd.DataFrame, 
-    lfp_data: xr.DataArray, 
-    pop_names: List[str], 
-    freqs: List[float], 
-    spike_fs: float = 1000, 
-    lfp_fs: float = 1000, 
-    nbins_pha: int = 16, 
-    nbins_amp: int = 16, 
-    pop_num: Optional[Dict[str, int]] = None, 
-    duration: Optional[float] = None
+    spike_df: pd.DataFrame,
+    lfp_data: xr.DataArray,
+    pop_names: List[str],
+    freqs: List[float],
+    spike_fs: float = 1000,
+    lfp_fs: float = 1000,
+    nbins_pha: int = 16,
+    nbins_amp: int = 16,
+    pop_num: Optional[Dict[str, int]] = None,
+    duration: Optional[float] = None,
 ) -> np.ndarray:
     """
     Compute firing rate histograms binned by LFP phase and amplitude quantiles.
-    
-    This function computes 2D histograms of spike firing rates as a function of 
+
+    This function computes 2D histograms of spike firing rates as a function of
     instantaneous LFP phase and amplitude at multiple frequencies. The output shows
     percentage change in firing rate relative to the mean across all phase-amplitude bins.
-    
+
     Parameters
     ----------
     spike_df : pd.DataFrame
@@ -742,73 +742,77 @@ def compute_fr_hist_phase_amplitude(
         Number of cells per population. If None, computed from spike_df.
     duration : float, optional
         Duration of the data in seconds. If None, computed from lfp_data.
-        
+
     Returns
     -------
     np.ndarray
         fr_hist of shape (n_pop, n_freq, nbins_pha, nbins_amp) with % change in firing rate
-        
+
     Examples
     --------
     >>> # Basic usage
     >>> fr_hist = compute_fr_hist_phase_amplitude(
-    ...     spike_df, lfp_data, ['PV', 'SST'], [25, 40], 
+    ...     spike_df, lfp_data, ['PV', 'SST'], [25, 40],
     ...     spike_fs=1000, lfp_fs=1000
     ... )
-    
+
     >>> # With custom binning
     >>> fr_hist = compute_fr_hist_phase_amplitude(
-    ...     spike_df, lfp_data, pop_names, [30], 
+    ...     spike_df, lfp_data, pop_names, [30],
     ...     nbins_pha=16, nbins_amp=16
     ... )
     """
     # Ensure spike and LFP sampling rates are consistent
     if spike_fs != lfp_fs:
-        print(f"Warning: spike_fs ({spike_fs}) != lfp_fs ({lfp_fs}). Using lfp_fs for spike indexing.")
-    
+        print(
+            f"Warning: spike_fs ({spike_fs}) != lfp_fs ({lfp_fs}). Using lfp_fs for spike indexing."
+        )
+
     if pop_num is None:
-        pop_num = {p: len(spike_df[spike_df['pop_name'] == p]['node_ids'].unique()) for p in pop_names}
+        pop_num = {
+            p: len(spike_df[spike_df["pop_name"] == p]["node_ids"].unique()) for p in pop_names
+        }
     if duration is None:
         duration = len(lfp_data) / lfp_fs  # in seconds
-    
+
     pha_bins = np.linspace(-np.pi, np.pi, nbins_pha + 1)
     quantiles = np.linspace(0, 1, nbins_amp + 1)
-    
+
     n_pop = len(pop_names)
     n_freq = len(freqs)
     fr_hist = np.zeros((n_pop, n_freq, nbins_pha, nbins_amp))
-    
+
     for i, pop in enumerate(pop_names):
-        pop_spikes = spike_df[spike_df['pop_name'] == pop]
+        pop_spikes = spike_df[spike_df["pop_name"] == pop]
         for j, freq in enumerate(freqs):
             # Get filtered LFP and compute phase and amplitude
             filtered_lfp = wavelet_filter(lfp_data.values, freq, lfp_fs)
             phase = np.angle(filtered_lfp)
             amplitude = np.abs(filtered_lfp)
-            
+
             # Compute amplitude quantiles
             amp_bins = np.quantile(amplitude, quantiles)
-            
+
             # Get spike phases and amplitudes
-            spike_times = pop_spikes['timestamps'].values
+            spike_times = pop_spikes["timestamps"].values
             # Convert spike times (ms) to LFP sample indices using lfp_fs
             spike_indices = np.round(spike_times / 1000 * lfp_fs).astype(int)
             spike_indices = np.clip(spike_indices, 0, len(phase) - 1)
-            
+
             spike_phases = phase[spike_indices]
             spike_amps = amplitude[spike_indices]
-            
+
             # Bin spikes
             fr, _, _ = np.histogram2d(spike_phases, spike_amps, bins=(pha_bins, amp_bins))
-            
+
             # Normalize to firing rate
             fr /= pop_num[pop] * duration
-            
+
             # Compute % change from mean
             fr_mean = fr.mean()
             if fr_mean > 0:
                 fr_hist[i, j] = 100 * (fr - fr_mean) / fr_mean
             else:
                 fr_hist[i, j] = 0  # Handle case where mean is zero
-    
+
     return fr_hist

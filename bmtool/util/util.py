@@ -1,5 +1,4 @@
 import argparse
-from logging import raiseExceptions
 import math
 import os
 import smtplib
@@ -10,15 +9,14 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import COMMASPACE, formatdate
 from os.path import basename
+from pathlib import Path
+from typing import Dict, List, Union
 
 import h5py
 import neuron
 import numpy as np
 import pandas as pd
 from neuron import h
-
-from typing import Dict, List, Optional, Union, Any
-from pathlib import Path
 
 # from bmtk.utils.io.cell_vars import CellVarsFile
 # from bmtk.analyzer.cell_vars import _get_cell_report
@@ -349,115 +347,115 @@ def load_edges(edges_file, edge_types_file):
     return edges  # return (population, edges_df)
 
 
-def load_edges_from_paths(
-    file_paths: str, 
-    verbose: bool = False
-) -> Dict[str, pd.DataFrame]:
+def load_edges_from_paths(file_paths: str, verbose: bool = False) -> Dict[str, pd.DataFrame]:
     """
     Load multiple SONATA edge files into a dictionary of DataFrames.
-    
+
     This function reads a configuration file containing multiple edge file pairs
     (CSV + H5) and loads each pair into a separate DataFrame. Each DataFrame
     contains merged edge connectivity and metadata information.
-    
+
     Parameters:
     -----------
     file_paths str
         Expected structure:  [{'edge_types_file': ..., 'edges_file': ...}, ...]
     verbose : bool, default False
         If True, print detailed information about the loading process
-        
+
     Returns:
     --------
     Dict[str, pd.DataFrame]
         Dictionary mapping edge dataset names to DataFrames.
         Keys are derived from CSV filenames (without '_edge_types.csv' suffix).
         Values are DataFrames containing merged edge data.
-        
+
     Notes:
     ------
     - If loading fails for any dataset, an empty DataFrame is stored for that key
     - Dataset names are extracted from CSV filenames for readability
     - All edge data follows SONATA format specifications
     """
-    
+
     # Load configuration and extract edge file information
-   
+
     edge_files_list = file_paths
-    
+
     if verbose:
-        print(f"Loading {len(edge_files_list)} edge datasets from config: {config}")
-    
+        print(f"Loading {len(edge_files_list)} edge datasets from provided file paths")
+
     edges_dict: Dict[str, pd.DataFrame] = {}
-    
+
     # Process each edge file pair
     for i, file_info in enumerate(edge_files_list):
-        csv_path = file_info['edge_types_file']
-        h5_path = file_info['edges_file']
-        
+        csv_path = file_info["edge_types_file"]
+        h5_path = file_info["edges_file"]
+
         # Generate meaningful key from h5 file
         with h5py.File(h5_path, "r") as connections_h5:
             key = list(connections_h5["/edges"])[0]
-            
+
         if verbose:
-            print(f"\n{'='*60}")
-            print(f"Loading edge set {i+1}/{len(edge_files_list)}: {key}")
-            print(f"{'='*60}")
-        
+            print(f"\n{'=' * 60}")
+            print(f"Loading edge set {i + 1}/{len(edge_files_list)}: {key}")
+            print(f"{'=' * 60}")
+
         try:
             # Load individual edge dataset
             df = load_sonata_edges_to_dataframe(csv_path, h5_path, verbose=verbose)
             edges_dict[key] = df
-            
+
             if verbose:
                 print(f"\nSuccessfully loaded {key}: {df.shape[0]} edges, {df.shape[1]} columns")
-                
+
                 # Show important columns for verification
-                important_cols = ['edge_type_id', 'source_node_id', 'target_node_id', 
-                                'model_template', 'afferent_section_id']
+                important_cols = [
+                    "edge_type_id",
+                    "source_node_id",
+                    "target_node_id",
+                    "model_template",
+                    "afferent_section_id",
+                ]
                 available_important = [col for col in important_cols if col in df.columns]
                 print(f"Key columns available: {available_important}")
-                
+
                 # Show model template information if available
-                if 'model_template' in df.columns:
-                    unique_templates = df['model_template'].dropna().unique()
+                if "model_template" in df.columns:
+                    unique_templates = df["model_template"].dropna().unique()
                     print(f"Model templates: {unique_templates}")
-                    
+
         except Exception as e:
             if verbose:
                 print(f"Error loading {key}: {str(e)}")
             edges_dict[key] = pd.DataFrame()  # Store empty DataFrame on error
-    
+
     if verbose:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("LOADING SUMMARY")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         for key, df in edges_dict.items():
             if not df.empty:
                 print(f"{key}: {df.shape[0]} edges, {df.shape[1]} columns")
-                if 'model_template' in df.columns:
-                    templates = df['model_template'].dropna().unique()
+                if "model_template" in df.columns:
+                    templates = df["model_template"].dropna().unique()
                     print(f"  Model templates: {list(templates)}")
-                if 'afferent_section_id' in df.columns:
-                    print(f"  afferent_section_id available")
+                if "afferent_section_id" in df.columns:
+                    print("  afferent_section_id available")
             else:
                 print(f"{key}: No data loaded (error occurred)")
-    
+
     return edges_dict
 
 
 def load_sonata_edges_to_dataframe(
-    csv_path: Union[str, Path], 
-    h5_path: Union[str, Path], 
-    verbose: bool = False
+    csv_path: Union[str, Path], h5_path: Union[str, Path], verbose: bool = False
 ) -> pd.DataFrame:
     """
     Load SONATA format edge data into a pandas DataFrame.
-    
-    This function combines edge connectivity data from HDF5 files with edge type 
-    metadata from CSV files according to the SONATA specification. H5 attributes 
+
+    This function combines edge connectivity data from HDF5 files with edge type
+    metadata from CSV files according to the SONATA specification. H5 attributes
     take precedence over CSV attributes when both exist for the same column.
-    
+
     Parameters:
     -----------
     csv_path : Union[str, Path]
@@ -466,7 +464,7 @@ def load_sonata_edges_to_dataframe(
         Path to the edges HDF5 file containing connectivity data
     verbose : bool, default False
         If True, print detailed information about the loading process
-        
+
     Returns:
     --------
     pd.DataFrame
@@ -480,7 +478,7 @@ def load_sonata_edges_to_dataframe(
         - edge_group_id, edge_group_index: Edge grouping information
         - Additional attributes from H5 edge groups
         - Edge type metadata from CSV (model_template, afferent_section_id, etc.)
-        
+
     Notes:
     ------
     - CSV file must be space-delimited and contain 'edge_type_id' column
@@ -488,200 +486,209 @@ def load_sonata_edges_to_dataframe(
     - When both H5 and CSV contain the same attribute, H5 version is kept
     - Dynamics parameters are flattened with 'dynamics_params/' prefix
     """
-    
+
     # Load edge types CSV (space-delimited)
-    edge_types_df = pd.read_csv(csv_path, sep=' ')
-    
+    edge_types_df = pd.read_csv(csv_path, sep=" ")
+
     if verbose:
         print(f"Loaded edge types from: {csv_path}")
         print(f"  Columns: {edge_types_df.columns.tolist()}")
         print(f"  Shape: {edge_types_df.shape}")
         print(f"  Unique edge_type_ids: {sorted(edge_types_df['edge_type_id'].unique())}")
-    
+
     # Open HDF5 file and process edge data
-    with h5py.File(h5_path, 'r') as h5f:
-        
+    with h5py.File(h5_path, "r") as h5f:
         # Navigate to edges group
-        edges_group = h5f['edges']
+        edges_group = h5f["edges"]
         populations = list(edges_group.keys())
-        
+
         if verbose:
             print(f"\nProcessing H5 file: {h5_path}")
             print(f"  Edge populations: {populations}")
-        
+
         # Process each population (typically one per file)
         all_edges_data: List[pd.DataFrame] = []
-        
+
         for pop_name in populations:
             pop_group = edges_group[pop_name]
-            
+
             if verbose:
                 print(f"\n  Processing population: {pop_name}")
-            
+
             # Read required SONATA edge datasets
-            edge_type_ids = pop_group['edge_type_id'][:]
-            source_node_ids = pop_group['source_node_id'][:]
-            target_node_ids = pop_group['target_node_id'][:]
-            edge_group_ids = pop_group['edge_group_id'][:]
-            edge_group_indices = pop_group['edge_group_index'][:]
-            
+            edge_type_ids = pop_group["edge_type_id"][:]
+            source_node_ids = pop_group["source_node_id"][:]
+            target_node_ids = pop_group["target_node_id"][:]
+            edge_group_ids = pop_group["edge_group_id"][:]
+            edge_group_indices = pop_group["edge_group_index"][:]
+
             if verbose:
                 print(f"    Unique edge_type_ids in H5: {sorted(np.unique(edge_type_ids))}")
                 print(f"    Number of edges: {len(edge_type_ids)}")
-            
+
             # Extract node population attributes with proper string handling
-            source_pop = pop_group['source_node_id'].attrs.get('node_population', '')
-            target_pop = pop_group['target_node_id'].attrs.get('node_population', '')
-            
+            source_pop = pop_group["source_node_id"].attrs.get("node_population", "")
+            target_pop = pop_group["target_node_id"].attrs.get("node_population", "")
+
             # Handle both string and bytes cases for population names
             if isinstance(source_pop, bytes):
                 source_pop = source_pop.decode()
             if isinstance(target_pop, bytes):
                 target_pop = target_pop.decode()
-            
+
             n_edges = len(edge_type_ids)
-            
+
             # Create base DataFrame with core edge attributes
-            edges_df = pd.DataFrame({
-                'edge_id': np.arange(n_edges),  # Sequential edge identifiers
-                'population': pop_name,
-                'edge_type_id': edge_type_ids,
-                'source_node_id': source_node_ids,
-                'target_node_id': target_node_ids,
-                'source_population': source_pop,
-                'target_population': target_pop,
-                'edge_group_id': edge_group_ids,
-                'edge_group_index': edge_group_indices
-            })
-            
+            edges_df = pd.DataFrame(
+                {
+                    "edge_id": np.arange(n_edges),  # Sequential edge identifiers
+                    "population": pop_name,
+                    "edge_type_id": edge_type_ids,
+                    "source_node_id": source_node_ids,
+                    "target_node_id": target_node_ids,
+                    "source_population": source_pop,
+                    "target_population": target_pop,
+                    "edge_group_id": edge_group_ids,
+                    "edge_group_index": edge_group_indices,
+                }
+            )
+
             # Process edge groups to extract additional attributes
             edge_group_names = [
-                key for key in pop_group.keys() 
-                if key not in ['edge_type_id', 'source_node_id', 'target_node_id', 
-                              'edge_group_id', 'edge_group_index', 'indices']
+                key
+                for key in pop_group.keys()
+                if key
+                not in [
+                    "edge_type_id",
+                    "source_node_id",
+                    "target_node_id",
+                    "edge_group_id",
+                    "edge_group_index",
+                    "indices",
+                ]
             ]
-            
+
             # Track which columns come from H5 for precedence handling
             edge_attributes: Dict[str, np.ndarray] = {}
             h5_column_names: set = set()
-            
+
             # Process each edge group to extract group-specific attributes
             for group_name in edge_group_names:
                 group = pop_group[group_name]
                 group_id = int(group_name)
-                
+
                 # Identify edges belonging to this group
                 group_mask = edge_group_ids == group_id
                 group_indices = edge_group_indices[group_mask]
-                
+
                 # Extract all attributes from this edge group
                 for attr_name in group.keys():
-                    if attr_name == 'dynamics_params': # sonata says this exist but i have yet to see it
+                    if (
+                        attr_name == "dynamics_params"
+                    ):  # sonata says this exist but i have yet to see it
                         # Handle nested dynamics parameters
                         dynamics_group = group[attr_name]
                         for param_name in dynamics_group.keys():
                             param_data = dynamics_group[param_name][:]
                             full_attr_name = f"dynamics_params/{param_name}"
-                            
+
                             # Initialize attribute array if not exists
                             if full_attr_name not in edge_attributes:
-                                edge_attributes[full_attr_name] = np.full(n_edges, np.nan, dtype=object)
-                            
+                                edge_attributes[full_attr_name] = np.full(
+                                    n_edges, np.nan, dtype=object
+                                )
+
                             # Assign data to appropriate edges
                             edge_attributes[full_attr_name][group_mask] = param_data[group_indices]
                             h5_column_names.add(full_attr_name)
                     else:
                         # Handle regular attributes with proper string decoding
                         attr_data = group[attr_name][:]
-                        
+
                         # Handle string attributes properly
-                        if attr_data.dtype.kind in ['S', 'U']:  # String or Unicode
+                        if attr_data.dtype.kind in ["S", "U"]:  # String or Unicode
                             # Decode bytes to strings if necessary
-                            if attr_data.dtype.kind == 'S':
-                                attr_data = np.array([
-                                    s.decode() if isinstance(s, bytes) else s 
-                                    for s in attr_data
-                                ])
-                        
+                            if attr_data.dtype.kind == "S":
+                                attr_data = np.array(
+                                    [s.decode() if isinstance(s, bytes) else s for s in attr_data]
+                                )
+
                         # Initialize attribute array with appropriate default
                         if attr_name not in edge_attributes:
-                            if attr_data.dtype.kind in ['S', 'U']:
-                                edge_attributes[attr_name] = np.full(n_edges, '', dtype=object)
+                            if attr_data.dtype.kind in ["S", "U"]:
+                                edge_attributes[attr_name] = np.full(n_edges, "", dtype=object)
                             else:
                                 edge_attributes[attr_name] = np.full(n_edges, np.nan, dtype=object)
-                        
+
                         # Assign data to appropriate edges
                         edge_attributes[attr_name][group_mask] = attr_data[group_indices]
                         h5_column_names.add(attr_name)
-            
+
             # Add all H5 attributes to the DataFrame
             for attr_name, attr_values in edge_attributes.items():
                 edges_df[attr_name] = attr_values
-            
+
             all_edges_data.append(edges_df)
-    
+
     # Combine all populations into single DataFrame
     if all_edges_data:
         combined_edges_df = pd.concat(all_edges_data, ignore_index=True)
     else:
         combined_edges_df = pd.DataFrame()
-    
+
     if verbose:
         print(f"\n  H5 columns: {sorted(h5_column_names)}")
         print(f"  CSV columns: {edge_types_df.columns.tolist()}")
         print(f"  Combined edges before merge: {combined_edges_df.shape}")
-    
+
     # Merge H5 data with CSV edge type metadata
     if not combined_edges_df.empty and not edge_types_df.empty:
         # Determine merge columns (typically just edge_type_id)
         merge_cols = []
-        if 'edge_type_id' in combined_edges_df.columns and 'edge_type_id' in edge_types_df.columns:
-            merge_cols.append('edge_type_id')
-        
-        if 'population' in edge_types_df.columns and 'population' in combined_edges_df.columns:
-            merge_cols.append('population')
-        
+        if "edge_type_id" in combined_edges_df.columns and "edge_type_id" in edge_types_df.columns:
+            merge_cols.append("edge_type_id")
+
+        if "population" in edge_types_df.columns and "population" in combined_edges_df.columns:
+            merge_cols.append("population")
+
         if merge_cols:
             if verbose:
                 # Debug merge compatibility
-                h5_edge_types = set(combined_edges_df['edge_type_id'].unique())
-                csv_edge_types = set(edge_types_df['edge_type_id'].unique())
+                h5_edge_types = set(combined_edges_df["edge_type_id"].unique())
+                csv_edge_types = set(edge_types_df["edge_type_id"].unique())
                 overlap = h5_edge_types.intersection(csv_edge_types)
-                
+
                 print(f"\n  Merging on columns: {merge_cols}")
                 print(f"  Edge types in H5: {sorted(h5_edge_types)}")
                 print(f"  Edge types in CSV: {sorted(csv_edge_types)}")
                 print(f"  Overlap: {sorted(overlap)}")
-            
+
             # Perform left join to preserve all H5 edges
             final_df = combined_edges_df.merge(
-                edge_types_df, 
-                on=merge_cols, 
-                how='left', 
-                suffixes=('', '_csv')
+                edge_types_df, on=merge_cols, how="left", suffixes=("", "_csv")
             )
-            
+
             if verbose:
                 print(f"  After merge: {final_df.shape}")
-            
+
             # Apply H5 precedence rule: H5 attributes override CSV attributes
             for col in edge_types_df.columns:
                 if col in merge_cols:
                     continue  # Skip merge columns
-                    
+
                 csv_col_name = f"{col}_csv" if f"{col}_csv" in final_df.columns else col
-                
+
                 # If column exists in H5, handle row-by-row precedence
                 if col in h5_column_names:
                     if csv_col_name in final_df.columns and csv_col_name != col:
                         # Row-by-row logic: use CSV value only where H5 is NaN
                         mask_h5_nan = final_df[col].isna()
                         final_df.loc[mask_h5_nan, col] = final_df.loc[mask_h5_nan, csv_col_name]
-                        
+
                         if verbose and mask_h5_nan.any():
                             n_filled = mask_h5_nan.sum()
                             print(f"    Column '{col}': filled {n_filled} NaN values from CSV")
-                        
+
                         # Remove CSV version after filling NaN values
                         final_df = final_df.drop(columns=[csv_col_name])
                     elif verbose:
@@ -697,17 +704,17 @@ def load_sonata_edges_to_dataframe(
             final_df = combined_edges_df
     else:
         final_df = combined_edges_df
-    
+
     if verbose:
         print(f"\nFinal DataFrame: {final_df.shape}")
         print(f"Final columns: {final_df.columns.tolist()}")
-    
+
     # Set edge_type_id as the index to match old function
-    if 'edge_type_id' in final_df.columns:
-        final_df = final_df.set_index('edge_type_id')
+    if "edge_type_id" in final_df.columns:
+        final_df = final_df.set_index("edge_type_id")
         if verbose:
             print(f"Set edge_type_id as index. Final shape: {final_df.shape}")
-    
+
     return final_df
 
 
@@ -1169,25 +1176,25 @@ def percent_connections(
         # - We want to count unique pairs, not directed connections
         # - The denominator should be n*(n-1)/2, not n*n
         is_recurrent = source_id == target_id
-        
+
         if is_recurrent:
             # For recurrent networks, calculate connectivity based on unique undirected pairs
             # This avoids double-counting reciprocal connections and uses correct denominator
             pair_counts = {}
             for _, row in cons.iterrows():
-                sid = row['source_node_id']
-                tid = row['target_node_id']
+                sid = row["source_node_id"]
+                tid = row["target_node_id"]
                 if sid != tid:  # Exclude self-connections
                     # Use symmetric pair key to count connections per unique pair
                     pair_key = (min(sid, tid), max(sid, tid))
                     if pair_key not in pair_counts:
                         pair_counts[pair_key] = 0
                     pair_counts[pair_key] += 1
-            
+
             # Count pairs with exactly 1 connection (unidirectional) vs 2 connections (bidirectional)
             num_uni = sum(1 for count in pair_counts.values() if count == 1)
             num_bi = sum(1 for count in pair_counts.values() if count == 2)
-            
+
             # Total possible unique pairs (excluding self-connections)
             total_possible = num_sources * (num_sources - 1) / 2
             total = round((num_uni + num_bi) / total_possible * 100, 2)
@@ -1199,7 +1206,7 @@ def percent_connections(
             total = round(total_cons / (num_sources * num_targets) * 100, 2)
             uni = round(num_uni / (num_sources * num_targets) * 100, 2)
             bi = round(num_bi / (num_sources * num_targets) * 100, 2)
-        
+
         if method == "total":
             return total
         if method == "uni":
@@ -1243,7 +1250,7 @@ def connection_divergence(
                 cons = cons[~gap_col]
             except:
                 raise Exception("error")
-        
+
         if cons.empty:
             if method == "mean+std":
                 return (0, 0)
@@ -1314,7 +1321,7 @@ def gap_junction_connections(
     method="convergence",
 ):
     def total_connection_relationship(
-        **kwargs
+        **kwargs,
     ):  # reduced version of original function; only gets mean+std
         edges = kwargs["edges"]
         source_id_type = kwargs["sid"]
@@ -1323,10 +1330,9 @@ def gap_junction_connections(
         target_id = kwargs["target_id"]
 
         cons = edges[(edges[source_id_type] == source_id) & (edges[target_id_type] == target_id)]
-        # print(cons)
 
         try:
-            cons = cons[cons["is_gap_junction"]==True]
+            cons = cons[cons["is_gap_junction"]]
         except:
             raise Exception("no gap junctions found to drop from connections")
         mean = cons["target_node_id"].value_counts().mean()
@@ -1346,7 +1352,7 @@ def gap_junction_connections(
         # print(cons)
 
         try:
-            cons = cons[cons["is_gap_junction"]==True]
+            cons = cons[cons["is_gap_junction"]]
         except:
             raise Exception("no gap junctions found to drop from connections")
 
