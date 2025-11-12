@@ -11,8 +11,6 @@ import xarray as xr
 from fooof import FOOOF
 from fooof.sim.gen import gen_model
 from scipy import signal
-from numpy.typing import ArrayLike, NDArray
-from typing import Tuple
 
 from ..bmplot.connections import is_notebook
 
@@ -277,14 +275,10 @@ def generate_resd_from_fooof(fooof_model: FOOOF) -> tuple:
 
 
 def get_fooof_freq_band(
-    gaussian_params,
-    freq_range,
-    width_limit=(0., np.inf),
-    top_n_peaks=1,
-    bandwidth_n_sigma=1.5
+    gaussian_params, freq_range, width_limit=(0.0, np.inf), top_n_peaks=1, bandwidth_n_sigma=1.5
 ):
     """Get frequency band of the top N peaks in the FOOOF results within a given band of interest.
-    
+
     Parameters
     ----------
     gaussian_params : NDArray[float]
@@ -308,7 +302,11 @@ def get_fooof_freq_band(
     """
     # find peaks within the given band of interest
     peak_inds = (gaussian_params[:, 0] >= freq_range[0]) & (gaussian_params[:, 0] <= freq_range[1])
-    peak_inds = peak_inds & (gaussian_params[:, 2] >= width_limit[0]) & (gaussian_params[:, 2] <= width_limit[1])
+    peak_inds = (
+        peak_inds
+        & (gaussian_params[:, 2] >= width_limit[0])
+        & (gaussian_params[:, 2] <= width_limit[1])
+    )
     peak_inds = np.nonzero(peak_inds)[0]
     if peak_inds.size == 0:
         return (np.nan, np.nan), peak_inds
@@ -321,7 +319,7 @@ def get_fooof_freq_band(
     # get the combined frequency band of the top peaks
     band_peaks = gaussian_params[peak_inds, :]
     band_widths = bandwidth_n_sigma * band_peaks[:, 2]  # one-sided bandwidth
-    band_freqs = np.fmax(band_peaks[:, [0]] + np.outer(band_widths, [-1, 1]), 0.)
+    band_freqs = np.fmax(band_peaks[:, [0]] + np.outer(band_widths, [-1, 1]), 0.0)
     band = (band_freqs[:, 0].min(), band_freqs[:, 1].max())  # combined frequency band
     return band, peak_inds
 

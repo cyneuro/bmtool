@@ -430,7 +430,7 @@ class BlockRunner:
             # Update JSON file with new parameter value
             if self.json_file_path is None and self.param_values is None:
                 source_dir = block.component_path
-                destination_dir = f"{source_dir}{i+1}"
+                destination_dir = f"{source_dir}{i + 1}"
                 block.component_path = destination_dir
                 shutil.copytree(
                     source_dir, destination_dir, dirs_exist_ok=True
@@ -442,7 +442,7 @@ class BlockRunner:
                 new_value = self.param_values[i]
                 # hope this path is correct
                 source_dir = block.component_path
-                destination_dir = f"{source_dir}{i+1}"
+                destination_dir = f"{source_dir}{i + 1}"
                 block.component_path = destination_dir
 
                 shutil.copytree(
@@ -468,7 +468,7 @@ class BlockRunner:
             print(f"Submitting block: {block.block_name}", flush=True)
             block.submit_block()
             if self.webhook:
-                message = f"SIMULATION UPDATE: Block {i} has been submitted! There are {(len(self.blocks)-1)-i} left to be submitted"
+                message = f"SIMULATION UPDATE: Block {i} has been submitted! There are {(len(self.blocks) - 1) - i} left to be submitted"
                 send_teams_message(self.webhook, message)
 
             # Wait for the block to complete
@@ -497,7 +497,7 @@ class BlockRunner:
         for i, block in enumerate(self.blocks):
             if self.param_values is None:
                 source_dir = block.component_path
-                destination_dir = f"{source_dir}{i+1}"
+                destination_dir = f"{source_dir}{i + 1}"
                 block.component_path = destination_dir
                 shutil.copytree(
                     source_dir, destination_dir, dirs_exist_ok=True
@@ -511,7 +511,7 @@ class BlockRunner:
                 new_value = self.param_values[i]
 
                 source_dir = block.component_path
-                destination_dir = f"{source_dir}{i+1}"
+                destination_dir = f"{source_dir}{i + 1}"
                 block.component_path = destination_dir
 
                 shutil.copytree(
