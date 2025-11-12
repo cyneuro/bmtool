@@ -2,9 +2,11 @@ import time
 import types
 from abc import ABC, abstractmethod
 from functools import partial
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
+from numpy.typing import ArrayLike, NDArray
 from scipy.optimize import minimize_scalar
 from scipy.special import erf
 
@@ -17,7 +19,7 @@ report_name = "conn.csv"
 
 
 # Utility Functions
-def num_prop(ratio, N):
+def num_prop(ratio: ArrayLike, N: int) -> NDArray[np.integer]:
     """
     Calculate numbers of total N in proportion to ratio.
 
@@ -38,7 +40,7 @@ def num_prop(ratio, N):
     return np.diff(np.round(N / p[-1] * p).astype(int)).reshape(ratio.shape)
 
 
-def decision(prob, size=None):
+def decision(prob: float, size: Optional[Union[int, tuple]] = None) -> Union[bool, NDArray[np.bool_]]:
     """
     Make random decision(s) based on input probability.
 
@@ -58,7 +60,7 @@ def decision(prob, size=None):
     return rng.random(size) < prob
 
 
-def decisions(prob):
+def decisions(prob: ArrayLike) -> NDArray[np.bool_]:
     """
     Make multiple random decisions based on input probabilities.
 
@@ -77,7 +79,7 @@ def decisions(prob):
     return rng.random(prob.shape) < prob
 
 
-def euclid_dist(p1, p2):
+def euclid_dist(p1: ArrayLike, p2: ArrayLike) -> float:
     """
     Euclidean distance between two points
     p1, p2: Coordinates in numpy array
@@ -86,12 +88,12 @@ def euclid_dist(p1, p2):
     return (dvec @ dvec) ** 0.5
 
 
-def spherical_dist(node1, node2):
+def spherical_dist(node1: dict, node2: dict) -> float:
     """Spherical distance between two input nodes"""
     return euclid_dist(node1["positions"], node2["positions"]).item()
 
 
-def cylindrical_dist_z(node1, node2):
+def cylindrical_dist_z(node1: dict, node2: dict) -> float:
     """Cylindircal distance between two input nodes (ignoring z-axis)"""
     return euclid_dist(node1["positions"][:2], node2["positions"][:2]).item()
 
