@@ -1138,7 +1138,8 @@ def plot_fr_hist_phase_amplitude(
         if common_clim:
             vmin, vmax = fr_hist.min(), fr_hist.max()
         else:
-            vmin, vmax = None, None
+            # Calculate min/max for this population across all frequencies
+            vmin, vmax = fr_hist[i].min(), fr_hist[i].max()
             
         for j, freq_label in enumerate(freq_labels):
             ax = axs[i, j]
@@ -1158,14 +1159,9 @@ def plot_fr_hist_phase_amplitude(
             else:
                 ax.set_ylabel('Amplitude (quantile)')
                 
-            if not common_clim:
-                plt.colorbar(mappable=pcm, ax=ax, 
-                           label='Firing rate (% Change)' if j == n_freq - 1 else None, 
-                           pad=0.02)
-                           
-        if common_clim:
-            plt.colorbar(mappable=pcm, ax=axs[i], 
-                        label='Firing rate (% Change)', pad=0.02)
+        # Add single colorbar for the entire population (all frequencies)
+        plt.colorbar(mappable=pcm, ax=axs[i], 
+                    label='Firing rate (% Change)', pad=0.02)
     
     return fig, axs
 
