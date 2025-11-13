@@ -2,6 +2,7 @@
 Module for processing BMTK LFP output.
 """
 
+
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,8 +12,6 @@ import xarray as xr
 from fooof import FOOOF
 from fooof.sim.gen import gen_model
 from scipy import signal
-from numpy.typing import ArrayLike, NDArray
-from typing import Tuple
 
 from ..bmplot.connections import is_notebook
 

@@ -2022,8 +2022,8 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
             print(f"  Bidirectional:  {nonelec_recp} ({nonelec_recp/nonelec_pairs:.1%} of nonelec pairs)")
             print(f"  No connection:  {nonelec_pairs - nonelec_uni - nonelec_recp} ({(nonelec_pairs - nonelec_uni - nonelec_recp)/nonelec_pairs:.1%} of nonelec pairs)")
             
-            print(f"\nOverall chemical connectivity:")
-            print(f"  Numbers of connections: unidirectional, reciprocal")
+            print("\nOverall chemical connectivity:")
+            print("  Numbers of connections: unidirectional, reciprocal")
             print(f"  Number of connected pairs: ({n_uni}, {n_recp})")
             print(f"  Fraction of connected pairs: ({n_uni/n_pairs:.2%}, {n_recp/n_pairs:.2%})")
             print(f"  Total chemical connectivity: {(n_uni + n_recp)/n_pairs:.2%}")

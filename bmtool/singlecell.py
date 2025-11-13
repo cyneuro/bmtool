@@ -10,7 +10,7 @@ import pandas as pd
 from neuron import h
 from scipy.optimize import curve_fit
 
-from bmtool.util.util import load_templates_from_config, load_config
+from bmtool.util.util import load_config, load_templates_from_config
 
 
 def load_biophys1():
@@ -1351,8 +1351,8 @@ class Profiler:
         """
         try:
             import ipywidgets as widgets
-            from IPython.display import display, clear_output
             import matplotlib.pyplot as plt
+            from IPython.display import clear_output, display
         except ImportError:
             raise ImportError("ipywidgets and matplotlib are required for interactive mode. Install with: pip install ipywidgets matplotlib")
         

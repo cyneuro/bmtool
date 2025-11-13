@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-import os, sys
+import sys
+
 from bmtk.simulator import bionet
 
 
