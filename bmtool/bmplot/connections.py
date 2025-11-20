@@ -19,10 +19,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from IPython import get_ipython
-
 from neuron import h
 
 from ..util import util
+
 
 def is_notebook() -> bool:
     """
