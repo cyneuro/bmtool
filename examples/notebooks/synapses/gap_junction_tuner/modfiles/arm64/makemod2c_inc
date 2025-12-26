@@ -1,0 +1,176 @@
+./AMPA_NMDA_STP.c: ../AMPA_NMDA_STP.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "AMPA_NMDA_STP.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./AMPA_NMDA_STP.o: ./AMPA_NMDA_STP.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./GABA_A_STP.c: ../GABA_A_STP.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "GABA_A_STP.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./GABA_A_STP.o: ./GABA_A_STP.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./Gfluct.c: ../Gfluct.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "Gfluct.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./Gfluct.o: ./Gfluct.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./cadad.c: ../cadad.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "cadad.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./cadad.o: ./cadad.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./cal2.c: ../cal2.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "cal2.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./cal2.o: ./cal2.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./can_mig.c: ../can_mig.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "can_mig.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./can_mig.o: ./can_mig.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./exp2syn_stp.c: ../exp2syn_stp.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "exp2syn_stp.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./exp2syn_stp.o: ./exp2syn_stp.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./gap.c: ../gap.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "gap.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./gap.o: ./gap.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./h_kole.c: ../h_kole.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "h_kole.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./h_kole.o: ./h_kole.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./imCA3.c: ../imCA3.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "imCA3.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./imCA3.o: ./imCA3.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./kBK.c: ../kBK.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "kBK.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./kBK.o: ./kBK.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./kap_BS.c: ../kap_BS.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "kap_BS.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./kap_BS.o: ./kap_BS.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./kdmc_BS.c: ../kdmc_BS.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "kdmc_BS.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./kdmc_BS.o: ./kdmc_BS.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./kdrCA3.c: ../kdrCA3.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "kdrCA3.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./kdrCA3.o: ./kdrCA3.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./kdr_BS.c: ../kdr_BS.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "kdr_BS.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./kdr_BS.o: ./kdr_BS.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./kdrinter.c: ../kdrinter.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "kdrinter.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./kdrinter.o: ./kdrinter.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./leak.c: ../leak.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "leak.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./leak.o: ./leak.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./nainter.c: ../nainter.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "nainter.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./nainter.o: ./nainter.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./napCA3.c: ../napCA3.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "napCA3.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./napCA3.o: ./napCA3.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./natCA3.c: ../natCA3.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "natCA3.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./natCA3.o: ./natCA3.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./nax_BS.c: ../nax_BS.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "nax_BS.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./nax_BS.o: ./nax_BS.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
+./vecevent_coreneuron.c: ../vecevent_coreneuron.mod
+	@printf " -> $(C_GREEN)NMODL$(C_RESET) $<\\n"
+	(cd "..";  MODLUNIT=$(NRNUNITS) $(NOCMODL) "vecevent_coreneuron.mod" -o "/Users/gregglickert/Documents/GitHub/bmtool/docs/examples/notebooks/synapses/gap_junction_tuner/modfiles/arm64")
+
+./vecevent_coreneuron.o: ./vecevent_coreneuron.c
+	@printf " -> $(C_GREEN)Compiling$(C_RESET) $<\\n"
+	$(COMPILE) -I".." $(INCLUDES) -fPIC -c $< -o $@
+
