@@ -1,91 +1,46 @@
-## Package Management
+# Contributing to BMTool
 
-Uploading to PyPI
-```python
-# Install setuptools and wheel
-python -m pip install --user --upgrade setuptools wheel
+Thank you for your interest in contributing to BMTool!
 
-# Run from setup.py directory
-python setup.py sdist bdist_wheel
+## Getting Started
 
-# Files will be generated in the dist directory
-dist/
-  example_pkg_your_username-0.0.1-py3-none-any.whl
-  example_pkg_your_username-0.0.1.tar.gz
-
-# Install Twine
-python -m pip install --user --upgrade twine
-
-# Upload to Test
-python -m twine upload --repository-url https://test.pypi.org/legacy/ dist/*
-
-# Upload to PyPI
-python -m twine upload dist/*
-
-# Install from Test
-python -m pip install --index-url https://test.pypi.org/simple/ example-pkg-your-username
-
-# Install from PyPI
-python -m pip install example-pkg-your-username
-
-```
-
-## All together
-```
-python -m pip install --upgrade setuptools wheel
-python setup.py sdist bdist_wheel
-python -m pip install --upgrade twine
-python -m twine upload dist/*
-
-```
-
-## Code Quality Tools
-
-BMTool uses pre-commit hooks to maintain code quality and consistency. These hooks automatically check and format your code before each commit.
-
-### Setting up pre-commit
-
+1. **Clone the repository**:
 ```bash
-# Install pre-commit in your environment
-pip install pre-commit
-
-# Install the git hooks
-pre-commit install
+git clone https://github.com/cyneuro/bmtool.git
+cd bmtool
 ```
 
-After installation, pre-commit will automatically run on `git commit`. The hooks will:
-
-1. Format your code with Ruff
-2. Check for common issues and errors
-3. Ensure consistent file formatting
-
-If any checks fail, the commit will be aborted, and you'll need to fix the issues before committing again.
-
-### Running pre-commit manually
-
-You can run the pre-commit checks manually on all files:
-
+2. **Create a development environment**:
 ```bash
-pre-commit run --all-files
+conda create -n bmtool-dev python=3.10
+conda activate bmtool-dev
 ```
 
-Or on specific files:
-
-```bash
-pre-commit run --files path/to/file1.py path/to/file2.py
-```
-
-### Ruff
-
-BMTool uses Ruff as a code quality tool:
-
-1. **Ruff**: A fast Python linter and formatter
-
-To install these tools in your development environment:
-
+3. **Install in development mode with dev dependencies**:
 ```bash
 pip install -e ".[dev]"
 ```
 
-## Travis Testing
-To be implemented.
+4. **Set up pre-commit hooks**:
+```bash
+pre-commit install
+```
+
+This will automatically run code formatting and linting checks before each commit.
+
+## Making Contributions
+
+1. Create a new branch for your changes
+2. Make your changes and commit them
+3. Push to your branch and open a Pull Request
+4. Fill out the PR template
+
+Pre-commit hooks will ensure your code meets our style guidelines. If any checks fail, fix the issues and commit again.
+
+## Questions?
+
+- Open an [issue](https://github.com/cyneuro/bmtool/issues)
+- Email: gregglickert@mail.missouri.edu
+
+---
+

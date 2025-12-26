@@ -27,6 +27,11 @@ The `lfp` module provides tools for analyzing local field potentials (LFP) and e
       show_root_heading: true
       heading_level: 3
 
+::: bmtool.analysis.lfp.get_fooof_freq_band
+    options:
+      show_root_heading: true
+      heading_level: 3
+
 ::: bmtool.analysis.lfp.calculate_SNR
     options:
       show_root_heading: true
@@ -42,12 +47,27 @@ The `lfp` module provides tools for analyzing local field potentials (LFP) and e
       show_root_heading: true
       heading_level: 3
 
+::: bmtool.analysis.lfp.get_lfp_power
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.lfp.get_lfp_phase
+    options:
+      show_root_heading: true
+      heading_level: 3
+
 ::: bmtool.analysis.lfp.cwt_spectrogram
     options:
       show_root_heading: true
       heading_level: 3
 
 ::: bmtool.analysis.lfp.cwt_spectrogram_xarray
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.lfp.get_windowed_data
     options:
       show_root_heading: true
       heading_level: 3

@@ -1,64 +1,119 @@
 # bmtool
-A collection of modules to make developing [Neuron](https://www.neuron.yale.edu/neuron/) and [BMTK](https://alleninstitute.github.io/bmtk/) models easier.
 
-[![license](https://img.shields.io/github/license/mashape/apistatus.svg?maxAge=2592000)](https://github.com/cyneuro/bmtool/blob/master/LICENSE)
+<div align="center">
 
-## In depth documentation and examples can be found [here](https://cyneuro.github.io/bmtool/)
+**A comprehensive toolkit for developing computational neuroscience models with NEURON and BMTK**
 
-## Getting Started
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/cyneuro/bmtool/blob/master/LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI version](https://badge.fury.io/py/bmtool.svg)](https://badge.fury.io/py/bmtool)
+[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://cyneuro.github.io/bmtool/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-**Installation**
+[Documentation](https://cyneuro.github.io/bmtool/) | [Installation](#installation) | [Features](#features) | [Contributing](CONTRIBUTING.md)
+
+</div>
+
+---
+
+## Overview
+
+BMTool is a collection of utilities designed to streamline the development, analysis, and execution of large-scale neural network models using [NEURON](https://www.neuron.yale.edu/neuron/) and the [Brain Modeling Toolkit (BMTK)](https://alleninstitute.github.io/bmtk/). Whether you're building single-cell models, developing synaptic mechanisms, or running parameter sweeps on HPC clusters, BMTool provides the tools you need.
+
+## Features
+
+### Single Cell Modeling
+- Analyze passive membrane properties
+- Current injection protocols and voltage responses
+- F-I curve generation and analysis
+- Impedance profile calculations
+
+### Synapse Development
+- Synaptic property tuning and validation
+- Gap junction modeling and analysis
+- Visualization of synaptic responses
+- Parameter optimization tools
+
+### Network Construction
+- Custom connectors for complex network models
+- Distance-dependent connection probabilities
+- Connection matrix visualization
+- Network statistics and validation
+
+### Visualization
+- Network position plotting (2D/3D)
+- Connection matrices and weight distributions
+- Raster plots and spike train analysis
+- LFP and ECP visualization
+- Power spectral density analysis
+
+### SLURM Cluster Management
+- YAML-based simulation configuration
+- Automated parameter sweeps (value-based and percentage-based)
+- Multi-environment support for different HPC devices
+- Job monitoring and status tracking
+- Microsoft Teams webhook notifications
+
+### Analysis Tools
+- Spike rate and population activity analysis
+- Phase locking and spike-phase timing
+- Oscillation detection with FOOOF
+- Power spectral analysis
+- Batch processing capabilities
+
+## Installation
+
+Install the latest stable release from PyPI:
+
 ```bash
 pip install bmtool
 ```
-For developers who will be pulling down additional updates to this repository regularly use the following instead.
-```bash
-git clone https://github.com/cyneuro/bmtool.git
-cd bmtool
-python setup.py develop
-```
-Then download updates (from this directory) with
-```bash
-git pull
-```
 
-BMTool provides several modules to simplify the development of computational neuroscience models with NEURON and the Brain Modeling Toolkit (BMTK). It offers functionality for:
+For development installation, see the [Contributing Guide](CONTRIBUTING.md).
 
-- **Single Cell Modeling**: Analyze passive properties, current injection, FI curves, and impedance profiles
-- **Synapse Development**: Tools for tuning synaptic properties and gap junctions
-- **Network Construction**: Connectors for building complex network structures
-- **Visualization**: Plot connection matrices, network positions, and more
-- **Simulation Management**: Run simulations on SLURM clusters with parameter sweeps
-- **Analysis**: Process simulation results efficiently
+## Documentation
 
-## Development
+Comprehensive documentation with examples and tutorials is available at:
 
-### Code Quality Tools
+**[https://cyneuro.github.io/bmtool/](https://cyneuro.github.io/bmtool/)**
 
-BMTool now uses modern Python code quality tools to maintain high standards:
+### Key Documentation Sections
 
-- **Ruff**: A fast Python linter for code style and error checking
-- **Pyright**: Static type checker to catch type-related bugs early
+- [SLURM Module](https://cyneuro.github.io/bmtool/modules/slurm/) - Run simulations on HPC clusters
+- [Analysis Workflows](https://cyneuro.github.io/bmtool/modules/analysis/) - Process simulation results
+- [Network Building](https://cyneuro.github.io/bmtool/modules/connectors/) - Construct neural networks
+- [Single Cell Tools](https://cyneuro.github.io/bmtool/modules/singlecell/) - Analyze individual neurons
+- [API Reference](https://cyneuro.github.io/bmtool/api/) - Complete API documentation
 
-To install development dependencies in your conda environment:
+## Contributing
 
-```bash
-# Activate your conda environment
-conda activate bmtk
+We welcome contributions from the community! To get started:
 
-# Install development dependencies
-pip install -e ".[dev]"
-```
+1. Read the [Contributing Guide](CONTRIBUTING.md) for setup instructions
+2. Check out open [issues](https://github.com/cyneuro/bmtool/issues) or propose new features
+3. Follow our code style guidelines using Ruff and pre-commit hooks
 
-To run the tools:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed information on development setup, code standards, and the pull request process.
 
-```bash
-# Run Ruff linter
-ruff check bmtool/
+## Requirements
 
-# Run Ruff with auto-fix
-ruff check --fix bmtool/
+- Python 3.8+
+- NEURON 8.2.4
+- BMTK
+- See [setup.py](setup.py) for complete dependency list
 
-# Run Pyright type checker
-pyright
-```
+## License
+
+BMTool is released under the [MIT License](LICENSE).
+
+## Support
+
+For questions, bug reports, or feature requests:
+
+- 📖 Check the [documentation](https://cyneuro.github.io/bmtool/)
+- 🐛 Open an [issue](https://github.com/cyneuro/bmtool/issues)
+- 💬 Contact: gregglickert@mail.missouri.edu
+
+## Acknowledgments
+
+Developed by the Neural Engineering Laboratory at the University of Missouri.

@@ -36,3 +36,8 @@ The `entrainment` module provides tools for analyzing the entrainment of spikes 
     options:
       show_root_heading: true
       heading_level: 3
+
+::: bmtool.analysis.entrainment.compute_fr_hist_phase_amplitude
+    options:
+      show_root_heading: true
+      heading_level: 3

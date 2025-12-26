@@ -72,6 +72,25 @@ ppc2 = calculate_ppc2(
 print(f"PPC2 value: {ppc2}")
 ```
 
+## Signal-Signal Phase Locking
+
+Calculate phase-locking between two signals (e.g., two LFP channels):
+
+```python
+from bmtool.analysis.entrainment import calculate_signal_signal_plv
+
+# Calculate PLV between two LFP signals
+plv = calculate_signal_signal_plv(
+    signal1=lfp_channel1,
+    signal2=lfp_channel2,
+    fs=10000,
+    freq_of_interest=40,  # For wavelet method
+    filter_method='wavelet',
+    bandwidth=2.0
+)
+print(f"Signal-signal PLV: {plv}")
+```
+
 ## Population Entrainment Analysis
 
 Analyze entrainment across multiple cells or populations:
@@ -100,32 +119,35 @@ for pop, cell_dict in entrainment_dict.items():
             print(f"  {freq} Hz: {value:.3f}")
 ```
 
-## Spike-LFP Power Correlation
+## Get Spikes in LFP Cycles
 
-Analyze correlation between spike rates and LFP power:
+Extract spikes that occur within specific LFP oscillation cycles:
 
 ```python
-from bmtool.analysis.entrainment import calculate_spike_rate_power_correlation
+from bmtool.analysis.entrainment import get_spikes_in_cycle
 
-# Calculate correlations across frequency bands
-correlation_results, frequencies = calculate_spike_rate_power_correlation(
-    spike_rate=population_rates,
-    lfp_data=lfp_signal,
-    fs=fs,
-    pop_names=['Pyramidal', 'Basket'],
-    filter_method='wavelet',
-    freq_range=(4, 100),
-    freq_step=4
+# Get spikes occurring within LFP cycles
+spikes_in_cycles = get_spikes_in_cycle(
+    spike_times=spike_times,
+    lfp_data=lfp_data,
+    fs=10000,
+    freq_of_interest=40
 )
+```
 
-# Plot results
-for pop in correlation_results:
-    corr_values = [correlation_results[pop][f]['correlation'] for f in frequencies]
-    plt.plot(frequencies, corr_values, label=pop)
+## Firing Rate Phase-Amplitude Analysis
 
-plt.xlabel('Frequency (Hz)')
-plt.ylabel('Correlation Coefficient')
-plt.legend()
-plt.title('Spike Rate-LFP Power Correlation')
-plt.show()
+Compute firing rate as a function of LFP phase and amplitude:
+
+```python
+from bmtool.analysis.entrainment import compute_fr_hist_phase_amplitude
+
+# Compute phase-amplitude histogram for firing rates
+phase_amp_hist = compute_fr_hist_phase_amplitude(
+    spike_df=spikes_df,
+    lfp_data=lfp_data,
+    fs=10000,
+    pop_names=['Pyramidal', 'Basket'],
+    freq_of_interest=40
+)
 ```
