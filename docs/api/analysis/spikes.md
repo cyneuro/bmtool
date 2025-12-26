@@ -21,3 +21,23 @@ The `spikes` module provides functions for loading and analyzing spike data from
     options:
       show_root_heading: true
       heading_level: 3
+
+::: bmtool.analysis.spikes.average_spike_rate_over_windows
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.spikes.compare_firing_over_times
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.spikes.find_bursting_cells
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: bmtool.analysis.spikes.find_highest_firing_cells
+    options:
+      show_root_heading: true
+      heading_level: 3

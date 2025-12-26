@@ -47,5 +47,12 @@ setup(
     ],
     packages=find_packages(),  # Automatically finds all packages
     include_package_data=True,
+    extras_require={
+        "dev": [
+            "ruff>=0.1.0",
+            "pyright>=1.1.0",
+            "pre-commit>=3.0.0",
+        ]
+    },
     entry_points={"console_scripts": ["bmtool = bmtool.manage:cli"]},
 )
