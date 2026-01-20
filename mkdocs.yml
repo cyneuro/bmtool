@@ -91,6 +91,7 @@ nav:
       - Connectors:
           - Overview: examples/connectors.md
           - Connectors Tutorial: examples/notebooks/connectors/connectors.ipynb
+          - Gaussian Dropoff Tutorial: examples/notebooks/connectors/GaussianDropoff_tutorial.ipynb
       - BMPlot:
           - Overview: examples/bmplot.md
           - BMPlot Tutorial: examples/notebooks/bmplot/bmplot.ipynb
