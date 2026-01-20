@@ -1658,6 +1658,7 @@ class CorrelatedGapJunction(GapJunction):
                 self.save_connection_report()
         return nsyns
     
+
 class GapJunctionConditionalReciprocalConnector(AbstractConnector):
     """
     Object for building reciprocal chemical synapses in BMTK network model with
@@ -2042,7 +2043,6 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
     def save_connection_report(self):
         # Implement similar to ReciprocalConnector if needed
         pass
-
 
 
 class OneToOneSequentialConnector(AbstractConnector):
