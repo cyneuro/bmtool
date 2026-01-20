@@ -82,8 +82,7 @@ nav:
   - Examples:
       - Single Cell:
           - Overview: examples/single-cell.md
-          - Allen Database Tutorial: examples/notebooks/single_cell/Allen_tutorial/singleCellTutorial.ipynb
-          - Neuron Hoc Tutorial: examples/notebooks/single_cell/Neuron_hoc/Single-Cell-Tuning.ipynb
+          - Single Cell Analysis: examples/notebooks/single_cell/single_cell_analysis.ipynb
       - Synapses:
           - Overview: examples/synapses.md
           - BMTK Chemical Synapse Tuner: examples/notebooks/synapses/synaptic_tuner/bmtk_chem_syn_tuner.ipynb
