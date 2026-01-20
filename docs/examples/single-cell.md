@@ -42,6 +42,7 @@ plt.show()
 ```
 
 This will output the passive properties:
+
 ```
 Injection location: Cell_Cf[0].soma[0](0.5)
 Recording: Cell_Cf[0].soma[0](0.5)._ref_v
@@ -108,13 +109,13 @@ plt.show()
 
 For more detailed examples with rich output and visualizations, check out our Jupyter notebook tutorials:
 
-### Allen Cell Model Tutorial
+### Comprehensive Single Cell Analysis Tutorial
 
-The [Allen Cell Tutorial](notebooks/single_cell/Allen_tutorial/singleCellTutorial.ipynb) demonstrates how to use BMTool with Allen Institute cell models. In this tutorial, you'll learn:
+The [Comprehensive Single Cell Analysis Tutorial](notebooks/single_cell/single_cell_analysis.ipynb) provides a thorough guide to using BMTool's single cell analysis module. This tutorial covers:
 
-- How to load Allen Institute cell models from SWC and JSON files
-- How to analyze and characterize the cell's electrophysiological properties
-- How to visualize the results of various protocols
+- Multiple methods for loading neurons: Allen Database, NEURON HOC templates, and Python class-based models
+- Various electrophysiological analysis techniques: Passive properties, Current clamp, Impedance (ZAP), and Frequency-Intensity (FI) curves
+- Consistent analysis methods that work regardless of how the cell was loaded
 
 ### Other Examples
 

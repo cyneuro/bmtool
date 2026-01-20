@@ -43,7 +43,8 @@ DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS = {
     "tdur": 500.0,
     "dt": 0.025,
     "celsius": 20,
-    "iclamp_amp": -0.01, # nA
+    "iclamp_amp": -0.01,  # nA
+    "vclamp": False,
 }
 
 
@@ -109,7 +110,7 @@ class SynapseTuner:
         self.current_network = network  # Store current network selection
         # Cache for loaded dynamics params JSON by filename to avoid repeated disk reads
         self._syn_params_cache = {}
-        h.load_file('stdrun.hoc')
+        h.load_file("stdrun.hoc")
 
         if hoc_cell is None:
             if config is None and (mechanisms_dir is None or templates_dir is None):
@@ -131,7 +132,9 @@ class SynapseTuner:
                 self._prebuilt_conn_type_settings = {}
                 try:
                     for net in self.available_networks:
-                        self._prebuilt_conn_type_settings[net] = self._build_conn_type_settings_from_config(config, network=net)
+                        self._prebuilt_conn_type_settings[net] = (
+                            self._build_conn_type_settings_from_config(config, network=net)
+                        )
                 except Exception as e:
                     print(f"Warning: error prebuilding conn_type_settings for networks: {e}")
 
@@ -139,19 +142,25 @@ class SynapseTuner:
             if config is not None:
                 print("Building conn_type_settings from BMTK config files...")
                 # If we prebuilt per-network settings, use the one for the requested network
-                if hasattr(self, '_prebuilt_conn_type_settings') and network in getattr(self, '_prebuilt_conn_type_settings', {}):
+                if hasattr(self, "_prebuilt_conn_type_settings") and network in getattr(
+                    self, "_prebuilt_conn_type_settings", {}
+                ):
                     conn_type_settings = self._prebuilt_conn_type_settings[network]
                 else:
-                    conn_type_settings = self._build_conn_type_settings_from_config(config, network=network)
-                print(f"Found {len(conn_type_settings)} connection types: {list(conn_type_settings.keys())}")
-                
+                    conn_type_settings = self._build_conn_type_settings_from_config(
+                        config, network=network
+                    )
+                print(
+                    f"Found {len(conn_type_settings)} connection types: {list(conn_type_settings.keys())}"
+                )
+
                 # If connection is not specified, use the first available connection
                 if connection is None and conn_type_settings:
                     connection = list(conn_type_settings.keys())[0]
                     print(f"No connection specified, using first available: {connection}")
             else:
                 raise ValueError("conn_type_settings must be provided if config is not specified.")
-                
+
         if connection is None:
             raise ValueError("connection must be provided or inferable from conn_type_settings.")
         if connection not in conn_type_settings:
@@ -167,7 +176,7 @@ class SynapseTuner:
         else:
             # Merge defaults with user-provided
             self.general_settings = {**DEFAULT_GENERAL_SETTINGS, **general_settings}
-        
+
         # Store the initial connection name and set up connection
         self.current_connection = connection
         self.conn = self.conn_type_settings[connection]
@@ -237,10 +246,12 @@ class SynapseTuner:
 
         self._set_up_recorders()
 
-    def _build_conn_type_settings_from_config(self, config_path: str, node_set: Optional[str] = None, network: Optional[str] = None) -> Dict[str, dict]:
+    def _build_conn_type_settings_from_config(
+        self, config_path: str, node_set: Optional[str] = None, network: Optional[str] = None
+    ) -> Dict[str, dict]:
         """
         Build conn_type_settings from BMTK simulation and circuit config files using the method used by relation matrix function in util.
-        
+
         Parameters:
         -----------
         config_path : str
@@ -250,57 +261,59 @@ class SynapseTuner:
         network : Optional[str]
             Name of the specific network dataset to access (e.g., 'network_to_network').
             If None, processes all available networks.
-            
+
         Returns:
         --------
         Dict[str, dict]
             Dictionary with connection names as keys and connection settings as values.
 
         NOTE: a lot of this code could probs be made a bit more simple or just removed i kinda tried a bunch of things and it works now
-        but is kinda complex and some code is probs note needed 
-            
+        but is kinda complex and some code is probs note needed
+
         """
         # Load configuration and get nodes and edges using util.py methods
         config = load_config(config_path)
         # Ensure the config dict knows its source path so path substitutions can be resolved
         try:
             # load_config may return a dict; store path used so callers can resolve $COMPONENTS_DIR
-            config['config_path'] = config_path
+            config["config_path"] = config_path
         except Exception:
             pass
         nodes = load_nodes_from_config(config_path)
         edges = load_edges_from_config(config_path)
-        
+
         conn_type_settings = {}
-        
+
         # If a specific network is requested, only process that one
         if network:
             if network not in edges:
-                print(f"Warning: Network '{network}' not found in edges. Available networks: {list(edges.keys())}")
+                print(
+                    f"Warning: Network '{network}' not found in edges. Available networks: {list(edges.keys())}"
+                )
                 return conn_type_settings
             edge_datasets = {network: edges[network]}
         else:
             edge_datasets = edges
-        
+
         # Process each edge dataset using the util.py approach
         for edge_dataset_name, edge_df in edge_datasets.items():
             if edge_df.empty:
                 continue
-            
+
             # Create merged DataFrames with source and target node information like util.py does
             source_node_df = None
             target_node_df = None
 
             # First, try to deterministically parse the edge_dataset_name for patterns like '<src>_to_<tgt>'
             # e.g., 'network_to_network', 'extnet_to_network'
-            if '_to_' in edge_dataset_name:
-                parts = edge_dataset_name.split('_to_')
+            if "_to_" in edge_dataset_name:
+                parts = edge_dataset_name.split("_to_")
                 if len(parts) == 2:
                     src_name, tgt_name = parts
                     if src_name in nodes:
-                        source_node_df = nodes[src_name].add_prefix('source_')
+                        source_node_df = nodes[src_name].add_prefix("source_")
                     if tgt_name in nodes:
-                        target_node_df = nodes[tgt_name].add_prefix('target_')
+                        target_node_df = nodes[tgt_name].add_prefix("target_")
 
             # If not found by parsing name, fall back to inspecting a sample edge row which contains
             # explicit 'source_population' and 'target_population' fields (this avoids reversing source/target)
@@ -308,99 +321,111 @@ class SynapseTuner:
                 sample_edge = edge_df.iloc[0] if len(edge_df) > 0 else None
                 if sample_edge is not None:
                     # Use explicit population names from the edge entry
-                    source_pop_name = sample_edge.get('source_population', '')
-                    target_pop_name = sample_edge.get('target_population', '')
+                    source_pop_name = sample_edge.get("source_population", "")
+                    target_pop_name = sample_edge.get("target_population", "")
                     if source_pop_name in nodes:
-                        source_node_df = nodes[source_pop_name].add_prefix('source_')
+                        source_node_df = nodes[source_pop_name].add_prefix("source_")
                     if target_pop_name in nodes:
-                        target_node_df = nodes[target_pop_name].add_prefix('target_')
+                        target_node_df = nodes[target_pop_name].add_prefix("target_")
 
             # As a last resort, attempt to heuristically match by prefix/suffix of the dataset name
             if source_node_df is None or target_node_df is None:
                 for pop_name, node_df in nodes.items():
-                    if source_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
-                        source_node_df = node_df.add_prefix('source_')
-                    elif target_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
-                        target_node_df = node_df.add_prefix('target_')
-            
+                    if source_node_df is None and (
+                        edge_dataset_name.startswith(pop_name)
+                        or edge_dataset_name.endswith(pop_name)
+                    ):
+                        source_node_df = node_df.add_prefix("source_")
+                    elif target_node_df is None and (
+                        edge_dataset_name.startswith(pop_name)
+                        or edge_dataset_name.endswith(pop_name)
+                    ):
+                        target_node_df = node_df.add_prefix("target_")
+
             # If we still don't have the node data, skip this edge dataset
             if source_node_df is None or target_node_df is None:
                 print(f"Warning: Could not find node data for edge dataset {edge_dataset_name}")
                 continue
-            
+
             # Merge edge data with source node info
             edges_with_source = pd.merge(
-                edge_df.reset_index(), 
-                source_node_df, 
-                how='left', 
-                left_on='source_node_id', 
-                right_index=True
+                edge_df.reset_index(),
+                source_node_df,
+                how="left",
+                left_on="source_node_id",
+                right_index=True,
             )
-            
+
             # Merge with target node info
             edges_with_nodes = pd.merge(
-                edges_with_source, 
-                target_node_df, 
-                how='left', 
-                left_on='target_node_id', 
-                right_index=True
+                edges_with_source,
+                target_node_df,
+                how="left",
+                left_on="target_node_id",
+                right_index=True,
             )
-            
+
             # Get unique edge types from the merged dataset
-            if 'edge_type_id' in edges_with_nodes.columns:
-                edge_types = edges_with_nodes['edge_type_id'].unique()
+            if "edge_type_id" in edges_with_nodes.columns:
+                edge_types = edges_with_nodes["edge_type_id"].unique()
             else:
                 edge_types = [0]  # Single edge type
-            
+
             # Process each edge type
             for edge_type_id in edge_types:
                 # Filter edges for this type
-                if 'edge_type_id' in edges_with_nodes.columns:
-                    edge_type_data = edges_with_nodes[edges_with_nodes['edge_type_id'] == edge_type_id]
+                if "edge_type_id" in edges_with_nodes.columns:
+                    edge_type_data = edges_with_nodes[
+                        edges_with_nodes["edge_type_id"] == edge_type_id
+                    ]
                 else:
                     edge_type_data = edges_with_nodes
-                
+
                 if len(edge_type_data) == 0:
                     continue
-                
+
                 # Get representative edge for this type
                 edge_info = edge_type_data.iloc[0]
-                
+
                 # Skip gap junctions
-                if 'is_gap_junction' in edge_info and pd.notna(edge_info['is_gap_junction']) and edge_info['is_gap_junction']:
+                if (
+                    "is_gap_junction" in edge_info
+                    and pd.notna(edge_info["is_gap_junction"])
+                    and edge_info["is_gap_junction"]
+                ):
                     continue
-                
+
                 # Get population names from the merged data (this is the key improvement!)
-                source_pop = edge_info.get('source_pop_name', '')
-                target_pop = edge_info.get('target_pop_name', '')
-                
+                source_pop = edge_info.get("source_pop_name", "")
+                target_pop = edge_info.get("target_pop_name", "")
+
                 # Get target cell template from the merged data
-                target_model_template = edge_info.get('target_model_template', '')
-                if target_model_template.startswith('hoc:'):
-                    target_cell_type = target_model_template.replace('hoc:', '')
+                target_model_template = edge_info.get("target_model_template", "")
+                if target_model_template.startswith("hoc:"):
+                    target_cell_type = target_model_template.replace("hoc:", "")
                 else:
                     target_cell_type = target_model_template
-                
+
                 # Create connection name using the actual population names
                 if source_pop and target_pop:
                     conn_name = f"{source_pop}2{target_pop}"
                 else:
                     conn_name = f"{edge_dataset_name}_type_{edge_type_id}"
-                
+
                 # Get synaptic model template
-                model_template = edge_info.get('model_template', 'exp2syn')
+                model_template = edge_info.get("model_template", "exp2syn")
 
                 # Build connection settings early so we can attach metadata like dynamics file name
                 conn_settings = {
-                    'spec_settings': {
-                        'post_cell': target_cell_type,
-                        'vclamp_amp': -70.0,  # Default voltage clamp amplitude
-                        'sec_x': 0.5,  # Default location on section
-                        'sec_id': 0,   # Default to soma
+                    "spec_settings": {
+                        "post_cell": target_cell_type,
+                        "vclamp_amp": -70.0,  # Default voltage clamp amplitude
+                        "sec_x": 0.5,  # Default location on section
+                        "sec_id": 0,  # Default to soma
                         # level_of_detail may be overridden by dynamics params below
-                        'level_of_detail': model_template,
+                        "level_of_detail": model_template,
                     },
-                    'spec_syn_param': {}
+                    "spec_syn_param": {},
                 }
 
                 # Load synaptic parameters from dynamics_params file if available.
@@ -412,8 +437,8 @@ class SynapseTuner:
                 syn_params = {}
                 dynamics_file_name = None
                 # Prefer a top-level 'dynamics_params' column if present
-                if 'dynamics_params' in edge_info and pd.notna(edge_info.get('dynamics_params')):
-                    val = edge_info.get('dynamics_params')
+                if "dynamics_params" in edge_info and pd.notna(edge_info.get("dynamics_params")):
+                    val = edge_info.get("dynamics_params")
                     # Some CSV loaders can produce bytes or numpy types; coerce to str
                     try:
                         dynamics_file_name = str(val).strip()
@@ -421,18 +446,22 @@ class SynapseTuner:
                         dynamics_file_name = None
 
                 # If we found a dynamics file name, use it directly (skip token parsing)
-                if dynamics_file_name and dynamics_file_name.upper() != 'NULL':
+                if dynamics_file_name and dynamics_file_name.upper() != "NULL":
                     try:
-                        conn_settings['spec_settings']['dynamics_params_file'] = dynamics_file_name
+                        conn_settings["spec_settings"]["dynamics_params_file"] = dynamics_file_name
                         # use a cache to avoid re-reading the same JSON multiple times
                         if dynamics_file_name in self._syn_params_cache:
                             syn_params = self._syn_params_cache[dynamics_file_name]
                         else:
-                            syn_params = self._load_synaptic_params_from_config(config, dynamics_file_name)
+                            syn_params = self._load_synaptic_params_from_config(
+                                config, dynamics_file_name
+                            )
                             # cache result (even if empty dict) to avoid repeated lookups
                             self._syn_params_cache[dynamics_file_name] = syn_params
                     except Exception as e:
-                        print(f"Warning: could not load dynamics_params file '{dynamics_file_name}' for edge {edge_dataset_name}: {e}")
+                        print(
+                            f"Warning: could not load dynamics_params file '{dynamics_file_name}' for edge {edge_dataset_name}: {e}"
+                        )
 
                 # If a dynamics params JSON filename was provided, prefer using its basename
                 # as the connection name so that the UI matches the JSON definitions.
@@ -448,52 +477,60 @@ class SynapseTuner:
                         pass
 
                 # If the dynamics params defined a level_of_detail, override the default
-                if isinstance(syn_params, dict) and 'level_of_detail' in syn_params:
-                    conn_settings['spec_settings']['level_of_detail'] = syn_params.get('level_of_detail', model_template)
+                if isinstance(syn_params, dict) and "level_of_detail" in syn_params:
+                    conn_settings["spec_settings"]["level_of_detail"] = syn_params.get(
+                        "level_of_detail", model_template
+                    )
 
                 # Add synaptic parameters, excluding level_of_detail
                 for key, value in syn_params.items():
-                    if key != 'level_of_detail':
-                        conn_settings['spec_syn_param'][key] = value
+                    if key != "level_of_detail":
+                        conn_settings["spec_syn_param"][key] = value
                 else:
                     # Fallback: some SONATA/H5 edge files expose dynamics params as flattened
                     # columns named like 'dynamics_params/<param>'. If no filename was given,
                     # gather any such columns from edge_info and use them as spec_syn_param.
                     for col in edge_info.index:
-                        if isinstance(col, str) and col.startswith('dynamics_params/'):
-                            param_key = col.split('/', 1)[1]
+                        if isinstance(col, str) and col.startswith("dynamics_params/"):
+                            param_key = col.split("/", 1)[1]
                             try:
                                 val = edge_info[col]
                                 if pd.notna(val):
-                                    conn_settings['spec_syn_param'][param_key] = val
+                                    conn_settings["spec_syn_param"][param_key] = val
                             except Exception:
                                 # Ignore malformed entries
                                 pass
-                
+
                 # Add weight from edge info if available
-                if 'syn_weight' in edge_info and pd.notna(edge_info['syn_weight']):
-                    conn_settings['spec_syn_param']['initW'] = float(edge_info['syn_weight'])
-                
+                if "syn_weight" in edge_info and pd.notna(edge_info["syn_weight"]):
+                    conn_settings["spec_syn_param"]["initW"] = float(edge_info["syn_weight"])
+
                 # Handle afferent section information
-                if 'afferent_section_id' in edge_info and pd.notna(edge_info['afferent_section_id']):
-                    conn_settings['spec_settings']['sec_id'] = int(edge_info['afferent_section_id'])
-                
-                if 'afferent_section_pos' in edge_info and pd.notna(edge_info['afferent_section_pos']):
-                    conn_settings['spec_settings']['sec_x'] = float(edge_info['afferent_section_pos'])
-                
+                if "afferent_section_id" in edge_info and pd.notna(
+                    edge_info["afferent_section_id"]
+                ):
+                    conn_settings["spec_settings"]["sec_id"] = int(edge_info["afferent_section_id"])
+
+                if "afferent_section_pos" in edge_info and pd.notna(
+                    edge_info["afferent_section_pos"]
+                ):
+                    conn_settings["spec_settings"]["sec_x"] = float(
+                        edge_info["afferent_section_pos"]
+                    )
+
                 # Store in connection settings
                 conn_type_settings[conn_name] = conn_settings
 
         return conn_type_settings
-    
+
     def _load_available_networks(self) -> None:
         """
         Load available network names from the config file for the network dropdown feature.
-        
+
         This method is automatically called during initialization when a config file is provided.
-        It populates the available_networks list which enables the network dropdown in 
+        It populates the available_networks list which enables the network dropdown in
         InteractiveTuner when multiple networks are available.
-        
+
         Network Dropdown Behavior:
         -------------------------
         - If only one network exists: No network dropdown is shown
@@ -504,29 +541,29 @@ class SynapseTuner:
         if self.config is None:
             self.available_networks = []
             return
-            
+
         try:
             edges = load_edges_from_config(self.config)
             self.available_networks = list(edges.keys())
-            
+
             # Set current network to first available if not specified
             if self.current_network is None and self.available_networks:
                 self.current_network = self.available_networks[0]
         except Exception as e:
             print(f"Warning: Could not load networks from config: {e}")
             self.available_networks = []
-    
+
     def _load_synaptic_params_from_config(self, config: dict, dynamics_params: str) -> dict:
         """
         Load synaptic parameters from dynamics params file using config information.
-        
+
         Parameters:
         -----------
         config : dict
             BMTK configuration dictionary
         dynamics_params : str
             Dynamics parameters filename
-            
+
         Returns:
         --------
         dict
@@ -534,33 +571,36 @@ class SynapseTuner:
         """
         try:
             # Get the synaptic models directory from config
-            synaptic_models_dir = config.get('components', {}).get('synaptic_models_dir', '')
+            synaptic_models_dir = config.get("components", {}).get("synaptic_models_dir", "")
             if synaptic_models_dir:
                 # Handle path variables
-                if synaptic_models_dir.startswith('$'):
+                if synaptic_models_dir.startswith("$"):
                     # This is a placeholder, try to resolve it
-                    config_dir = os.path.dirname(config.get('config_path', ''))
-                    synaptic_models_dir = synaptic_models_dir.replace('$COMPONENTS_DIR', 
-                                                                    os.path.join(config_dir, 'components'))
-                    synaptic_models_dir = synaptic_models_dir.replace('$BASE_DIR', config_dir)
-                
+                    config_dir = os.path.dirname(config.get("config_path", ""))
+                    synaptic_models_dir = synaptic_models_dir.replace(
+                        "$COMPONENTS_DIR", os.path.join(config_dir, "components")
+                    )
+                    synaptic_models_dir = synaptic_models_dir.replace("$BASE_DIR", config_dir)
+
                 dynamics_file = os.path.join(synaptic_models_dir, dynamics_params)
-                
+
                 if os.path.exists(dynamics_file):
-                    with open(dynamics_file, 'r') as f:
+                    with open(dynamics_file, "r") as f:
                         return json.load(f)
                 else:
                     print(f"Warning: Dynamics params file not found: {dynamics_file}")
         except Exception as e:
             print(f"Warning: Error loading synaptic parameters: {e}")
-        
+
         return {}
-    
+
     @classmethod
-    def list_connections_from_config(cls, config_path: str, network: Optional[str] = None) -> Dict[str, dict]:
+    def list_connections_from_config(
+        cls, config_path: str, network: Optional[str] = None
+    ) -> Dict[str, dict]:
         """
         Class method to list all available connections from a BMTK config file without creating a tuner.
-        
+
         Parameters:
         -----------
         config_path : str
@@ -568,7 +608,7 @@ class SynapseTuner:
         network : Optional[str]
             Name of the specific network dataset to access (e.g., 'network_to_network').
             If None, processes all available networks.
-            
+
         Returns:
         --------
         Dict[str, dict]
@@ -576,23 +616,25 @@ class SynapseTuner:
         """
         # Create a temporary instance just to use the parsing methods
         temp_tuner = cls.__new__(cls)  # Create without calling __init__
-        conn_type_settings = temp_tuner._build_conn_type_settings_from_config(config_path, network=network)
-        
+        conn_type_settings = temp_tuner._build_conn_type_settings_from_config(
+            config_path, network=network
+        )
+
         # Create a summary of connections with key info
         connections_summary = {}
         for conn_name, settings in conn_type_settings.items():
             connections_summary[conn_name] = {
-                'post_cell': settings['spec_settings']['post_cell'],
-                'synapse_type': settings['spec_settings']['level_of_detail'],
-                'parameters': list(settings['spec_syn_param'].keys())
+                "post_cell": settings["spec_settings"]["post_cell"],
+                "synapse_type": settings["spec_settings"]["level_of_detail"],
+                "parameters": list(settings["spec_syn_param"].keys()),
             }
-        
+
         return connections_summary
 
     def _switch_connection(self, new_connection: str) -> None:
         """
         Switch to a different connection type and update all related properties.
-        
+
         Parameters:
         -----------
         new_connection : str
@@ -600,20 +642,21 @@ class SynapseTuner:
         """
         if new_connection not in self.conn_type_settings:
             raise ValueError(f"Connection '{new_connection}' not found in conn_type_settings.")
-        
+
         # Update current connection
         self.current_connection = new_connection
         self.conn = self.conn_type_settings[new_connection]
         self.synaptic_props = self.conn["spec_syn_param"]
-        
+
         # Update slider vars for new connection
-        if hasattr(self, 'original_slider_vars'):
+        if hasattr(self, "original_slider_vars"):
             # Filter slider vars based on new connection's parameters
             self.slider_vars = {
-                key: value for key, value in self.synaptic_props.items() 
+                key: value
+                for key, value in self.synaptic_props.items()
                 if key in self.original_slider_vars
             }
-            
+
             # Check for missing keys and try to get them from the synapse
             for key in self.original_slider_vars:
                 if key not in self.synaptic_props:
@@ -621,31 +664,35 @@ class SynapseTuner:
                         # We'll get this after recreating the synapse
                         pass
                     except AttributeError as e:
-                        print(f"Warning: Could not access '{key}' for connection '{new_connection}': {e}")
+                        print(
+                            f"Warning: Could not access '{key}' for connection '{new_connection}': {e}"
+                        )
         else:
             self.slider_vars = self.synaptic_props
-        
+
         # Need to recreate the cell if it's different
         if self.hoc_cell is None:
             # Check if we need a different cell type
             new_cell_type = self.conn["spec_settings"]["post_cell"]
-            if not hasattr(self, '_current_cell_type') or self._current_cell_type != new_cell_type:
+            if not hasattr(self, "_current_cell_type") or self._current_cell_type != new_cell_type:
                 self._current_cell_type = new_cell_type
                 self._set_up_cell()
-        
+
         # Recreate synapse for new connection
         self._set_up_synapse()
-        
+
         # Update any missing slider vars from the new synapse
-        if hasattr(self, 'original_slider_vars'):
+        if hasattr(self, "original_slider_vars"):
             for key in self.original_slider_vars:
                 if key not in self.synaptic_props:
                     try:
                         value = getattr(self.syn, key)
                         self.slider_vars[key] = value
                     except AttributeError as e:
-                        print(f"Warning: Could not access '{key}' for connection '{new_connection}': {e}")
-        
+                        print(
+                            f"Warning: Could not access '{key}' for connection '{new_connection}': {e}"
+                        )
+
         # Recreate NetCon connections with new synapse
         self.nc = h.NetCon(
             self.nstim,
@@ -661,31 +708,31 @@ class SynapseTuner:
             self.general_settings["delay"],
             self.general_settings["weight"],
         )
-        
+
         # Recreate voltage clamp with potentially new cell
         self.vcl = h.VClamp(self.cell.soma[0](0.5))
-        
+
         # Recreate recorders for new synapse
         self._set_up_recorders()
-        
+
         # Reset NEURON state
         h.finitialize()
-        
+
         print(f"Successfully switched to connection: {new_connection}")
 
     def _switch_network(self, new_network: str) -> None:
         """
         Switch to a different network and rebuild conn_type_settings for the new network.
-        
-        This method is called when the user selects a different network from the network 
-        dropdown in InteractiveTuner. It performs a complete rebuild of the connection 
+
+        This method is called when the user selects a different network from the network
+        dropdown in InteractiveTuner. It performs a complete rebuild of the connection
         types available for the new network.
-        
+
         Parameters:
         -----------
         new_network : str
             Name of the new network to switch to.
-            
+
         Network Switching Process:
         -------------------------
         1. Validates the new network exists in available_networks
@@ -697,34 +744,43 @@ class SynapseTuner:
         7. Updates UI components to reflect the changes
         """
         if new_network not in self.available_networks:
-            print(f"Warning: Network '{new_network}' not found in available networks: {self.available_networks}")
+            print(
+                f"Warning: Network '{new_network}' not found in available networks: {self.available_networks}"
+            )
             return
-        
+
         if new_network == self.current_network:
             return  # No change needed
-        
+
         # Update current network
         self.current_network = new_network
-        
+
         # Switch conn_type_settings using prebuilt data if available, otherwise build on-demand
         if self.config:
             print(f"Switching connections for network: {new_network}")
-            if hasattr(self, '_prebuilt_conn_type_settings') and new_network in self._prebuilt_conn_type_settings:
+            if (
+                hasattr(self, "_prebuilt_conn_type_settings")
+                and new_network in self._prebuilt_conn_type_settings
+            ):
                 self.conn_type_settings = self._prebuilt_conn_type_settings[new_network]
             else:
                 # Fallback: build on-demand (slower)
-                self.conn_type_settings = self._build_conn_type_settings_from_config(self.config, network=new_network)
-            
+                self.conn_type_settings = self._build_conn_type_settings_from_config(
+                    self.config, network=new_network
+                )
+
             # Update available connections and select first one if current doesn't exist
             available_connections = list(self.conn_type_settings.keys())
             if self.current_connection not in available_connections and available_connections:
                 self.current_connection = available_connections[0]
-                print(f"Connection '{self.current_connection}' not available in new network. Switched to: {available_connections[0]}")
-            
+                print(
+                    f"Connection '{self.current_connection}' not available in new network. Switched to: {available_connections[0]}"
+                )
+
             # Switch to the (potentially new) connection
             if self.current_connection in self.conn_type_settings:
                 self._switch_connection(self.current_connection)
-            
+
             print(f"Successfully switched to network: {new_network}")
             print(f"Available connections: {available_connections}")
 
@@ -1014,7 +1070,7 @@ class SynapseTuner:
         axs[0].plot(self.t, current)
         if self.ispk is not None:
             for num in range(len(self.ispk)):
-                axs[0].text(self.t[self.ispk[num]], current[self.ispk[num]], f"{str(num+1)}")
+                axs[0].text(self.t[self.ispk[num]], current[self.ispk[num]], f"{str(num + 1)}")
 
         axs[0].set_ylabel("Synaptic Current (pA)")
 
@@ -1051,7 +1107,7 @@ class SynapseTuner:
             for j in range(num_vars_to_plot, len(axs)):
                 fig.delaxes(axs[j])
 
-        #plt.tight_layout()
+        # plt.tight_layout()
         fig.suptitle(f"Connection: {self.current_connection}")
         self.last_figure = plt.gcf()
         plt.show()
@@ -1186,7 +1242,7 @@ class SynapseTuner:
         amp = np.array(amp)
         amp = amp * 1000  # scale up
         amp = amp.reshape(-1, amp.shape[-1])
-        
+
         # Calculate 90th percentile amplitude for normalization
         percentile_90 = np.percentile(amp, 90)
 
@@ -1220,12 +1276,13 @@ class SynapseTuner:
             print(
                 f"    Values: ({np.mean(amp[:, 1:2]):.3f} - {np.mean(amp[:, 0:1]):.3f}) / {percentile_90:.3f} = {ppr:.3f}\n"
             )
-            
 
             # Induction Calculation: (Avg (6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude
             induction = (np.mean(amp[:, 5:8]) - np.mean(amp[:, :1])) / percentile_90
             print("Induction")
-            print("    Calculation: (Avg(6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude")
+            print(
+                "    Calculation: (Avg(6th, 7th, 8th pulses) - Avg 1st pulse) / 90th percentile amplitude"
+            )
             print(
                 f"    Values: {np.mean(amp[:, 5:8]):.3f} - {np.mean(amp[:, :1]):.3f} / {percentile_90:.3f} = {induction:.3f}\n"
             )
@@ -1291,17 +1348,19 @@ class SynapseTuner:
                 self.vcl.dur[i] = vcldur[1][i]
             h.finitialize(70 * mV)
             h.continuerun(self.tstop * ms)
-            #h.run()
+            # h.run()
         else:
             # Continuous input mode: ensure simulation runs long enough for the full stimulation duration
-            self.tstop = self.general_settings["tstart"] + self.w_duration.value + 300 # 300ms buffer time 
+            self.tstop = (
+                self.general_settings["tstart"] + self.w_duration.value + 300
+            )  # 300ms buffer time
             self.nstim.interval = 1000 / input_frequency
             self.nstim.number = np.ceil(self.w_duration.value / 1000 * input_frequency + 1)
             self.nstim2.number = 0
 
             h.finitialize(70 * mV)
             h.continuerun(self.tstop * ms)
-            #h.run()
+            # h.run()
 
     def InteractiveTuner(self):
         """
@@ -1352,7 +1411,7 @@ class SynapseTuner:
             options=connection_options,
             value=self.current_connection,
             description="Connection:",
-            style={'description_width': 'initial'}
+            style={"description_width": "initial"},
         )
 
         # Network dropdown - only shown if config was provided and multiple networks are available
@@ -1363,7 +1422,7 @@ class SynapseTuner:
                 options=self.available_networks,
                 value=self.current_network,
                 description="Network:",
-                style={'description_width': 'initial'}
+                style={"description_width": "initial"},
             )
 
         w_run = widgets.Button(description="Run Train", icon="history", button_style="primary")
@@ -1374,17 +1433,17 @@ class SynapseTuner:
             icon="fast-backward",
             button_style="warning",
         )
-        
+
         # Voltage clamp amplitude input
-        default_vclamp_amp = getattr(self.conn['spec_settings'], 'vclamp_amp', -70.0)
+        default_vclamp_amp = getattr(self.conn["spec_settings"], "vclamp_amp", -70.0)
         w_vclamp_amp = widgets.FloatText(
             value=default_vclamp_amp,
             description="V_clamp (mV):",
             step=5.0,
-            style={'description_width': 'initial'},
-            layout=widgets.Layout(width='150px')
+            style={"description_width": "initial"},
+            layout=widgets.Layout(width="150px"),
         )
-        
+
         w_input_mode = widgets.ToggleButton(
             value=False, description="Continuous input", icon="eject", button_style="info"
         )
@@ -1398,28 +1457,30 @@ class SynapseTuner:
 
         # Save functionality widgets
         save_path_text = widgets.Text(
-            value="plot.png",
-            description="Save path:",
-            layout=widgets.Layout(width='300px')
+            value="plot.png", description="Save path:", layout=widgets.Layout(width="300px")
         )
         save_button = widgets.Button(description="Save Plot", icon="save", button_style="success")
 
         def save_plot(b):
-            if hasattr(self, 'last_figure') and self.last_figure is not None:
+            if hasattr(self, "last_figure") and self.last_figure is not None:
                 try:
                     # Create a new figure with just the first subplot (synaptic current)
                     fig, ax = plt.subplots(figsize=(8, 6))
-                    
+
                     # Get the axes from the original figure
                     original_axes = self.last_figure.get_axes()
                     if len(original_axes) > 0:
                         first_ax = original_axes[0]
-                        
+
                         # Copy the data from the first subplot
                         for line in first_ax.get_lines():
-                            ax.plot(line.get_xdata(), line.get_ydata(), 
-                                   color=line.get_color(), label=line.get_label())
-                        
+                            ax.plot(
+                                line.get_xdata(),
+                                line.get_ydata(),
+                                color=line.get_color(),
+                                label=line.get_label(),
+                            )
+
                         # Copy axis labels and title
                         ax.set_xlabel(first_ax.get_xlabel())
                         ax.set_ylabel(first_ax.get_ylabel())
@@ -1427,14 +1488,14 @@ class SynapseTuner:
                         ax.set_xlim(first_ax.get_xlim())
                         ax.legend()
                         ax.grid(True)
-                        
+
                         # Save the new figure
                         fig.savefig(save_path_text.value)
                         plt.close(fig)  # Close the temporary figure
                         print(f"Synaptic current plot saved to {save_path_text.value}")
                     else:
                         print("No subplots found in the figure")
-                        
+
                 except Exception as e:
                     print(f"Error saving plot: {e}")
             else:
@@ -1472,23 +1533,23 @@ class SynapseTuner:
 
         # Create output widget for displaying results
         output_widget = widgets.Output()
-        
+
         def run_single_event(*args):
             clear_output()
             display(ui)
             display(output_widget)
-            
+
             self.vclamp = w_vclamp.value
             # Update voltage clamp amplitude if voltage clamp is enabled
             if self.vclamp:
                 # Update the voltage clamp amplitude settings
-                self.conn['spec_settings']['vclamp_amp'] = w_vclamp_amp.value
+                self.conn["spec_settings"]["vclamp_amp"] = w_vclamp_amp.value
                 # Update general settings if they exist
-                if hasattr(self, 'general_settings'):
-                    self.general_settings['vclamp_amp'] = w_vclamp_amp.value
+                if hasattr(self, "general_settings"):
+                    self.general_settings["vclamp_amp"] = w_vclamp_amp.value
             # Update synaptic properties based on slider values
             self.ispk = None
-            
+
             # Clear previous results and run simulation
             output_widget.clear_output()
             with output_widget:
@@ -1501,22 +1562,22 @@ class SynapseTuner:
                 if new_connection != self.current_connection:
                     # Switch to new connection
                     self._switch_connection(new_connection)
-                    
+
                     # Recreate dynamic sliders for new connection
                     self.dynamic_sliders = create_dynamic_sliders()
-                    
+
                     # Update UI
                     update_ui_layout()
                     update_ui()
-                    
+
             except Exception as e:
                 print(f"Error switching connection: {e}")
 
         def on_network_change(*args):
             """
             Handle network dropdown change events.
-            
-            This callback is triggered when the user selects a different network from 
+
+            This callback is triggered when the user selects a different network from
             the network dropdown. It coordinates the complete switching process:
             1. Calls _switch_network() to rebuild connections for the new network
             2. Updates the connection dropdown options with new network's connections
@@ -1530,37 +1591,37 @@ class SynapseTuner:
                 if new_network != self.current_network:
                     # Switch to new network
                     self._switch_network(new_network)
-                    
+
                     # Update connection dropdown options with new network's connections
                     connection_options = list(self.conn_type_settings.keys())
                     w_connection.options = connection_options
                     if connection_options:
                         w_connection.value = self.current_connection
-                    
+
                     # Recreate dynamic sliders for new connection
                     self.dynamic_sliders = create_dynamic_sliders()
-                    
+
                     # Update UI
                     update_ui_layout()
                     update_ui()
-                    
+
             except Exception as e:
                 print(f"Error switching network: {e}")
 
         def update_ui_layout():
             """
             Update the UI layout with new sliders and network dropdown.
-            
+
             This function reconstructs the entire UI layout including:
             - Network dropdown (if available) and connection dropdown in the top row
             - Button controls and input mode toggles
             - Parameter sliders arranged in columns
             """
             nonlocal ui, slider_columns
-            
+
             # Add the dynamic sliders to the UI
             slider_widgets = [slider for slider in self.dynamic_sliders.values()]
-            
+
             if slider_widgets:
                 half = len(slider_widgets) // 2
                 col1 = VBox(slider_widgets[:half])
@@ -1568,13 +1629,13 @@ class SynapseTuner:
                 slider_columns = HBox([col1, col2])
             else:
                 slider_columns = VBox([])
-            
+
             # Create button row with voltage clamp controls
             if w_vclamp.value:  # Show voltage clamp amplitude input when toggle is on
                 button_row = HBox([w_run, w_single, w_vclamp, w_vclamp_amp, w_input_mode])
             else:  # Hide voltage clamp amplitude input when toggle is off
                 button_row = HBox([w_run, w_single, w_vclamp, w_input_mode])
-            
+
             # Construct the top row - include network dropdown if available
             # This creates a horizontal layout with network dropdown (if present) and connection dropdown
             if w_network is not None:
@@ -1583,7 +1644,7 @@ class SynapseTuner:
                 connection_row = HBox([w_connection])
             slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
             save_row = HBox([save_path_text, save_button])
-            
+
             ui = VBox([connection_row, button_row, slider_row, slider_columns, save_row])
 
         # Function to update UI based on input mode
@@ -1591,18 +1652,18 @@ class SynapseTuner:
             clear_output()
             display(ui)
             display(output_widget)
-            
+
             self.vclamp = w_vclamp.value
             # Update voltage clamp amplitude if voltage clamp is enabled
             if self.vclamp:
-                self.conn['spec_settings']['vclamp_amp'] = w_vclamp_amp.value
-                if hasattr(self, 'general_settings'):
-                    self.general_settings['vclamp_amp'] = w_vclamp_amp.value
-            
+                self.conn["spec_settings"]["vclamp_amp"] = w_vclamp_amp.value
+                if hasattr(self, "general_settings"):
+                    self.general_settings["vclamp_amp"] = w_vclamp_amp.value
+
             self.input_mode = w_input_mode.value
             syn_props = {var: slider.value for var, slider in self.dynamic_sliders.items()}
             self._set_syn_prop(**syn_props)
-            
+
             # Clear previous results and run simulation
             output_widget.clear_output()
             with output_widget:
@@ -1696,7 +1757,13 @@ class SynapseTuner:
         behavior of synapses, such as identifying facilitating vs. depressing regimes
         or the frequency at which a synapse transitions between these behaviors.
         """
-        results = {"frequencies": freqs, "ppr": [], "induction": [], "recovery": [], "simple_ppr": []}
+        results = {
+            "frequencies": freqs,
+            "ppr": [],
+            "induction": [],
+            "recovery": [],
+            "simple_ppr": [],
+        }
 
         # Store original state
         original_ispk = self.ispk
@@ -1704,7 +1771,9 @@ class SynapseTuner:
         for freq in tqdm(freqs, desc="Analyzing frequencies"):
             self._simulate_model(freq, delay)
             amp = self._response_amplitude()
-            ppr, induction, recovery, simple_ppr = self._calc_ppr_induction_recovery(amp, print_math=False)
+            ppr, induction, recovery, simple_ppr = self._calc_ppr_induction_recovery(
+                amp, print_math=False
+            )
 
             results["ppr"].append(float(ppr))
             results["induction"].append(float(induction))
@@ -1786,14 +1855,13 @@ class SynapseTuner:
         plt.tight_layout()
         plt.show()
 
-
     def generate_synaptic_table(self, stp_frequency=50.0, stp_delay=250.0, plot=True):
         """
         Generate a comprehensive table of synaptic parameters for all connections.
-        
-        This method iterates through all available connections, runs simulations to 
+
+        This method iterates through all available connections, runs simulations to
         characterize each synapse, and compiles the results into a pandas DataFrame.
-        
+
         Parameters:
         -----------
         stp_frequency : float, optional
@@ -1802,7 +1870,7 @@ class SynapseTuner:
             Delay in ms between pulse trains for STP analysis. Default is 250.0 ms.
         plot : bool, optional
             Whether to display the resulting table. Default is True.
-            
+
         Returns:
         --------
         pd.DataFrame
@@ -1818,7 +1886,7 @@ class SynapseTuner:
             - simple_ppr: Simple paired-pulse ratio (2nd/1st pulse)
             - induction: STP induction measure
             - recovery: STP recovery measure
-            
+
         Notes:
         ------
         This method temporarily switches between connections to characterize each one,
@@ -1827,127 +1895,129 @@ class SynapseTuner:
         """
         # Store original connection to restore later
         original_connection = self.current_connection
-        
+
         # Initialize results list
         results = []
-        
+
         print(f"Analyzing {len(self.conn_type_settings)} connections...")
-        
+
         for conn_name in tqdm(self.conn_type_settings.keys(), desc="Analyzing connections"):
             try:
                 # Switch to this connection
                 self._switch_connection(conn_name)
-                
+
                 # Run single event analysis
                 self.SingleEvent(plot_and_print=False)
-                
+
                 # Get synaptic properties from the single event
                 syn_props = self._get_syn_prop()
-                
+
                 # Run STP analysis at specified frequency
                 stp_results = self.stp_frequency_response(
-                    freqs=[stp_frequency], 
-                    delay=stp_delay, 
-                    plot=False, 
-                    log_plot=False
+                    freqs=[stp_frequency], delay=stp_delay, plot=False, log_plot=False
                 )
-                
+
                 # Extract STP metrics for this frequency
                 freq_idx = 0  # Only one frequency tested
-                ppr = stp_results['ppr'][freq_idx]
-                induction = stp_results['induction'][freq_idx]
-                recovery = stp_results['recovery'][freq_idx]
-                simple_ppr = stp_results['simple_ppr'][freq_idx]
-                
+                ppr = stp_results["ppr"][freq_idx]
+                induction = stp_results["induction"][freq_idx]
+                recovery = stp_results["recovery"][freq_idx]
+                simple_ppr = stp_results["simple_ppr"][freq_idx]
+
                 # Compile results for this connection
                 conn_results = {
-                    'connection': conn_name,
-                    'rise_time': float(self.rise_time),
-                    'decay_time': float(self.decay_time),
-                    'latency': float(syn_props.get('latency', 0)),
-                    'half_width': float(syn_props.get('half_width', 0)),
-                    'peak_amplitude': float(syn_props.get('amp', 0)),
-                    'baseline': float(syn_props.get('baseline', 0)),
-                    'ppr': float(ppr),
-                    'simple_ppr': float(simple_ppr),
-                    'induction': float(induction),
-                    'recovery': float(recovery)
+                    "connection": conn_name,
+                    "rise_time": float(self.rise_time),
+                    "decay_time": float(self.decay_time),
+                    "latency": float(syn_props.get("latency", 0)),
+                    "half_width": float(syn_props.get("half_width", 0)),
+                    "peak_amplitude": float(syn_props.get("amp", 0)),
+                    "baseline": float(syn_props.get("baseline", 0)),
+                    "ppr": float(ppr),
+                    "simple_ppr": float(simple_ppr),
+                    "induction": float(induction),
+                    "recovery": float(recovery),
                 }
-                
+
                 results.append(conn_results)
-                
+
             except Exception as e:
                 print(f"Warning: Failed to analyze connection '{conn_name}': {e}")
                 # Add partial results if possible
-                results.append({
-                    'connection': conn_name,
-                    'rise_time': float('nan'),
-                    'decay_time': float('nan'),
-                    'latency': float('nan'),
-                    'half_width': float('nan'),
-                    'peak_amplitude': float('nan'),
-                    'baseline': float('nan'),
-                    'ppr': float('nan'),
-                    'simple_ppr': float('nan'),
-                    'induction': float('nan'),
-                    'recovery': float('nan')
-                })
-        
+                results.append(
+                    {
+                        "connection": conn_name,
+                        "rise_time": float("nan"),
+                        "decay_time": float("nan"),
+                        "latency": float("nan"),
+                        "half_width": float("nan"),
+                        "peak_amplitude": float("nan"),
+                        "baseline": float("nan"),
+                        "ppr": float("nan"),
+                        "simple_ppr": float("nan"),
+                        "induction": float("nan"),
+                        "recovery": float("nan"),
+                    }
+                )
+
         # Restore original connection
         if original_connection in self.conn_type_settings:
             self._switch_connection(original_connection)
-        
+
         # Create DataFrame
         df = pd.DataFrame(results)
-        
+
         # Set connection as index for better display
-        df = df.set_index('connection')
-        
+        df = df.set_index("connection")
+
         if plot:
             # Display the table
             print("\nSynaptic Parameters Table:")
             print("=" * 80)
             display(df.round(4))
-            
+
             # Optional: Create a simple bar plot for key metrics
             try:
                 fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-                fig.suptitle(f'Synaptic Parameters Across Connections (STP at {stp_frequency}Hz)', fontsize=16)
-                
+                fig.suptitle(
+                    f"Synaptic Parameters Across Connections (STP at {stp_frequency}Hz)",
+                    fontsize=16,
+                )
+
                 # Plot rise/decay times
-                df[['rise_time', 'decay_time']].plot(kind='bar', ax=axes[0,0])
-                axes[0,0].set_title('Rise and Decay Times')
-                axes[0,0].set_ylabel('Time (ms)')
-                axes[0,0].tick_params(axis='x', rotation=45)
-                
+                df[["rise_time", "decay_time"]].plot(kind="bar", ax=axes[0, 0])
+                axes[0, 0].set_title("Rise and Decay Times")
+                axes[0, 0].set_ylabel("Time (ms)")
+                axes[0, 0].tick_params(axis="x", rotation=45)
+
                 # Plot PPR metrics
-                df[['ppr', 'simple_ppr']].plot(kind='bar', ax=axes[0,1])
-                axes[0,1].set_title('Paired-Pulse Ratios')
-                axes[0,1].axhline(y=1, color='gray', linestyle='--', alpha=0.5)
-                axes[0,1].tick_params(axis='x', rotation=45)
-                
+                df[["ppr", "simple_ppr"]].plot(kind="bar", ax=axes[0, 1])
+                axes[0, 1].set_title("Paired-Pulse Ratios")
+                axes[0, 1].axhline(y=1, color="gray", linestyle="--", alpha=0.5)
+                axes[0, 1].tick_params(axis="x", rotation=45)
+
                 # Plot induction
-                df['induction'].plot(kind='bar', ax=axes[1,0], color='green')
-                axes[1,0].set_title('STP Induction')
-                axes[1,0].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-                axes[1,0].set_ylabel('Induction')
-                axes[1,0].tick_params(axis='x', rotation=45)
-                
+                df["induction"].plot(kind="bar", ax=axes[1, 0], color="green")
+                axes[1, 0].set_title("STP Induction")
+                axes[1, 0].axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+                axes[1, 0].set_ylabel("Induction")
+                axes[1, 0].tick_params(axis="x", rotation=45)
+
                 # Plot recovery
-                df['recovery'].plot(kind='bar', ax=axes[1,1], color='orange')
-                axes[1,1].set_title('STP Recovery')
-                axes[1,1].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-                axes[1,1].set_ylabel('Recovery')
-                axes[1,1].tick_params(axis='x', rotation=45)
-                
+                df["recovery"].plot(kind="bar", ax=axes[1, 1], color="orange")
+                axes[1, 1].set_title("STP Recovery")
+                axes[1, 1].axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+                axes[1, 1].set_ylabel("Recovery")
+                axes[1, 1].tick_params(axis="x", rotation=45)
+
                 plt.tight_layout()
                 plt.show()
-                
+
             except Exception as e:
                 print(f"Warning: Could not create plots: {e}")
-        
+
         return df
-        
+
 
 class GapJunctionTuner:
     def __init__(
@@ -1998,6 +2068,7 @@ class GapJunctionTuner:
         else:
             self.general_settings = {**DEFAULT_GAP_JUNCTION_GENERAL_SETTINGS, **general_settings}
         self.conn_type_settings = conn_type_settings
+        self.vclamp = self.general_settings["vclamp"]
 
         self._syn_params_cache = {}
         self.config = config
@@ -2007,7 +2078,9 @@ class GapJunctionTuner:
         if self.conn_type_settings is None and self.config is not None:
             self.conn_type_settings = self._build_conn_type_settings_from_config(self.config)
         if self.conn_type_settings is None or len(self.conn_type_settings) == 0:
-            raise ValueError("conn_type_settings must be provided or config must be given to load gap junction connections from")
+            raise ValueError(
+                "conn_type_settings must be provided or config must be given to load gap junction connections from"
+            )
         self.current_connection = list(self.conn_type_settings.keys())[0]
         self.conn = self.conn_type_settings[self.current_connection]
 
@@ -2022,9 +2095,10 @@ class GapJunctionTuner:
             pc_temp.done()  # Clean up any existing parallel context
         except:
             pass  # Ignore errors if no existing context
-        
+
         # Force cleanup
         import gc
+
         gc.collect()
 
         # set up gap junctions
@@ -2034,11 +2108,11 @@ class GapJunctionTuner:
         if self.hoc_cell is not None:
             self.cell1 = self.hoc_cell
             # For gap junctions, we need two cells, so create a second one if using hoc_cell
-            self.cell_name = self.conn['cell']
+            self.cell_name = self.conn["cell"]
             self.cell2 = getattr(h, self.cell_name)()
         else:
             print(self.conn)
-            self.cell_name = self.conn['cell']
+            self.cell_name = self.conn["cell"]
             self.cell1 = getattr(h, self.cell_name)()
             self.cell2 = getattr(h, self.cell_name)()
 
@@ -2052,8 +2126,9 @@ class GapJunctionTuner:
 
         # Use unique IDs to avoid conflicts with existing parallel context setups
         import time
+
         unique_id = int(time.time() * 1000) % 10000  # Use timestamp as unique base ID
-        
+
         self.pc.source_var(sec1(self.conn["sec_x"])._ref_v, unique_id, sec=sec1)
         self.gap_junc_1 = h.Gap(sec1(0.5))
         self.pc.target_var(self.gap_junc_1._ref_vgap, unique_id + 1)
@@ -2063,43 +2138,44 @@ class GapJunctionTuner:
         self.pc.target_var(self.gap_junc_2._ref_vgap, unique_id)
 
         self.pc.setup_transfer()
-        
+
         # Now it's safe to initialize NEURON
         h.finitialize()
 
     def _load_synaptic_params_from_config(self, config: dict, dynamics_params: str) -> dict:
         try:
             # Get the synaptic models directory from config
-            synaptic_models_dir = config.get('components', {}).get('synaptic_models_dir', '')
+            synaptic_models_dir = config.get("components", {}).get("synaptic_models_dir", "")
             if synaptic_models_dir:
                 # Handle path variables
-                if synaptic_models_dir.startswith('$'):
+                if synaptic_models_dir.startswith("$"):
                     # This is a placeholder, try to resolve it
-                    config_dir = os.path.dirname(config.get('config_path', ''))
-                    synaptic_models_dir = synaptic_models_dir.replace('$COMPONENTS_DIR', 
-                                                                    os.path.join(config_dir, 'components'))
-                    synaptic_models_dir = synaptic_models_dir.replace('$BASE_DIR', config_dir)
-                
+                    config_dir = os.path.dirname(config.get("config_path", ""))
+                    synaptic_models_dir = synaptic_models_dir.replace(
+                        "$COMPONENTS_DIR", os.path.join(config_dir, "components")
+                    )
+                    synaptic_models_dir = synaptic_models_dir.replace("$BASE_DIR", config_dir)
+
                 dynamics_file = os.path.join(synaptic_models_dir, dynamics_params)
-                
+
                 if os.path.exists(dynamics_file):
-                    with open(dynamics_file, 'r') as f:
+                    with open(dynamics_file, "r") as f:
                         return json.load(f)
                 else:
                     print(f"Warning: Dynamics params file not found: {dynamics_file}")
         except Exception as e:
             print(f"Warning: Error loading synaptic parameters: {e}")
-        
+
         return {}
 
     def _load_available_networks(self) -> None:
         """
         Load available network names from the config file for the network dropdown feature.
-        
+
         This method is automatically called during initialization when a config file is provided.
-        It populates the available_networks list which enables the network dropdown in 
+        It populates the available_networks list which enables the network dropdown in
         InteractiveTuner when multiple networks are available.
-        
+
         Network Dropdown Behavior:
         -------------------------
         - If only one network exists: No network dropdown is shown
@@ -2110,11 +2186,11 @@ class GapJunctionTuner:
         if self.config is None:
             self.available_networks = []
             return
-            
+
         try:
             edges = load_edges_from_config(self.config)
             self.available_networks = list(edges.keys())
-            
+
             # Set current network to first available if not specified
             if self.current_network is None and self.available_networks:
                 self.current_network = self.available_networks[0]
@@ -2127,147 +2203,167 @@ class GapJunctionTuner:
         config = load_config(config_path)
         # Ensure the config dict knows its source path so path substitutions can be resolved
         try:
-            config['config_path'] = config_path
+            config["config_path"] = config_path
         except Exception:
             pass
         nodes = load_nodes_from_config(config_path)
         edges = load_edges_from_config(config_path)
-        
+
         conn_type_settings = {}
-        
+
         # Process all edge datasets
         for edge_dataset_name, edge_df in edges.items():
             if edge_df.empty:
                 continue
-            
+
             # Merging with node data to get model templates
             source_node_df = None
             target_node_df = None
-            
+
             # First, try to deterministically parse the edge_dataset_name for patterns like '<src>_to_<tgt>'
-            if '_to_' in edge_dataset_name:
-                parts = edge_dataset_name.split('_to_')
+            if "_to_" in edge_dataset_name:
+                parts = edge_dataset_name.split("_to_")
                 if len(parts) == 2:
                     src_name, tgt_name = parts
                     if src_name in nodes:
-                        source_node_df = nodes[src_name].add_prefix('source_')
+                        source_node_df = nodes[src_name].add_prefix("source_")
                     if tgt_name in nodes:
-                        target_node_df = nodes[tgt_name].add_prefix('target_')
-            
+                        target_node_df = nodes[tgt_name].add_prefix("target_")
+
             # If not found by parsing name, fall back to inspecting a sample edge row
             if source_node_df is None or target_node_df is None:
                 sample_edge = edge_df.iloc[0] if len(edge_df) > 0 else None
                 if sample_edge is not None:
-                    source_pop_name = sample_edge.get('source_population', '')
-                    target_pop_name = sample_edge.get('target_population', '')
+                    source_pop_name = sample_edge.get("source_population", "")
+                    target_pop_name = sample_edge.get("target_population", "")
                     if source_pop_name in nodes:
-                        source_node_df = nodes[source_pop_name].add_prefix('source_')
+                        source_node_df = nodes[source_pop_name].add_prefix("source_")
                     if target_pop_name in nodes:
-                        target_node_df = nodes[target_pop_name].add_prefix('target_')
-            
+                        target_node_df = nodes[target_pop_name].add_prefix("target_")
+
             # As a last resort, attempt to heuristically match
             if source_node_df is None or target_node_df is None:
                 for pop_name, node_df in nodes.items():
-                    if source_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
-                        source_node_df = node_df.add_prefix('source_')
-                    if target_node_df is None and (edge_dataset_name.startswith(pop_name) or edge_dataset_name.endswith(pop_name)):
-                        target_node_df = node_df.add_prefix('target_')
-            
+                    if source_node_df is None and (
+                        edge_dataset_name.startswith(pop_name)
+                        or edge_dataset_name.endswith(pop_name)
+                    ):
+                        source_node_df = node_df.add_prefix("source_")
+                    if target_node_df is None and (
+                        edge_dataset_name.startswith(pop_name)
+                        or edge_dataset_name.endswith(pop_name)
+                    ):
+                        target_node_df = node_df.add_prefix("target_")
+
             if source_node_df is None or target_node_df is None:
                 print(f"Warning: Could not find node data for edge dataset {edge_dataset_name}")
                 continue
-            
+
             # Merge edge data with source node info
             edges_with_source = pd.merge(
-                edge_df.reset_index(), 
-                source_node_df, 
-                how='left', 
-                left_on='source_node_id', 
-                right_index=True
+                edge_df.reset_index(),
+                source_node_df,
+                how="left",
+                left_on="source_node_id",
+                right_index=True,
             )
-            
+
             # Merge with target node info
             edges_with_nodes = pd.merge(
-                edges_with_source, 
-                target_node_df, 
-                how='left', 
-                left_on='target_node_id', 
-                right_index=True
+                edges_with_source,
+                target_node_df,
+                how="left",
+                left_on="target_node_id",
+                right_index=True,
             )
-            
+
             # Skip edge datasets that don't have gap junction information
-            if 'is_gap_junction' not in edges_with_nodes.columns:
+            if "is_gap_junction" not in edges_with_nodes.columns:
                 continue
-            
+
             # Filter to only gap junction edges
             # Handle NaN values in is_gap_junction column
-            gap_junction_mask = edges_with_nodes['is_gap_junction'].fillna(False) == True
+            gap_junction_mask = edges_with_nodes["is_gap_junction"].fillna(False) == True
             gap_junction_edges = edges_with_nodes[gap_junction_mask]
             if gap_junction_edges.empty:
                 continue
-            
+
             # Get unique edge types from the gap junction edges
-            if 'edge_type_id' in gap_junction_edges.columns:
-                edge_types = gap_junction_edges['edge_type_id'].unique()
+            if "edge_type_id" in gap_junction_edges.columns:
+                edge_types = gap_junction_edges["edge_type_id"].unique()
             else:
                 edge_types = [None]  # Single edge type
-            
+
             # Process each edge type
             for edge_type_id in edge_types:
                 # Filter edges for this type
                 if edge_type_id is not None:
-                    edge_type_data = gap_junction_edges[gap_junction_edges['edge_type_id'] == edge_type_id]
+                    edge_type_data = gap_junction_edges[
+                        gap_junction_edges["edge_type_id"] == edge_type_id
+                    ]
                 else:
                     edge_type_data = gap_junction_edges
-                
+
                 if len(edge_type_data) == 0:
                     continue
-                
+
                 # Get representative edge for this type
                 edge_info = edge_type_data.iloc[0]
-                
+
                 # Process gap junction
-                source_model_template = edge_info.get('source_model_template', '')
-                target_model_template = edge_info.get('target_model_template', '')
-                
-                source_cell_type = source_model_template.replace('hoc:', '') if source_model_template.startswith('hoc:') else source_model_template
-                target_cell_type = target_model_template.replace('hoc:', '') if target_model_template.startswith('hoc:') else target_model_template
-                
+                source_model_template = edge_info.get("source_model_template", "")
+                target_model_template = edge_info.get("target_model_template", "")
+
+                source_cell_type = (
+                    source_model_template.replace("hoc:", "")
+                    if source_model_template.startswith("hoc:")
+                    else source_model_template
+                )
+                target_cell_type = (
+                    target_model_template.replace("hoc:", "")
+                    if target_model_template.startswith("hoc:")
+                    else target_model_template
+                )
+
                 if source_cell_type != target_cell_type:
                     continue  # Only process gap junctions between same cell types
-                
-                source_pop = edge_info.get('source_pop_name', '')
-                target_pop = edge_info.get('target_pop_name', '')
-                
+
+                source_pop = edge_info.get("source_pop_name", "")
+                target_pop = edge_info.get("target_pop_name", "")
+
                 conn_name = f"{source_pop}2{target_pop}_gj"
                 if edge_type_id is not None:
                     conn_name += f"_type_{edge_type_id}"
-                
+
                 conn_settings = {
-                    'cell': source_cell_type,
-                    'sec_id': 0,
-                    'sec_x': 0.5,
-                    'iclamp_amp': -0.01,
-                    'spec_syn_param': {}
+                    "cell": source_cell_type,
+                    "sec_id": 0,
+                    "sec_x": 0.5,
+                    "iclamp_amp": -0.01,
+                    "spec_syn_param": {},
                 }
-                
+
                 # Load dynamics params
-                dynamics_file_name = edge_info.get('dynamics_params', '')
-                if dynamics_file_name and dynamics_file_name.upper() != 'NULL':
+                dynamics_file_name = edge_info.get("dynamics_params", "")
+                if dynamics_file_name and dynamics_file_name.upper() != "NULL":
                     try:
-                        syn_params = self._load_synaptic_params_from_config(config, dynamics_file_name)
-                        conn_settings['spec_syn_param'] = syn_params
+                        syn_params = self._load_synaptic_params_from_config(
+                            config, dynamics_file_name
+                        )
+                        conn_settings["spec_syn_param"] = syn_params
                     except Exception as e:
-                        print(f"Warning: could not load dynamics_params file '{dynamics_file_name}': {e}")
-                
+                        print(
+                            f"Warning: could not load dynamics_params file '{dynamics_file_name}': {e}"
+                        )
+
                 conn_type_settings[conn_name] = conn_settings
-        
+
         return conn_type_settings
 
     def _switch_connection(self, new_connection: str) -> None:
         """
         Switch to a different gap junction connection and update all related properties.
-        
+
         Parameters:
         -----------
         new_connection : str
@@ -2275,16 +2371,16 @@ class GapJunctionTuner:
         """
         if new_connection not in self.conn_type_settings:
             raise ValueError(f"Connection '{new_connection}' not found in conn_type_settings")
-        
+
         # Update current connection
         self.current_connection = new_connection
         self.conn = self.conn_type_settings[new_connection]
-        
+
         # Check if cell type changed
-        new_cell_name = self.conn['cell']
+        new_cell_name = self.conn["cell"]
         if self.cell_name != new_cell_name:
             self.cell_name = new_cell_name
-            
+
             # Recreate cells
             if self.hoc_cell is None:
                 self.cell1 = getattr(h, self.cell_name)()
@@ -2292,7 +2388,7 @@ class GapJunctionTuner:
             else:
                 # For hoc_cell, recreate the second cell
                 self.cell2 = getattr(h, self.cell_name)()
-            
+
             # Recreate IClamp
             self.icl = h.IClamp(self.cell1.soma[0](0.5))
             self.icl.delay = self.general_settings["tstart"]
@@ -2301,54 +2397,56 @@ class GapJunctionTuner:
         else:
             # Update IClamp parameters even if same cell type
             self.icl.amp = self.general_settings["iclamp_amp"]
-        
-        # Always recreate gap junctions when switching connections 
+
+        # Always recreate gap junctions when switching connections
         # (even for same cell type, sec_id or sec_x might differ)
-        
+
         # Clean up previous gap junctions and parallel context
-        if hasattr(self, 'gap_junc_1'):
+        if hasattr(self, "gap_junc_1"):
             del self.gap_junc_1
-        if hasattr(self, 'gap_junc_2'):
+        if hasattr(self, "gap_junc_2"):
             del self.gap_junc_2
-        
+
         # Properly clean up the existing parallel context
-        if hasattr(self, 'pc'):
+        if hasattr(self, "pc"):
             self.pc.done()  # Clean up existing parallel context
-        
+
         # Force garbage collection and reset NEURON state
         import gc
+
         gc.collect()
         h.finitialize()
-        
+
         # Create a fresh parallel context after cleanup
         self.pc = h.ParallelContext()
-        
+
         try:
             sec1 = list(self.cell1.all)[self.conn["sec_id"]]
             sec2 = list(self.cell2.all)[self.conn["sec_id"]]
-            
+
             # Use unique IDs to avoid conflicts with existing parallel context setups
             import time
+
             unique_id = int(time.time() * 1000) % 10000  # Use timestamp as unique base ID
-            
+
             self.pc.source_var(sec1(self.conn["sec_x"])._ref_v, unique_id, sec=sec1)
             self.gap_junc_1 = h.Gap(sec1(0.5))
             self.pc.target_var(self.gap_junc_1._ref_vgap, unique_id + 1)
-            
+
             self.pc.source_var(sec2(self.conn["sec_x"])._ref_v, unique_id + 1, sec=sec2)
             self.gap_junc_2 = h.Gap(sec2(0.5))
             self.pc.target_var(self.gap_junc_2._ref_vgap, unique_id)
-            
+
             self.pc.setup_transfer()
         except Exception as e:
             print(f"Error setting up gap junctions: {e}")
             # Try to continue with basic setup
             self.gap_junc_1 = h.Gap(list(self.cell1.all)[self.conn["sec_id"]](0.5))
             self.gap_junc_2 = h.Gap(list(self.cell2.all)[self.conn["sec_id"]](0.5))
-        
+
         # Reset NEURON state after complete setup
         h.finitialize()
-        
+
         print(f"Successfully switched to connection: {new_connection}")
 
     def model(self, resistance):
@@ -2439,48 +2537,43 @@ class GapJunctionTuner:
         idx2 = np.nonzero(t < t_end)[0][-1]
         return (v2[idx2] - v2[idx1]) / (v1[idx2] - v1[idx1])
 
+    def coupling_ratio(self):
+        """
+        Calculate the coupling ratio from the last simulation.
+
+        Returns the coupling coefficient (dV2/dV1) using the most recent simulation data
+        stored in self.t_vec, self.soma_v_1, and self.soma_v_2.
+
+        Returns:
+        --------
+        float
+            The coupling coefficient from the last simulation.
+        """
+        t_start = self.general_settings["tstart"]
+        t_end = t_start + self.general_settings["tdur"]
+        return self.coupling_coefficient(self.t_vec, self.soma_v_1, self.soma_v_2, t_start, t_end)
+
     def InteractiveTuner(self):
         """
-        Sets up interactive sliders for tuning short-term plasticity (STP) parameters in a Jupyter Notebook.
+        Sets up interactive sliders for tuning gap junction resistance in a Jupyter Notebook.
 
-        This method creates an interactive UI with sliders for:
-        - Network selection dropdown (if multiple networks available and config provided)
+        This method creates an interactive UI with:
         - Connection type selection dropdown
-        - Input frequency
-        - Delay between pulse trains
-        - Duration of stimulation (for continuous input mode)
-        - Synaptic parameters (e.g., Use, tau_f, tau_d) based on the syn model
+        - Gap junction resistance slider (logarithmic scale)
+        - Voltage clamp toggle and amplitude input
+        - Run button to simulate and plot the coupling
 
-        It also provides buttons for:
-        - Running a single event simulation
-        - Running a train input simulation
-        - Toggling voltage clamp mode
-        - Switching between standard and continuous input modes
-
-        Network Dropdown Feature:
-        ------------------------
-        When the SynapseTuner is initialized with a BMTK config file containing multiple networks:
-        - A network dropdown appears next to the connection dropdown
-        - Users can dynamically switch between networks (e.g., 'network_to_network', 'external_to_network')
-        - Switching networks rebuilds available connections and updates the connection dropdown
-        - The current connection is preserved if it exists in the new network
-        - If multiple networks exist but only one is specified during init, that network is used as default
+        The UI displays:
+        - Voltage traces of both coupled cells
+        - Coupling coefficient (dV2/dV1)
 
         Notes:
         ------
         Ideal for exploratory parameter tuning and interactive visualization of
-        synapse behavior with different parameter values and stimulation protocols.
-        The network dropdown feature enables comprehensive exploration of multi-network
-        BMTK simulations without needing to reinitialize the tuner.
+        gap junction coupling between two cells.
         """
-        # Widgets setup (Sliders)
-        freqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200]
-        delays = [125, 250, 500, 1000, 2000, 4000]
-        durations = [100, 300, 500, 1000, 2000, 5000, 10000]
-        freq0 = 50
-        delay0 = 250
-        duration0 = 300
-        vlamp_status = self.vclamp
+        import ipywidgets as widgets
+        from IPython.display import display, clear_output
 
         # Connection dropdown
         connection_options = sorted(list(self.conn_type_settings.keys()))
@@ -2488,308 +2581,84 @@ class GapJunctionTuner:
             options=connection_options,
             value=self.current_connection,
             description="Connection:",
-            style={'description_width': 'initial'}
+            style={"description_width": "initial"},
         )
 
-        # Network dropdown - only shown if config was provided and multiple networks are available
-        # This enables users to switch between different network datasets dynamically
-        w_network = None
-        if self.config is not None and len(self.available_networks) > 1:
-            w_network = widgets.Dropdown(
-                options=self.available_networks,
-                value=self.current_network,
-                description="Network:",
-                style={'description_width': 'initial'}
-            )
+        # Resistance slider - typical range for gap junctions
+        w_resistance = widgets.FloatLogSlider(
+            value=1e-3,  # 1 MOhm default
+            base=10,
+            min=-6,  # 1e-6
+            max=0,  # 1
+            step=0.1,
+            description="Resistance (MOhm):",
+            style={"description_width": "initial"},
+        )
 
-        w_run = widgets.Button(description="Run Train", icon="history", button_style="primary")
-        w_single = widgets.Button(description="Single Event", icon="check", button_style="success")
+        # Voltage clamp toggle
         w_vclamp = widgets.ToggleButton(
-            value=vlamp_status,
+            value=self.vclamp,
             description="Voltage Clamp",
-            icon="fast-backward",
-            button_style="warning",
+            button_style="",
+            tooltip="Toggle voltage clamp mode",
         )
-        
-        # Voltage clamp amplitude input
-        default_vclamp_amp = getattr(self.conn['spec_settings'], 'vclamp_amp', -70.0)
+
+        # Voltage clamp amplitude
+        default_vclamp_amp = self.conn.get("vclamp_amp", -70.0)
         w_vclamp_amp = widgets.FloatText(
             value=default_vclamp_amp,
-            description="V_clamp (mV):",
-            step=5.0,
-            style={'description_width': 'initial'},
-            layout=widgets.Layout(width='150px')
-        )
-        
-        w_input_mode = widgets.ToggleButton(
-            value=False, description="Continuous input", icon="eject", button_style="info"
-        )
-        w_input_freq = widgets.SelectionSlider(options=freqs, value=freq0, description="Input Freq")
-
-        # Sliders for delay and duration
-        self.w_delay = widgets.SelectionSlider(options=delays, value=delay0, description="Delay")
-        self.w_duration = widgets.SelectionSlider(
-            options=durations, value=duration0, description="Duration"
+            description="VClamp Amp (mV):",
+            style={"description_width": "initial"},
         )
 
-        # Save functionality widgets
-        save_path_text = widgets.Text(
-            value="plot.png",
-            description="Save path:",
-            layout=widgets.Layout(width='300px')
-        )
-        save_button = widgets.Button(description="Save Plot", icon="save", button_style="success")
-
-        def save_plot(b):
-            if hasattr(self, 'last_figure') and self.last_figure is not None:
-                try:
-                    # Create a new figure with just the first subplot (synaptic current)
-                    fig, ax = plt.subplots(figsize=(8, 6))
-                    
-                    # Get the axes from the original figure
-                    original_axes = self.last_figure.get_axes()
-                    if len(original_axes) > 0:
-                        first_ax = original_axes[0]
-                        
-                        # Copy the data from the first subplot
-                        for line in first_ax.get_lines():
-                            ax.plot(line.get_xdata(), line.get_ydata(), 
-                                   color=line.get_color(), label=line.get_label())
-                        
-                        # Copy axis labels and title
-                        ax.set_xlabel(first_ax.get_xlabel())
-                        ax.set_ylabel(first_ax.get_ylabel())
-                        ax.set_title(first_ax.get_title())
-                        ax.set_xlim(first_ax.get_xlim())
-                        ax.legend()
-                        ax.grid(True)
-                        
-                        # Save the new figure
-                        fig.savefig(save_path_text.value)
-                        plt.close(fig)  # Close the temporary figure
-                        print(f"Synaptic current plot saved to {save_path_text.value}")
-                    else:
-                        print("No subplots found in the figure")
-                        
-                except Exception as e:
-                    print(f"Error saving plot: {e}")
-            else:
-                print("No plot to save")
-
-        save_button.on_click(save_plot)
-
-        def create_dynamic_sliders():
-            """Create sliders based on current connection's parameters"""
-            sliders = {}
-            for key, value in self.slider_vars.items():
-                if isinstance(value, (int, float)):  # Only create sliders for numeric values
-                    if hasattr(self.syn, key):
-                        if value == 0:
-                            print(
-                                f"{key} was set to zero, going to try to set a range of values, try settings the {key} to a nonzero value if you dont like the range!"
-                            )
-                            slider = widgets.FloatSlider(
-                                value=value, min=0, max=1000, step=1, description=key
-                            )
-                        else:
-                            slider = widgets.FloatSlider(
-                                value=value, min=0, max=value * 20, step=value / 5, description=key
-                            )
-                        sliders[key] = slider
-                    else:
-                        print(f"skipping slider for {key} due to not being a synaptic variable")
-            return sliders
-
-        # Generate sliders dynamically based on valid numeric entries in self.slider_vars
-        self.dynamic_sliders = create_dynamic_sliders()
-        print(
-            "Setting up slider! The sliders ranges are set by their init value so try changing that if you dont like the slider range!"
-        )
-
-        # Create output widget for displaying results
+        # Output widget
         output_widget = widgets.Output()
-        
-        def run_single_event(*args):
-            clear_output()
+
+        def run_simulation(*args):
+            clear_output(wait=True)
             display(ui)
             display(output_widget)
-            
+
+            # Update connection if changed
+            if w_connection.value != self.current_connection:
+                self._switch_connection(w_connection.value)
+
+            # Update vclamp
             self.vclamp = w_vclamp.value
-            # Update voltage clamp amplitude if voltage clamp is enabled
-            if self.vclamp:
-                # Update the voltage clamp amplitude settings
-                self.conn['spec_settings']['vclamp_amp'] = w_vclamp_amp.value
-                # Update general settings if they exist
-                if hasattr(self, 'general_settings'):
-                    self.general_settings['vclamp_amp'] = w_vclamp_amp.value
-            # Update synaptic properties based on slider values
-            self.ispk = None
-            
-            # Clear previous results and run simulation
-            output_widget.clear_output()
+
             with output_widget:
-                self.SingleEvent()
+                clear_output(wait=True)
+                resistance = w_resistance.value
+                print(f"Running simulation with resistance = {resistance} MOhm")
+                self.model(resistance)
+                self.plot_model()
+                # Calculate and print coupling coefficient
+                coupling = self.coupling_ratio()
+                print(f"Coupling coefficient (dV2/dV1): {coupling:.3f}")
+                plt.show()
 
         def on_connection_change(*args):
-            """Handle connection dropdown change"""
-            try:
-                new_connection = w_connection.value
-                if new_connection != self.current_connection:
-                    # Switch to new connection
-                    self._switch_connection(new_connection)
-                    
-                    # Recreate dynamic sliders for new connection
-                    self.dynamic_sliders = create_dynamic_sliders()
-                    
-                    # Update UI
-                    update_ui_layout()
-                    update_ui()
-                    
-            except Exception as e:
-                print(f"Error switching connection: {e}")
+            if w_connection.value != self.current_connection:
+                self._switch_connection(w_connection.value)
 
-        def on_network_change(*args):
-            """
-            Handle network dropdown change events.
-            
-            This callback is triggered when the user selects a different network from 
-            the network dropdown. It coordinates the complete switching process:
-            1. Calls _switch_network() to rebuild connections for the new network
-            2. Updates the connection dropdown options with new network's connections
-            3. Recreates dynamic sliders for new connection parameters
-            4. Refreshes the entire UI to reflect all changes
-            """
-            if w_network is None:
-                return
-            try:
-                new_network = w_network.value
-                if new_network != self.current_network:
-                    # Switch to new network
-                    self._switch_network(new_network)
-                    
-                    # Update connection dropdown options with new network's connections
-                    connection_options = list(self.conn_type_settings.keys())
-                    w_connection.options = connection_options
-                    if connection_options:
-                        w_connection.value = self.current_connection
-                    
-                    # Recreate dynamic sliders for new connection
-                    self.dynamic_sliders = create_dynamic_sliders()
-                    
-                    # Update UI
-                    update_ui_layout()
-                    update_ui()
-                    
-            except Exception as e:
-                print(f"Error switching network: {e}")
-
-        def update_ui_layout():
-            """
-            Update the UI layout with new sliders and network dropdown.
-            
-            This function reconstructs the entire UI layout including:
-            - Network dropdown (if available) and connection dropdown in the top row
-            - Button controls and input mode toggles
-            - Parameter sliders arranged in columns
-            """
-            nonlocal ui, slider_columns
-            
-            # Add the dynamic sliders to the UI
-            slider_widgets = [slider for slider in self.dynamic_sliders.values()]
-            
-            if slider_widgets:
-                half = len(slider_widgets) // 2
-                col1 = VBox(slider_widgets[:half])
-                col2 = VBox(slider_widgets[half:])
-                slider_columns = HBox([col1, col2])
-            else:
-                slider_columns = VBox([])
-            
-            # Create button row with voltage clamp controls
-            if w_vclamp.value:  # Show voltage clamp amplitude input when toggle is on
-                button_row = HBox([w_run, w_single, w_vclamp, w_vclamp_amp, w_input_mode])
-            else:  # Hide voltage clamp amplitude input when toggle is off
-                button_row = HBox([w_run, w_single, w_vclamp, w_input_mode])
-            
-            # Construct the top row - include network dropdown if available
-            # This creates a horizontal layout with network dropdown (if present) and connection dropdown
-            if w_network is not None:
-                connection_row = HBox([w_network, w_connection])
-            else:
-                connection_row = HBox([w_connection])
-            slider_row = HBox([w_input_freq, self.w_delay, self.w_duration])
-            save_row = HBox([save_path_text, save_button])
-            
-            ui = VBox([connection_row, button_row, slider_row, slider_columns, save_row])
-
-        # Function to update UI based on input mode
-        def update_ui(*args):
-            clear_output()
-            display(ui)
-            display(output_widget)
-            
-            self.vclamp = w_vclamp.value
-            # Update voltage clamp amplitude if voltage clamp is enabled
-            if self.vclamp:
-                self.conn['spec_settings']['vclamp_amp'] = w_vclamp_amp.value
-                if hasattr(self, 'general_settings'):
-                    self.general_settings['vclamp_amp'] = w_vclamp_amp.value
-            
-            self.input_mode = w_input_mode.value
-            syn_props = {var: slider.value for var, slider in self.dynamic_sliders.items()}
-            self._set_syn_prop(**syn_props)
-            
-            # Clear previous results and run simulation
-            output_widget.clear_output()
-            with output_widget:
-                if not self.input_mode:
-                    self._simulate_model(w_input_freq.value, self.w_delay.value, w_vclamp.value)
-                else:
-                    self._simulate_model(w_input_freq.value, self.w_duration.value, w_vclamp.value)
-                amp = self._response_amplitude()
-                self._plot_model(
-                    [self.general_settings["tstart"] - self.nstim.interval / 3, self.tstop]
-                )
-                _ = self._calc_ppr_induction_recovery(amp)
-
-        # Function to switch between delay and duration sliders
-        def switch_slider(*args):
-            if w_input_mode.value:
-                self.w_delay.layout.display = "none"  # Hide delay slider
-                self.w_duration.layout.display = ""  # Show duration slider
-            else:
-                self.w_delay.layout.display = ""  # Show delay slider
-                self.w_duration.layout.display = "none"  # Hide duration slider
-
-        # Function to handle voltage clamp toggle
-        def on_vclamp_toggle(*args):
-            """Handle voltage clamp toggle changes to show/hide amplitude input"""
-            update_ui_layout()
-            clear_output()
-            display(ui)
-            display(output_widget)
-
-        # Link widgets to their callback functions
         w_connection.observe(on_connection_change, names="value")
-        # Link network dropdown callback only if network dropdown was created
-        if w_network is not None:
-            w_network.observe(on_network_change, names="value")
-        w_input_mode.observe(switch_slider, names="value")
-        w_vclamp.observe(on_vclamp_toggle, names="value")
 
-        # Hide the duration slider initially until the user selects it
-        self.w_duration.layout.display = "none"  # Hide duration slider
+        # Run button
+        run_button = widgets.Button(description="Run Simulation")
+        run_button.on_click(run_simulation)
 
-        w_single.on_click(run_single_event)
-        w_run.on_click(update_ui)
-
-        # Initial UI setup
-        slider_columns = VBox([])
-        ui = VBox([])
-        update_ui_layout()
+        # Layout
+        ui = widgets.VBox(
+            [
+                widgets.HBox([w_connection]),
+                widgets.HBox([w_resistance]),
+                widgets.HBox([w_vclamp, w_vclamp_amp]),
+                widgets.HBox([run_button]),
+            ]
+        )
 
         display(ui)
-        update_ui()
+        display(output_widget)
 
     def stp_frequency_response(
         self,
@@ -2832,7 +2701,13 @@ class GapJunctionTuner:
         behavior of synapses, such as identifying facilitating vs. depressing regimes
         or the frequency at which a synapse transitions between these behaviors.
         """
-        results = {"frequencies": freqs, "ppr": [], "induction": [], "recovery": [], "simple_ppr": []}
+        results = {
+            "frequencies": freqs,
+            "ppr": [],
+            "induction": [],
+            "recovery": [],
+            "simple_ppr": [],
+        }
 
         # Store original state
         original_ispk = self.ispk
@@ -2840,7 +2715,9 @@ class GapJunctionTuner:
         for freq in tqdm(freqs, desc="Analyzing frequencies"):
             self._simulate_model(freq, delay)
             amp = self._response_amplitude()
-            ppr, induction, recovery, simple_ppr = self._calc_ppr_induction_recovery(amp, print_math=False)
+            ppr, induction, recovery, simple_ppr = self._calc_ppr_induction_recovery(
+                amp, print_math=False
+            )
 
             results["ppr"].append(float(ppr))
             results["induction"].append(float(induction))
@@ -2925,10 +2802,10 @@ class GapJunctionTuner:
     def generate_synaptic_table(self, stp_frequency=50.0, stp_delay=250.0, plot=True):
         """
         Generate a comprehensive table of synaptic parameters for all connections.
-        
-        This method iterates through all available connections, runs simulations to 
+
+        This method iterates through all available connections, runs simulations to
         characterize each synapse, and compiles the results into a pandas DataFrame.
-        
+
         Parameters:
         -----------
         stp_frequency : float, optional
@@ -2937,7 +2814,7 @@ class GapJunctionTuner:
             Delay in ms between pulse trains for STP analysis. Default is 250.0 ms.
         plot : bool, optional
             Whether to display the resulting table. Default is True.
-            
+
         Returns:
         --------
         pd.DataFrame
@@ -2953,7 +2830,7 @@ class GapJunctionTuner:
             - simple_ppr: Simple paired-pulse ratio (2nd/1st pulse)
             - induction: STP induction measure
             - recovery: STP recovery measure
-            
+
         Notes:
         ------
         This method temporarily switches between connections to characterize each one,
@@ -2962,127 +2839,130 @@ class GapJunctionTuner:
         """
         # Store original connection to restore later
         original_connection = self.current_connection
-        
+
         # Initialize results list
         results = []
-        
+
         print(f"Analyzing {len(self.conn_type_settings)} connections...")
-        
+
         for conn_name in tqdm(self.conn_type_settings.keys(), desc="Analyzing connections"):
             try:
                 # Switch to this connection
                 self._switch_connection(conn_name)
-                
+
                 # Run single event analysis
                 self.SingleEvent(plot_and_print=False)
-                
+
                 # Get synaptic properties from the single event
                 syn_props = self._get_syn_prop()
-                
+
                 # Run STP analysis at specified frequency
                 stp_results = self.stp_frequency_response(
-                    freqs=[stp_frequency], 
-                    delay=stp_delay, 
-                    plot=False, 
-                    log_plot=False
+                    freqs=[stp_frequency], delay=stp_delay, plot=False, log_plot=False
                 )
-                
+
                 # Extract STP metrics for this frequency
                 freq_idx = 0  # Only one frequency tested
-                ppr = stp_results['ppr'][freq_idx]
-                induction = stp_results['induction'][freq_idx]
-                recovery = stp_results['recovery'][freq_idx]
-                simple_ppr = stp_results['simple_ppr'][freq_idx]
-                
+                ppr = stp_results["ppr"][freq_idx]
+                induction = stp_results["induction"][freq_idx]
+                recovery = stp_results["recovery"][freq_idx]
+                simple_ppr = stp_results["simple_ppr"][freq_idx]
+
                 # Compile results for this connection
                 conn_results = {
-                    'connection': conn_name,
-                    'rise_time': float(self.rise_time),
-                    'decay_time': float(self.decay_time),
-                    'latency': float(syn_props.get('latency', 0)),
-                    'half_width': float(syn_props.get('half_width', 0)),
-                    'peak_amplitude': float(syn_props.get('amp', 0)),
-                    'baseline': float(syn_props.get('baseline', 0)),
-                    'ppr': float(ppr),
-                    'simple_ppr': float(simple_ppr),
-                    'induction': float(induction),
-                    'recovery': float(recovery)
+                    "connection": conn_name,
+                    "rise_time": float(self.rise_time),
+                    "decay_time": float(self.decay_time),
+                    "latency": float(syn_props.get("latency", 0)),
+                    "half_width": float(syn_props.get("half_width", 0)),
+                    "peak_amplitude": float(syn_props.get("amp", 0)),
+                    "baseline": float(syn_props.get("baseline", 0)),
+                    "ppr": float(ppr),
+                    "simple_ppr": float(simple_ppr),
+                    "induction": float(induction),
+                    "recovery": float(recovery),
                 }
-                
+
                 results.append(conn_results)
-                
+
             except Exception as e:
                 print(f"Warning: Failed to analyze connection '{conn_name}': {e}")
                 # Add partial results if possible
-                results.append({
-                    'connection': conn_name,
-                    'rise_time': float('nan'),
-                    'decay_time': float('nan'),
-                    'latency': float('nan'),
-                    'half_width': float('nan'),
-                    'peak_amplitude': float('nan'),
-                    'baseline': float('nan'),
-                    'ppr': float('nan'),
-                    'simple_ppr': float('nan'),
-                    'induction': float('nan'),
-                    'recovery': float('nan')
-                })
-        
+                results.append(
+                    {
+                        "connection": conn_name,
+                        "rise_time": float("nan"),
+                        "decay_time": float("nan"),
+                        "latency": float("nan"),
+                        "half_width": float("nan"),
+                        "peak_amplitude": float("nan"),
+                        "baseline": float("nan"),
+                        "ppr": float("nan"),
+                        "simple_ppr": float("nan"),
+                        "induction": float("nan"),
+                        "recovery": float("nan"),
+                    }
+                )
+
         # Restore original connection
         if original_connection in self.conn_type_settings:
             self._switch_connection(original_connection)
-        
+
         # Create DataFrame
         df = pd.DataFrame(results)
-        
+
         # Set connection as index for better display
-        df = df.set_index('connection')
-        
+        df = df.set_index("connection")
+
         if plot:
             # Display the table
             print("\nSynaptic Parameters Table:")
             print("=" * 80)
             display(df.round(4))
-            
+
             # Optional: Create a simple bar plot for key metrics
             try:
                 fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-                fig.suptitle(f'Synaptic Parameters Across Connections (STP at {stp_frequency}Hz)', fontsize=16)
-                
+                fig.suptitle(
+                    f"Synaptic Parameters Across Connections (STP at {stp_frequency}Hz)",
+                    fontsize=16,
+                )
+
                 # Plot rise/decay times
-                df[['rise_time', 'decay_time']].plot(kind='bar', ax=axes[0,0])
-                axes[0,0].set_title('Rise and Decay Times')
-                axes[0,0].set_ylabel('Time (ms)')
-                axes[0,0].tick_params(axis='x', rotation=45)
-                
+                df[["rise_time", "decay_time"]].plot(kind="bar", ax=axes[0, 0])
+                axes[0, 0].set_title("Rise and Decay Times")
+                axes[0, 0].set_ylabel("Time (ms)")
+                axes[0, 0].tick_params(axis="x", rotation=45)
+
                 # Plot PPR metrics
-                df[['ppr', 'simple_ppr']].plot(kind='bar', ax=axes[0,1])
-                axes[0,1].set_title('Paired-Pulse Ratios')
-                axes[0,1].axhline(y=1, color='gray', linestyle='--', alpha=0.5)
-                axes[0,1].tick_params(axis='x', rotation=45)
-                
+                df[["ppr", "simple_ppr"]].plot(kind="bar", ax=axes[0, 1])
+                axes[0, 1].set_title("Paired-Pulse Ratios")
+                axes[0, 1].axhline(y=1, color="gray", linestyle="--", alpha=0.5)
+                axes[0, 1].tick_params(axis="x", rotation=45)
+
                 # Plot induction
-                df['induction'].plot(kind='bar', ax=axes[1,0], color='green')
-                axes[1,0].set_title('STP Induction')
-                axes[1,0].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-                axes[1,0].set_ylabel('Induction')
-                axes[1,0].tick_params(axis='x', rotation=45)
-                
+                df["induction"].plot(kind="bar", ax=axes[1, 0], color="green")
+                axes[1, 0].set_title("STP Induction")
+                axes[1, 0].axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+                axes[1, 0].set_ylabel("Induction")
+                axes[1, 0].tick_params(axis="x", rotation=45)
+
                 # Plot recovery
-                df['recovery'].plot(kind='bar', ax=axes[1,1], color='orange')
-                axes[1,1].set_title('STP Recovery')
-                axes[1,1].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-                axes[1,1].set_ylabel('Recovery')
-                axes[1,1].tick_params(axis='x', rotation=45)
-                
+                df["recovery"].plot(kind="bar", ax=axes[1, 1], color="orange")
+                axes[1, 1].set_title("STP Recovery")
+                axes[1, 1].axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+                axes[1, 1].set_ylabel("Recovery")
+                axes[1, 1].tick_params(axis="x", rotation=45)
+
                 plt.tight_layout()
                 plt.show()
-                
+
             except Exception as e:
                 print(f"Warning: Could not create plots: {e}")
-        
+
         return df
-        
+
+
 # optimizers!
 
 
@@ -3459,6 +3339,7 @@ class SynapseOptimizer:
         if self.run_single_event:
             self.tuner.ispk = None
             self.tuner.SingleEvent(plot_and_print=True)
+
 
 # dataclass decorator automatically generates __init__ from type-annotated class variables for cleaner code
 @dataclass

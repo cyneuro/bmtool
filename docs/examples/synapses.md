@@ -21,9 +21,8 @@ The [BMTK Chemical Synapse Tuner](notebooks/synapses/synaptic_tuner/bmtk_chem_sy
 The [Neuron Chemical Synapse Tuner](notebooks/synapses/synaptic_tuner/neuron_chem_syn_tuner.ipynb) tutorial shows how to tune chemical synapses using pure NEURON models. This notebook covers:
 
 - How to set up chemical synapses with detailed configuration
-- How to manually tune synapse parameters outside of BMTK
-- How to work with different synapse types (facilitating, depressing, etc.)
-- How to implement custom synaptic mechanisms
+- How to manually tune synapse parameters
+- How to use the optimizer to automatically fit synaptic parameters
 
 The [Gap Junction Tuner](notebooks/synapses/gap_junction_tuner/gap_junction_tuner.ipynb) tutorial shows how to configure and optimize electrical synapses. This notebook covers:
 
