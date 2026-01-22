@@ -70,7 +70,7 @@ def load_allen_database_cells(morphology, dynamic_params, model_processing="aibs
         hobj = model_processing(hobj, cell=None, dynamics_params=dynamics_params)
         return hobj
 
-    return create_cell()
+    return create_cell
 
 
 def get_target_site(cell, sec=("soma", 0), loc=0.5, site=""):
