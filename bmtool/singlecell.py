@@ -123,10 +123,102 @@ def get_target_site(cell, sec=("soma", 0), loc=0.5, site=""):
     return seg, section
 
 
-class CurrentClamp(object):
+class SimulationBase:
+    """
+    Base class for NEURON single cell simulations using pre-built cells.
+    
+    This class provides common functionality for reusable simulations that:
+    - Accept a pre-initialized cell instead of creating one
+    - Support multiple runs with state resets between them
+    - Allow parameter modifications without rebuilding the cell
+    - Handle recording vector creation and management
+    """
+    
     def __init__(
         self,
-        template_name,
+        cell,
+        record_sec="soma",
+        record_loc=0.5,
+        inj_sec="soma",
+        inj_loc=0.5,
+        threshold=None,
+    ):
+        """
+        Initialize the simulation base with a pre-built cell.
+        
+        Parameters:
+        -----------
+        cell : NEURON cell object
+            A pre-initialized cell object
+        record_sec : str, int, or tuple, optional
+            Section to record from. Default is 'soma'.
+        record_loc : float, optional
+            Location (0-1) within section to record from. Default is 0.5.
+        inj_sec : str, int, or tuple, optional
+            Section for current injection. Default is 'soma'.
+        inj_loc : float, optional
+            Location (0-1) within section for current injection. Default is 0.5.
+        threshold : float, optional
+            Spike threshold (mV) for spike detection. Default is None (no spike detection).
+        """
+        self.cell = cell
+        self.record_sec = record_sec
+        self.record_loc = record_loc
+        self.inj_sec = inj_sec
+        self.inj_loc = inj_loc
+        self.threshold = threshold
+        
+        # These will be set up in subclass _setup_experiment()
+        self.inj_seg = None
+        self.rec_seg = None
+        self.rec_sec = None
+        self.v_vec = None
+        self.t_vec = None
+        self.nc = None
+        self.tspk_vec = None
+    
+    def _create_recording_vectors(self):
+        """Create time and voltage recording vectors."""
+        self.t_vec = h.Vector()
+        self.v_vec = h.Vector()
+        self.t_vec.record(h._ref_t)
+        self.v_vec.record(self.rec_seg._ref_v)
+    
+    def _setup_spike_detection(self):
+        """Set up spike detection at recording site using threshold crossing."""
+        if self.threshold is not None:
+            self.nc = h.NetCon(self.rec_seg._ref_v, None, sec=self.rec_sec)
+            self.nc.threshold = self.threshold
+            self.tspk_vec = h.Vector()
+            self.nc.record(self.tspk_vec)
+    
+    def _clear_vectors(self):
+        """Clear recording vectors for reusable simulations."""
+        if self.t_vec is not None:
+            self.t_vec.clear()
+        if self.v_vec is not None:
+            self.v_vec.clear()
+        if self.tspk_vec is not None:
+            self.tspk_vec.clear()
+    
+    def reset_state(self):
+        """
+        Reset NEURON state and clear vectors for multi-run capability.
+        
+        Call this before re-running after modifying cell parameters.
+        """
+        h.stdinit()
+        self._clear_vectors()
+    
+    def _convert_vectors_to_python(self):
+        """Convert NEURON recording vectors to Python lists."""
+        return self.t_vec.to_python(), self.v_vec.to_python()
+
+
+class CurrentClamp(SimulationBase):
+    def __init__(
+        self,
+        cell_or_template,
         post_init_function=None,
         record_sec="soma",
         record_loc=0.5,
@@ -143,11 +235,12 @@ class CurrentClamp(object):
 
         Parameters:
         -----------
-        template_name : str or callable
-            Either the name of the cell template located in HOC or
-            a function that creates and returns a cell object.
+        cell_or_template : NEURON cell object or str/callable
+            Either a pre-initialized NEURON cell object (NEW API),
+            or the name of a cell template located in HOC / a callable that creates a cell (LEGACY API).
+            The new API (passing a cell object) is recommended for better control and reusability.
         post_init_function : str, optional
-            Function of the cell to be called after initialization.
+            Function of the cell to be called after initialization. Only used with legacy API.
         record_sec : str, int, or tuple, optional
             Section to record from. Can be:
             - str: Section name (defaults to index 0 if multiple sections)
@@ -171,32 +264,55 @@ class CurrentClamp(object):
         tstop : float, optional
             Total simulation time (ms). Default is 1000.0.
             Will be extended if necessary to include the full current injection.
+            
+        Notes:
+        ------
+        NEW API - Pass a pre-built cell:
+            cell = SimpleSoma()  # or any other cell
+            cc = CurrentClamp(cell, inj_amp=100)
+            t, v = cc.run()
+        
+        LEGACY API (deprecated) - Pass a template name:
+            cc = CurrentClamp('SimpleSoma', inj_amp=100)
+            t, v = cc.execute()  # Legacy method still supported
         """
-        self.create_cell = (
-            getattr(h, template_name) if isinstance(template_name, str) else template_name
+        # Detect whether we have a cell object or a template name
+        if isinstance(cell_or_template, str) or (callable(cell_or_template) and not hasattr(cell_or_template, 'soma')):
+            # Legacy API: create cell from template
+            create_cell = (
+                getattr(h, cell_or_template)
+                if isinstance(cell_or_template, str)
+                else cell_or_template
+            )
+            if callable(cell_or_template):
+                cell = cell_or_template()
+            else:
+                cell = create_cell()
+            if post_init_function:
+                eval(f"cell.{post_init_function}")
+        else:
+            # New API: cell object already provided
+            cell = cell_or_template
+        
+        # Initialize base class
+        super().__init__(
+            cell=cell,
+            record_sec=record_sec,
+            record_loc=record_loc,
+            inj_sec=inj_sec,
+            inj_loc=inj_loc,
+            threshold=threshold,
         )
-        self.record_sec = record_sec
-        self.record_loc = record_loc
-        self.inj_sec = inj_sec
-        self.inj_loc = inj_loc
-        self.threshold = threshold
-
+        
         self.tstop = max(tstop, inj_delay + inj_dur)
-        self.inj_delay = inj_delay  # use x ms after start of inj to calculate r_in, etc
+        self.inj_delay = inj_delay
         self.inj_dur = inj_dur
         self.inj_amp = inj_amp * 1e-3  # pA to nA
+        self.cell_src = None
 
-        # sometimes people may put a hoc object in for the template name
-        if callable(template_name):
-            self.cell = template_name()
-        else:
-            self.cell = self.create_cell()
-        if post_init_function:
-            eval(f"self.cell.{post_init_function}")
+        self._setup_experiment()
 
-        self.setup()
-
-    def setup(self):
+    def _setup_experiment(self):
         """
         Set up the simulation environment for current clamp experiments.
 
@@ -209,36 +325,37 @@ class CurrentClamp(object):
         ------
         Sets self.cell_src as the current clamp object that can be accessed later.
         """
-        inj_seg, _ = get_target_site(self.cell, self.inj_sec, self.inj_loc, "injection")
-        self.cell_src = h.IClamp(inj_seg)
+        self.inj_seg, _ = get_target_site(self.cell, self.inj_sec, self.inj_loc, "injection")
+        self.cell_src = h.IClamp(self.inj_seg)
         self.cell_src.delay = self.inj_delay
         self.cell_src.dur = self.inj_dur
         self.cell_src.amp = self.inj_amp
 
-        rec_seg, rec_sec = get_target_site(self.cell, self.record_sec, self.record_loc, "recording")
-        self.v_vec = h.Vector()
-        self.v_vec.record(rec_seg._ref_v)
+        self.rec_seg, self.rec_sec = get_target_site(self.cell, self.record_sec, self.record_loc, "recording")
+        self._create_recording_vectors()
+        self._setup_spike_detection()
 
-        self.t_vec = h.Vector()
-        self.t_vec.record(h._ref_t)
+        print(f"Injection location: {self.inj_seg}")
+        print(f"Recording: {self.rec_seg}._ref_v")
 
-        if self.threshold is not None:
-            self.nc = h.NetCon(rec_seg._ref_v, None, sec=rec_sec)
-            self.nc.threshold = self.threshold
-            self.tspk_vec = h.Vector()
-            self.nc.record(self.tspk_vec)
+    def setup(self):
+        """
+        DEPRECATED: Use _setup_experiment() instead.
+        This method is kept for backward compatibility.
+        """
+        self._setup_experiment()
 
-        print(f"Injection location: {inj_seg}")
-        print(f"Recording: {rec_seg}._ref_v")
-
-    def execute(self) -> Tuple[list, list]:
+    def run(self) -> Tuple[list, list]:
         """
         Run the current clamp simulation and return recorded data.
 
+        This is the NEW recommended method name. Use this for reusable simulations.
+
         This method:
-        1. Sets up the simulation duration
-        2. Initializes and runs the NEURON simulation
+        1. Initializes the simulation duration
+        2. Runs the NEURON simulation
         3. Converts recorded vectors to Python lists
+        4. Detects spikes if threshold was specified
 
         Returns:
         --------
@@ -249,21 +366,38 @@ class CurrentClamp(object):
         """
         print("Current clamp simulation running...")
         h.tstop = self.tstop
-        h.stdinit()
-        h.run()
+        h.finitialize(h.v_init)
+        h.continuerun(self.tstop)
 
         if self.threshold is not None:
             self.nspks = len(self.tspk_vec)
             print()
             print(f"Number of spikes: {self.nspks:d}")
             print()
-        return self.t_vec.to_python(), self.v_vec.to_python()
+        
+        return self._convert_vectors_to_python()
+
+    def execute(self) -> Tuple[list, list]:
+        """
+        DEPRECATED: Use run() instead.
+        This method is kept for backward compatibility.
+        
+        Run the current clamp simulation and return recorded data.
+
+        Returns:
+        --------
+        tuple
+            (time_vector, voltage_vector) where:
+            - time_vector: List of time points (ms)
+            - voltage_vector: List of membrane potentials (mV) at those time points
+        """
+        return self.run()
 
 
 class Passive(CurrentClamp):
     def __init__(
         self,
-        template_name,
+        cell_or_template,
         inj_amp=-100.0,
         inj_delay=200.0,
         inj_dur=1000.0,
@@ -276,9 +410,9 @@ class Passive(CurrentClamp):
 
         Parameters:
         -----------
-        template_name : str or callable
-            Either the name of the cell template located in HOC or
-            a function that creates and returns a cell object.
+        cell_or_template : NEURON cell object or str/callable
+            Either a pre-initialized NEURON cell object (NEW API),
+            or the name of a cell template located in HOC / a callable that creates a cell (LEGACY API).
         inj_amp : float, optional
             Current injection amplitude (pA). Default is -100.0 (negative to measure passive properties).
         inj_delay : float, optional
@@ -308,7 +442,7 @@ class Passive(CurrentClamp):
         """
         assert inj_amp != 0
         super().__init__(
-            template_name=template_name,
+            cell_or_template=cell_or_template,
             tstop=tstop,
             inj_amp=inj_amp,
             inj_delay=inj_delay,
@@ -598,9 +732,22 @@ class Passive(CurrentClamp):
         - tau: Membrane time constant in ms
         """
         print("Running simulation for passive properties...")
+        return self.run()
+    
+    def run(self):
+        """
+        Run the simulation and calculate passive membrane properties.
+
+        This is the NEW recommended method. Runs simulation and performs analysis.
+
+        Returns:
+        --------
+        tuple
+            (time_vector, voltage_vector) from the simulation
+        """
         h.tstop = self.tstop
-        h.stdinit()
-        h.run()
+        h.finitialize(h.v_init)
+        h.continuerun(self.tstop)
 
         self.index_v_rest = int(self.inj_delay / h.dt)
         self.index_v_final = int(self.inj_stop / h.dt)
@@ -633,13 +780,13 @@ class Passive(CurrentClamp):
         )
         print_calc()
 
-        return self.t_vec.to_python(), self.v_vec.to_python()
+        return self._convert_vectors_to_python()
 
 
-class FI(object):
+class FI(SimulationBase):
     def __init__(
         self,
-        template_name,
+        cell_or_template,
         post_init_function=None,
         i_start=0.0,
         i_stop=1050.0,
@@ -657,11 +804,11 @@ class FI(object):
 
         Parameters:
         -----------
-        template_name : str or callable
-            Either the name of the cell template located in HOC or
-            a function that creates and returns a cell object.
+        cell_or_template : NEURON cell object or str/callable
+            Either a pre-initialized NEURON cell object (NEW API),
+            or the name of a cell template located in HOC / a callable that creates a cell (LEGACY API).
         post_init_function : str, optional
-            Function of the cell to be called after initialization.
+            Function of the cell to be called after initialization. Only used with legacy API.
         i_start : float, optional
             Initial current injection amplitude (pA). Default is 0.0.
         i_stop : float, optional
@@ -685,85 +832,82 @@ class FI(object):
 
         Notes:
         ------
-        This class creates multiple instances of the cell model, one for each
-        current amplitude to be tested, allowing all simulations to be run
-        in a single call to NEURON's run() function.
+        NEW APPROACH (RECOMMENDED): Uses single cell with state reset between sweeps.
+        This is more memory efficient and allows parameter modifications.
+        
+        Example:
+            cell = SimpleSoma()
+            fi = FI(cell, i_start=0, i_stop=500, i_increment=100)
+            amps, spikes = fi.run()
+        
+        LEGACY APPROACH: Still supported by passing a template name (deprecated).
         """
-        self.create_cell = (
-            getattr(h, template_name) if isinstance(template_name, str) else template_name
+        # Detect whether we have a cell object or a template name
+        if isinstance(cell_or_template, str) or (callable(cell_or_template) and not hasattr(cell_or_template, 'soma')):
+            # Legacy API: create cell from template
+            create_cell = (
+                getattr(h, cell_or_template)
+                if isinstance(cell_or_template, str)
+                else cell_or_template
+            )
+            if callable(cell_or_template):
+                cell = cell_or_template()
+            else:
+                cell = create_cell()
+            if post_init_function:
+                eval(f"cell.{post_init_function}")
+        else:
+            # New API: cell object already provided
+            cell = cell_or_template
+
+        # Initialize base class
+        super().__init__(
+            cell=cell,
+            record_sec=record_sec,
+            record_loc=record_loc,
+            inj_sec=inj_sec,
+            inj_loc=inj_loc,
+            threshold=threshold,
         )
-        self.post_init_function = post_init_function
+
         self.i_start = i_start * 1e-3  # pA to nA
         self.i_stop = i_stop * 1e-3
         self.i_increment = i_increment * 1e-3
         self.tstart = tstart
         self.tdur = tdur
         self.tstop = tstart + tdur
-        self.threshold = threshold
-
-        self.record_sec = record_sec
-        self.record_loc = record_loc
-        self.inj_sec = inj_sec
-        self.inj_loc = inj_loc
-
-        self.cells = []
-        self.sources = []
-        self.ncs = []
-        self.tspk_vecs = []
-        self.nspks = []
 
         self.ntrials = int((self.i_stop - self.i_start) // self.i_increment + 1)
         self.amps = (self.i_start + np.arange(self.ntrials) * self.i_increment).tolist()
-        for _ in range(self.ntrials):
-            # Cell definition
-            cell = self.create_cell()
-            if post_init_function:
-                eval(f"cell.{post_init_function}")
-            self.cells.append(cell)
+        self.nspks = []
 
-        self.setup()
+        self._setup_experiment()
 
-    def setup(self):
+    def _setup_experiment(self):
         """
-        Set up the simulation environment for frequency-current (F-I) analysis.
-
-        For each current amplitude to be tested, this method:
-        1. Creates a current source at the injection site
-        2. Sets up spike detection at the recording site
-        3. Creates vectors to record spike times
-
-        Notes:
-        ------
-        This preparation allows multiple simulations to be run with different
-        current amplitudes in a single call to h.run().
+        Set up recording vectors and injection site for F-I curve.
+        Uses single-cell approach with state reset between trials.
         """
-        for cell, amp in zip(self.cells, self.amps):
-            inj_seg, _ = get_target_site(cell, self.inj_sec, self.inj_loc, "injection")
-            src = h.IClamp(inj_seg)
-            src.delay = self.tstart
-            src.dur = self.tdur
-            src.amp = amp
-            self.sources.append(src)
+        self.inj_seg, _ = get_target_site(self.cell, self.inj_sec, self.inj_loc, "injection")
+        self.rec_seg, self.rec_sec = get_target_site(self.cell, self.record_sec, self.record_loc, "recording")
+        
+        # Create IClamp (will modify amplitude for each trial)
+        self.iclamp = h.IClamp(self.inj_seg)
+        self.iclamp.delay = self.tstart
+        self.iclamp.dur = self.tdur
 
-            rec_seg, rec_sec = get_target_site(cell, self.record_sec, self.record_loc, "recording")
-            nc = h.NetCon(rec_seg._ref_v, None, sec=rec_sec)
-            nc.threshold = self.threshold
-            spvec = h.Vector()
-            nc.record(spvec)
-            self.ncs.append(nc)
-            self.tspk_vecs.append(spvec)
+        self._create_recording_vectors()
+        self._setup_spike_detection()
 
-        print(f"Injection location: {inj_seg}")
-        print(f"Recording: {rec_seg}._ref_v")
+        print(f"Injection location: {self.inj_seg}")
+        print(f"Recording: {self.rec_seg}._ref_v")
 
-    def execute(self):
+    def run(self):
         """
-        Run the simulation and count spikes for each current amplitude.
+        Run the F-I curve simulation with current amplitude sweep.
 
-        This method:
-        1. Initializes and runs a single NEURON simulation that evaluates all current amplitudes
-        2. Counts spikes for each current amplitude
-        3. Prints a summary of results in tabular format
+        Uses state reset between each trial to allow parameter modifications
+        if needed, while maintaining single-cell efficiency.
 
         Returns:
         --------
@@ -773,28 +917,55 @@ class FI(object):
             - spike_counts: List of spike counts corresponding to each amplitude
         """
         print("Running simulations for FI curve...")
-        h.tstop = self.tstop
-        h.stdinit()
-        h.run()
+        self.nspks = []
 
-        self.nspks = [len(v) for v in self.tspk_vecs]
+        for amp in self.amps:
+            # Set current amplitude for this trial
+            self.iclamp.amp = amp
+            
+            # Reset NEURON state and clear vectors
+            self.reset_state()
+            
+            # Run simulation for this amplitude
+            h.finitialize(h.v_init)
+            h.continuerun(self.tstop)
+            
+            # Count spikes in this trial
+            if self.threshold is not None and self.tspk_vec is not None:
+                nsp = len(self.tspk_vec)
+                self.nspks.append(nsp)
+            else:
+                self.nspks.append(0)
+
         print()
         print("Results")
-        # lets make a df so the results line up nice
+        # Create a nice dataframe output
         data = {"Injection (pA):": [amp * 1000 for amp in self.amps], "number of spikes": self.nspks}
         df = pd.DataFrame(data)
         print(df)
-        # print(f'Injection (pA): ' + ', '.join(f'{x:g}' for x in self.amps))
-        # print(f'Number of spikes: ' + ', '.join(f'{x:d}' for x in self.nspks))
         print()
 
         return [amp * 1000 for amp in self.amps], self.nspks
+
+    def execute(self):
+        """
+        DEPRECATED: Use run() instead.
+        This method is kept for backward compatibility.
+        """
+        return self.run()
+
+    def setup(self):
+        """
+        DEPRECATED: Use _setup_experiment() instead.
+        This method is kept for backward compatibility.
+        """
+        self._setup_experiment()
 
 
 class ZAP(CurrentClamp):
     def __init__(
         self,
-        template_name,
+        cell_or_template,
         inj_amp=100.0,
         inj_delay=200.0,
         inj_dur=15000.0,
@@ -809,9 +980,9 @@ class ZAP(CurrentClamp):
 
         Parameters:
         -----------
-        template_name : str or callable
-            Either the name of the cell template located in HOC or
-            a function that creates and returns a cell object.
+        cell_or_template : NEURON cell object or str/callable
+            Either a pre-initialized NEURON cell object (NEW API),
+            or the name of a cell template located in HOC / a callable that creates a cell (LEGACY API).
         inj_amp : float, optional
             Current injection amplitude (pA). Default is 100.0.
         inj_delay : float, optional
@@ -844,7 +1015,7 @@ class ZAP(CurrentClamp):
         """
         assert inj_amp != 0
         super().__init__(
-            template_name=template_name,
+            cell_or_template=cell_or_template,
             tstop=tstop,
             inj_amp=inj_amp,
             inj_delay=inj_delay,
@@ -974,7 +1145,16 @@ class ZAP(CurrentClamp):
 
     def execute(self) -> Tuple[list, list]:
         """
+        DEPRECATED: Use run() instead.
+        This method is kept for backward compatibility.
+        """
+        return self.run()
+
+    def run(self) -> Tuple[list, list]:
+        """
         Run the ZAP simulation and calculate the impedance profile.
+
+        This is the NEW recommended method.
 
         This method:
         1. Sets up the chirp current
@@ -997,8 +1177,8 @@ class ZAP(CurrentClamp):
         print("ZAP current simulation running...")
         self.zap_current()
         h.tstop = self.tstop
-        h.stdinit()
-        h.run()
+        h.finitialize(h.v_init)
+        h.continuerun(self.tstop)
 
         self.zap_vec.resize(self.t_vec.size())
         self.v_rest = self.v_vec[self.index_v_rest]
@@ -1023,7 +1203,7 @@ class ZAP(CurrentClamp):
             "of membrane voltage to FFT amplitude of chirp current"
         )
         print()
-        return self.t_vec.to_python(), self.v_vec.to_python()
+        return self._convert_vectors_to_python()
 
 
 class Profiler:
