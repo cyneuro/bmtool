@@ -123,10 +123,126 @@ def get_target_site(cell, sec=("soma", 0), loc=0.5, site=""):
     return seg, section
 
 
-class CurrentClamp(object):
+class SimulationBase:
+    """
+    Base class for NEURON single cell simulations using pre-built cells.
+
+    This class provides common functionality for reusable simulations that:
+    - Accept a pre-initialized cell instead of creating one
+    - Support multiple runs with state resets between them
+    - Allow parameter modifications without rebuilding the cell
+    - Handle recording vector creation and management
+    """
+
     def __init__(
         self,
-        template_name,
+        cell,
+        record_sec="soma",
+        record_loc=0.5,
+        inj_sec="soma",
+        inj_loc=0.5,
+        threshold=None,
+    ):
+        """
+        Initialize the simulation base with a pre-built cell.
+
+        Parameters:
+        -----------
+        cell : NEURON cell object
+            A pre-initialized cell object
+        record_sec : str, int, or tuple, optional
+            Section to record from. Default is 'soma'.
+        record_loc : float, optional
+            Location (0-1) within section to record from. Default is 0.5.
+        inj_sec : str, int, or tuple, optional
+            Section for current injection. Default is 'soma'.
+        inj_loc : float, optional
+            Location (0-1) within section for current injection. Default is 0.5.
+        threshold : float, optional
+            Spike threshold (mV) for spike detection. Default is None (no spike detection).
+        """
+        self.cell = cell
+        self.record_sec = record_sec
+        self.record_loc = record_loc
+        self.inj_sec = inj_sec
+        self.inj_loc = inj_loc
+        self.threshold = threshold
+
+        # These will be set up in subclass _setup_experiment()
+        self.inj_seg = None
+        self.rec_seg = None
+        self.rec_sec = None
+        self.v_vec = None
+        self.t_vec = None
+        self.nc = None
+        self.tspk_vec = None
+
+    def _create_recording_vectors(self):
+        """Create time and voltage recording vectors."""
+        self.t_vec = h.Vector()
+        self.v_vec = h.Vector()
+        self.t_vec.record(h._ref_t)
+        self.v_vec.record(self.rec_seg._ref_v)
+
+    def _setup_spike_detection(self):
+        """Set up spike detection at recording site using threshold crossing."""
+        if self.threshold is not None:
+            self.nc = h.NetCon(self.rec_seg._ref_v, None, sec=self.rec_sec)
+            self.nc.threshold = self.threshold
+            self.tspk_vec = h.Vector()
+            self.nc.record(self.tspk_vec)
+
+    def _clear_vectors(self):
+        """Clear recording vectors for reusable simulations."""
+        if self.t_vec is not None:
+            self.t_vec.clear()
+        if self.v_vec is not None:
+            self.v_vec.clear()
+        if self.tspk_vec is not None:
+            self.tspk_vec.clear()
+
+    def reset_state(self):
+        """
+        Reset NEURON state and clear vectors for multi-run capability.
+
+        Call this before re-running after modifying cell parameters.
+        """
+        self._cleanup_stimuli()
+        h.stdinit()
+        self._clear_vectors()
+
+    def _convert_vectors_to_python(self):
+        """Convert NEURON recording vectors to Python lists."""
+        return self.t_vec.to_python(), self.v_vec.to_python()
+
+    def _cleanup_stimuli(self):
+        """
+        Clean up all stimuli (IClamp, NetCon) to prevent interference with subsequent simulations.
+
+        This method removes references to stimulus objects that were created during
+        _setup_experiment(). NEURON objects persist in memory, so without cleanup,
+        multiple simulation runs would accumulate stimuli that all inject current
+        simultaneously, corrupting results.
+        """
+        # Delete the IClamp stimulus if it exists
+        if hasattr(self, "cell_src") and self.cell_src is not None:
+            try:
+                self.cell_src = None  # Delete reference to IClamp
+            except Exception:
+                pass
+
+        # Delete the NetCon object if it exists
+        if hasattr(self, "nc") and self.nc is not None:
+            try:
+                self.nc = None  # Delete reference to NetCon
+            except Exception:
+                pass
+
+
+class CurrentClamp(SimulationBase):
+    def __init__(
+        self,
+        cell_or_template,
         post_init_function=None,
         record_sec="soma",
         record_loc=0.5,
@@ -143,11 +259,12 @@ class CurrentClamp(object):
 
         Parameters:
         -----------
-        template_name : str or callable
-            Either the name of the cell template located in HOC or
-            a function that creates and returns a cell object.
+        cell_or_template : NEURON cell object or str/callable
+            Either a pre-initialized NEURON cell object (NEW API),
+            or the name of a cell template located in HOC / a callable that creates a cell (LEGACY API).
+            The new API (passing a cell object) is recommended for better control and reusability.
         post_init_function : str, optional
-            Function of the cell to be called after initialization.
+            Function of the cell to be called after initialization. Only used with legacy API.
         record_sec : str, int, or tuple, optional
             Section to record from. Can be:
             - str: Section name (defaults to index 0 if multiple sections)
@@ -171,32 +288,59 @@ class CurrentClamp(object):
         tstop : float, optional
             Total simulation time (ms). Default is 1000.0.
             Will be extended if necessary to include the full current injection.
+
+        Notes:
+        ------
+        Two approaches are supported:
+
+        1. Pass a pre-built cell object:
+            cell = SimpleSoma()  # or any other cell
+            cc = CurrentClamp(cell, inj_amp=100)
+            t, v = cc.run()
+
+        2. Pass a template name (string) loaded into NEURON:
+            cc = CurrentClamp('CP_Cell', inj_amp=100)
+            t, v = cc.run()
         """
-        self.create_cell = (
-            getattr(h, template_name) if isinstance(template_name, str) else template_name
+        # Detect whether we have a cell object or a template name
+        if isinstance(cell_or_template, str) or (
+            callable(cell_or_template) and not hasattr(cell_or_template, "soma")
+        ):
+            # Legacy API: create cell from template
+            create_cell = (
+                getattr(h, cell_or_template)
+                if isinstance(cell_or_template, str)
+                else cell_or_template
+            )
+            if callable(cell_or_template):
+                cell = cell_or_template()
+            else:
+                cell = create_cell()
+            if post_init_function:
+                eval(f"cell.{post_init_function}")
+        else:
+            # New API: cell object already provided
+            cell = cell_or_template
+
+        # Initialize base class
+        super().__init__(
+            cell=cell,
+            record_sec=record_sec,
+            record_loc=record_loc,
+            inj_sec=inj_sec,
+            inj_loc=inj_loc,
+            threshold=threshold,
         )
-        self.record_sec = record_sec
-        self.record_loc = record_loc
-        self.inj_sec = inj_sec
-        self.inj_loc = inj_loc
-        self.threshold = threshold
 
         self.tstop = max(tstop, inj_delay + inj_dur)
-        self.inj_delay = inj_delay  # use x ms after start of inj to calculate r_in, etc
+        self.inj_delay = inj_delay
         self.inj_dur = inj_dur
         self.inj_amp = inj_amp * 1e-3  # pA to nA
+        self.cell_src = None
 
-        # sometimes people may put a hoc object in for the template name
-        if callable(template_name):
-            self.cell = template_name()
-        else:
-            self.cell = self.create_cell()
-        if post_init_function:
-            eval(f"self.cell.{post_init_function}")
+        self._setup_experiment()
 
-        self.setup()
-
-    def setup(self):
+    def _setup_experiment(self):
         """
         Set up the simulation environment for current clamp experiments.
 
@@ -209,36 +353,30 @@ class CurrentClamp(object):
         ------
         Sets self.cell_src as the current clamp object that can be accessed later.
         """
-        inj_seg, _ = get_target_site(self.cell, self.inj_sec, self.inj_loc, "injection")
-        self.cell_src = h.IClamp(inj_seg)
+        self.inj_seg, _ = get_target_site(self.cell, self.inj_sec, self.inj_loc, "injection")
+        self.cell_src = h.IClamp(self.inj_seg)
         self.cell_src.delay = self.inj_delay
         self.cell_src.dur = self.inj_dur
         self.cell_src.amp = self.inj_amp
 
-        rec_seg, rec_sec = get_target_site(self.cell, self.record_sec, self.record_loc, "recording")
-        self.v_vec = h.Vector()
-        self.v_vec.record(rec_seg._ref_v)
+        self.rec_seg, self.rec_sec = get_target_site(
+            self.cell, self.record_sec, self.record_loc, "recording"
+        )
+        self._create_recording_vectors()
+        self._setup_spike_detection()
 
-        self.t_vec = h.Vector()
-        self.t_vec.record(h._ref_t)
+        print(f"Injection location: {self.inj_seg}")
+        print(f"Recording: {self.rec_seg}._ref_v")
 
-        if self.threshold is not None:
-            self.nc = h.NetCon(rec_seg._ref_v, None, sec=rec_sec)
-            self.nc.threshold = self.threshold
-            self.tspk_vec = h.Vector()
-            self.nc.record(self.tspk_vec)
-
-        print(f"Injection location: {inj_seg}")
-        print(f"Recording: {rec_seg}._ref_v")
-
-    def execute(self) -> Tuple[list, list]:
+    def run(self) -> Tuple[list, list]:
         """
         Run the current clamp simulation and return recorded data.
 
         This method:
-        1. Sets up the simulation duration
-        2. Initializes and runs the NEURON simulation
+        1. Initializes the simulation duration
+        2. Runs the NEURON simulation
         3. Converts recorded vectors to Python lists
+        4. Detects spikes if threshold was specified
 
         Returns:
         --------
@@ -249,21 +387,22 @@ class CurrentClamp(object):
         """
         print("Current clamp simulation running...")
         h.tstop = self.tstop
-        h.stdinit()
-        h.run()
+        h.finitialize(h.v_init)
+        h.continuerun(self.tstop)
 
         if self.threshold is not None:
             self.nspks = len(self.tspk_vec)
             print()
             print(f"Number of spikes: {self.nspks:d}")
             print()
-        return self.t_vec.to_python(), self.v_vec.to_python()
+
+        return self._convert_vectors_to_python()
 
 
 class Passive(CurrentClamp):
     def __init__(
         self,
-        template_name,
+        cell_or_template,
         inj_amp=-100.0,
         inj_delay=200.0,
         inj_dur=1000.0,
@@ -276,9 +415,9 @@ class Passive(CurrentClamp):
 
         Parameters:
         -----------
-        template_name : str or callable
-            Either the name of the cell template located in HOC or
-            a function that creates and returns a cell object.
+        cell_or_template : NEURON cell object or str/callable
+            Either a pre-initialized NEURON cell object (NEW API),
+            or the name of a cell template located in HOC / a callable that creates a cell (LEGACY API).
         inj_amp : float, optional
             Current injection amplitude (pA). Default is -100.0 (negative to measure passive properties).
         inj_delay : float, optional
@@ -308,7 +447,7 @@ class Passive(CurrentClamp):
         """
         assert inj_amp != 0
         super().__init__(
-            template_name=template_name,
+            cell_or_template=cell_or_template,
             tstop=tstop,
             inj_amp=inj_amp,
             inj_delay=inj_delay,
@@ -574,7 +713,7 @@ class Passive(CurrentClamp):
         v_fit = self.single_exponential(self.t_vec_inj, *self.popt)
         return t_vec, v_fit
 
-    def execute(self):
+    def run(self):
         """
         Run the simulation and calculate passive membrane properties.
 
@@ -599,8 +738,8 @@ class Passive(CurrentClamp):
         """
         print("Running simulation for passive properties...")
         h.tstop = self.tstop
-        h.stdinit()
-        h.run()
+        h.finitialize(h.v_init)
+        h.continuerun(self.tstop)
 
         self.index_v_rest = int(self.inj_delay / h.dt)
         self.index_v_final = int(self.inj_stop / h.dt)
@@ -633,13 +772,13 @@ class Passive(CurrentClamp):
         )
         print_calc()
 
-        return self.t_vec.to_python(), self.v_vec.to_python()
+        return self._convert_vectors_to_python()
 
 
-class FI(object):
+class FI(SimulationBase):
     def __init__(
         self,
-        template_name,
+        cell_or_template,
         post_init_function=None,
         i_start=0.0,
         i_stop=1050.0,
@@ -657,11 +796,11 @@ class FI(object):
 
         Parameters:
         -----------
-        template_name : str or callable
-            Either the name of the cell template located in HOC or
-            a function that creates and returns a cell object.
+        cell_or_template : NEURON cell object or str/callable
+            Either a pre-initialized NEURON cell object (NEW API),
+            or the name of a cell template located in HOC / a callable that creates a cell (LEGACY API).
         post_init_function : str, optional
-            Function of the cell to be called after initialization.
+            Function of the cell to be called after initialization. Only used with legacy API.
         i_start : float, optional
             Initial current injection amplitude (pA). Default is 0.0.
         i_stop : float, optional
@@ -685,85 +824,87 @@ class FI(object):
 
         Notes:
         ------
-        This class creates multiple instances of the cell model, one for each
-        current amplitude to be tested, allowing all simulations to be run
-        in a single call to NEURON's run() function.
+        Two approaches are supported:
+
+        1. Pass a pre-built cell object:
+            cell = SimpleSoma()
+            fi = FI(cell, i_start=0, i_stop=500, i_increment=100)
+            amps, spikes = fi.run()
+
+        2. Pass a template name (string) loaded into NEURON:
+            fi = FI('CP_Cell', i_start=0, i_stop=500, i_increment=100)
+            amps, spikes = fi.run()
         """
-        self.create_cell = (
-            getattr(h, template_name) if isinstance(template_name, str) else template_name
+        # Detect whether we have a cell object or a template name
+        if isinstance(cell_or_template, str) or (
+            callable(cell_or_template) and not hasattr(cell_or_template, "soma")
+        ):
+            # Legacy API: create cell from template
+            create_cell = (
+                getattr(h, cell_or_template)
+                if isinstance(cell_or_template, str)
+                else cell_or_template
+            )
+            if callable(cell_or_template):
+                cell = cell_or_template()
+            else:
+                cell = create_cell()
+            if post_init_function:
+                eval(f"cell.{post_init_function}")
+        else:
+            # New API: cell object already provided
+            cell = cell_or_template
+
+        # Initialize base class
+        super().__init__(
+            cell=cell,
+            record_sec=record_sec,
+            record_loc=record_loc,
+            inj_sec=inj_sec,
+            inj_loc=inj_loc,
+            threshold=threshold,
         )
-        self.post_init_function = post_init_function
+
         self.i_start = i_start * 1e-3  # pA to nA
         self.i_stop = i_stop * 1e-3
         self.i_increment = i_increment * 1e-3
         self.tstart = tstart
         self.tdur = tdur
         self.tstop = tstart + tdur
-        self.threshold = threshold
-
-        self.record_sec = record_sec
-        self.record_loc = record_loc
-        self.inj_sec = inj_sec
-        self.inj_loc = inj_loc
-
-        self.cells = []
-        self.sources = []
-        self.ncs = []
-        self.tspk_vecs = []
-        self.nspks = []
 
         self.ntrials = int((self.i_stop - self.i_start) // self.i_increment + 1)
         self.amps = (self.i_start + np.arange(self.ntrials) * self.i_increment).tolist()
-        for _ in range(self.ntrials):
-            # Cell definition
-            cell = self.create_cell()
-            if post_init_function:
-                eval(f"cell.{post_init_function}")
-            self.cells.append(cell)
+        self.nspks = []
 
-        self.setup()
+        self._setup_experiment()
 
-    def setup(self):
+    def _setup_experiment(self):
         """
-        Set up the simulation environment for frequency-current (F-I) analysis.
-
-        For each current amplitude to be tested, this method:
-        1. Creates a current source at the injection site
-        2. Sets up spike detection at the recording site
-        3. Creates vectors to record spike times
-
-        Notes:
-        ------
-        This preparation allows multiple simulations to be run with different
-        current amplitudes in a single call to h.run().
+        Set up recording vectors and injection site for F-I curve.
+        Uses single-cell approach with state reset between trials.
         """
-        for cell, amp in zip(self.cells, self.amps):
-            inj_seg, _ = get_target_site(cell, self.inj_sec, self.inj_loc, "injection")
-            src = h.IClamp(inj_seg)
-            src.delay = self.tstart
-            src.dur = self.tdur
-            src.amp = amp
-            self.sources.append(src)
+        self.inj_seg, _ = get_target_site(self.cell, self.inj_sec, self.inj_loc, "injection")
+        self.rec_seg, self.rec_sec = get_target_site(
+            self.cell, self.record_sec, self.record_loc, "recording"
+        )
 
-            rec_seg, rec_sec = get_target_site(cell, self.record_sec, self.record_loc, "recording")
-            nc = h.NetCon(rec_seg._ref_v, None, sec=rec_sec)
-            nc.threshold = self.threshold
-            spvec = h.Vector()
-            nc.record(spvec)
-            self.ncs.append(nc)
-            self.tspk_vecs.append(spvec)
+        # Create IClamp (will modify amplitude for each trial)
+        self.iclamp = h.IClamp(self.inj_seg)
+        self.iclamp.delay = self.tstart
+        self.iclamp.dur = self.tdur
 
-        print(f"Injection location: {inj_seg}")
-        print(f"Recording: {rec_seg}._ref_v")
+        self._create_recording_vectors()
+        self._setup_spike_detection()
 
-    def execute(self):
+        print(f"Injection location: {self.inj_seg}")
+        print(f"Recording: {self.rec_seg}._ref_v")
+
+    def run(self):
         """
-        Run the simulation and count spikes for each current amplitude.
+        Run the F-I curve simulation with current amplitude sweep.
 
-        This method:
-        1. Initializes and runs a single NEURON simulation that evaluates all current amplitudes
-        2. Counts spikes for each current amplitude
-        3. Prints a summary of results in tabular format
+        Uses state reset between each trial to allow parameter modifications
+        if needed, while maintaining single-cell efficiency.
 
         Returns:
         --------
@@ -773,19 +914,35 @@ class FI(object):
             - spike_counts: List of spike counts corresponding to each amplitude
         """
         print("Running simulations for FI curve...")
-        h.tstop = self.tstop
-        h.stdinit()
-        h.run()
+        self.nspks = []
 
-        self.nspks = [len(v) for v in self.tspk_vecs]
+        for amp in self.amps:
+            # Set current amplitude for this trial
+            self.iclamp.amp = amp
+
+            # Reset NEURON state and clear vectors
+            self.reset_state()
+
+            # Run simulation for this amplitude
+            h.finitialize(h.v_init)
+            h.continuerun(self.tstop)
+
+            # Count spikes in this trial
+            if self.threshold is not None and self.tspk_vec is not None:
+                nsp = len(self.tspk_vec)
+                self.nspks.append(nsp)
+            else:
+                self.nspks.append(0)
+
         print()
         print("Results")
-        # lets make a df so the results line up nice
-        data = {"Injection (pA):": [amp * 1000 for amp in self.amps], "number of spikes": self.nspks}
+        # Create a nice dataframe output
+        data = {
+            "Injection (pA):": [amp * 1000 for amp in self.amps],
+            "number of spikes": self.nspks,
+        }
         df = pd.DataFrame(data)
         print(df)
-        # print(f'Injection (pA): ' + ', '.join(f'{x:g}' for x in self.amps))
-        # print(f'Number of spikes: ' + ', '.join(f'{x:d}' for x in self.nspks))
         print()
 
         return [amp * 1000 for amp in self.amps], self.nspks
@@ -794,7 +951,7 @@ class FI(object):
 class ZAP(CurrentClamp):
     def __init__(
         self,
-        template_name,
+        cell_or_template,
         inj_amp=100.0,
         inj_delay=200.0,
         inj_dur=15000.0,
@@ -809,9 +966,9 @@ class ZAP(CurrentClamp):
 
         Parameters:
         -----------
-        template_name : str or callable
-            Either the name of the cell template located in HOC or
-            a function that creates and returns a cell object.
+        cell_or_template : NEURON cell object or str/callable
+            Either a pre-initialized NEURON cell object (NEW API),
+            or the name of a cell template located in HOC / a callable that creates a cell (LEGACY API).
         inj_amp : float, optional
             Current injection amplitude (pA). Default is 100.0.
         inj_delay : float, optional
@@ -844,7 +1001,7 @@ class ZAP(CurrentClamp):
         """
         assert inj_amp != 0
         super().__init__(
-            template_name=template_name,
+            cell_or_template=cell_or_template,
             tstop=tstop,
             inj_amp=inj_amp,
             inj_delay=inj_delay,
@@ -972,7 +1129,7 @@ class ZAP(CurrentClamp):
         print(f"Resonant Peak Frequency: {self.peak_freq:.3g} (Hz)")
         return freq, impedance
 
-    def execute(self) -> Tuple[list, list]:
+    def run(self) -> Tuple[list, list]:
         """
         Run the ZAP simulation and calculate the impedance profile.
 
@@ -997,8 +1154,8 @@ class ZAP(CurrentClamp):
         print("ZAP current simulation running...")
         self.zap_current()
         h.tstop = self.tstop
-        h.stdinit()
-        h.run()
+        h.finitialize(h.v_init)
+        h.continuerun(self.tstop)
 
         self.zap_vec.resize(self.t_vec.size())
         self.v_rest = self.v_vec[self.index_v_rest]
@@ -1023,7 +1180,7 @@ class ZAP(CurrentClamp):
             "of membrane voltage to FFT amplitude of chirp current"
         )
         print()
-        return self.t_vec.to_python(), self.v_vec.to_python()
+        return self._convert_vectors_to_python()
 
 
 class Profiler:
@@ -1036,7 +1193,9 @@ class Profiler:
     to load mechanisms and templates via the utility helpers.
     """
 
-    def __init__(self, template_dir: str = None, mechanism_dir: str = None, dt=None, config: str = None):
+    def __init__(
+        self, template_dir: str = None, mechanism_dir: str = None, dt=None, config: str = None
+    ):
         # initialize to None and then prefer config-derived paths if provided
         self.template_dir = None
         self.mechanism_dir = None
@@ -1070,7 +1229,7 @@ class Profiler:
                 load_templates_from_config(config)
             except Exception:
                 # fall back to explicit dirs if config parsing/loading fails
-                print('failed')
+                print("failed")
 
         else:
             # fall back to explicit args if not set by config
@@ -1081,7 +1240,9 @@ class Profiler:
 
             # template_dir is required for loading templates later
             if self.template_dir is None:
-                raise ValueError("Profiler requires either 'template_dir' or a 'config' containing components.templates_dir")
+                raise ValueError(
+                    "Profiler requires either 'template_dir' or a 'config' containing components.templates_dir"
+                )
 
             self.templates = None
 
@@ -1095,27 +1256,32 @@ class Profiler:
     def load_templates(self, hoc_template_file=None):
         if self.templates is None:  # Can really only do this once
             # Check if we have a config file - if so, extract templates from node configs
-            if hasattr(self, 'config') and self.config is not None:
+            if hasattr(self, "config") and self.config is not None:
                 try:
                     from bmtool.util.util import load_nodes_from_config
+
                     nodes_networks = load_nodes_from_config(config=self.config)
                     template_names = set()
                     for nodes in nodes_networks:
                         try:
-                            cell_template_names = nodes_networks[nodes]['model_template'].unique()
+                            cell_template_names = nodes_networks[nodes]["model_template"].unique()
                             # Clean up template names (remove 'hoc:' prefix if present)
                             for template in cell_template_names:
                                 if isinstance(template, str):
                                     # Remove 'hoc:' prefix if present
-                                    clean_name = template.replace('hoc:', '') if template.startswith('hoc:') else template
+                                    clean_name = (
+                                        template.replace("hoc:", "")
+                                        if template.startswith("hoc:")
+                                        else template
+                                    )
                                     template_names.add(clean_name)
                         except:
                             # If fails, means no model_templates in that network
                             pass
-                    
+
                     self.templates = sorted(list(template_names))
                     self.hoc_templates = []  # Templates loaded via config, not hoc files
-                    
+
                 except Exception as e:
                     print(f"Failed to load templates from config: {e}")
             else:
@@ -1186,13 +1352,15 @@ class Profiler:
             method=method,
             **kwargs,
         )
-        time, amp = passive.execute()
+        time, amp = passive.run()
 
         if plot:
             plt.figure()
             t_array = np.array(time)
             amp_array = np.array(amp)
-            t_idx = (t_array >= passive.inj_delay) & (t_array <= passive.inj_delay + passive.inj_dur)
+            t_idx = (t_array >= passive.inj_delay) & (
+                t_array <= passive.inj_delay + passive.inj_dur
+            )
             plt.plot(t_array[t_idx], amp_array[t_idx])
             if passive.method == "exp2":
                 plt.plot(*passive.double_exponential_fit(), "r:", label="double exponential fit")
@@ -1224,7 +1392,7 @@ class Profiler:
             inj_sec=inj_sec,
             **kwargs,
         )
-        time, amp = ccl.execute()
+        time, amp = ccl.run()
 
         if plot:
             plt.figure()
@@ -1274,7 +1442,7 @@ class Profiler:
             inj_sec=inj_sec,
             **kwargs,
         )
-        amp, nspk = fi.execute()
+        amp, nspk = fi.run()
 
         if plot:
             plt.figure()
@@ -1314,7 +1482,7 @@ class Profiler:
             chirp_type=chirp_type,
             **kwargs,
         )
-        time, amp = zap.execute()
+        time, amp = zap.run()
 
         if plot:
             plt.figure()
@@ -1344,359 +1512,447 @@ class Profiler:
 
     def interactive_runner(self):
         """Interactive runner for single cell profiling with GUI widgets.
-        
+
         This method creates an interactive interface using ipywidgets that allows
         users to select templates and analysis methods, adjust parameters, and run
         simulations with real-time plotting.
         """
         try:
             import ipywidgets as widgets
-            import matplotlib.pyplot as plt
-            from IPython.display import clear_output, display
+            from IPython.display import display
         except ImportError:
-            raise ImportError("ipywidgets and matplotlib are required for interactive mode. Install with: pip install ipywidgets matplotlib")
-        
+            raise ImportError(
+                "ipywidgets and matplotlib are required for interactive mode. Install with: pip install ipywidgets matplotlib"
+            )
+
         # Get available templates
         available_templates = self.load_templates()
-        
+
         # Check what NEURON objects are available
         import neuron
+
         h = neuron.h
-        
+
         # Create widgets
         template_dropdown = widgets.Dropdown(
             options=available_templates,
             value=available_templates[0] if available_templates else None,
-            description='Template:',
-            style={'description_width': '80px'},
-            layout=widgets.Layout(width='300px')
+            description="Template:",
+            style={"description_width": "80px"},
+            layout=widgets.Layout(width="300px"),
         )
-        
+
         method_dropdown = widgets.Dropdown(
-            options=['passive_properties', 'current_injection', 'fi_curve', 'impedance_amplitude_profile'],
-            value='passive_properties',
-            description='Method:',
-            style={'description_width': '80px'},
-            layout=widgets.Layout(width='300px')
+            options=[
+                "passive_properties",
+                "current_injection",
+                "fi_curve",
+                "impedance_amplitude_profile",
+            ],
+            value="passive_properties",
+            description="Method:",
+            style={"description_width": "80px"},
+            layout=widgets.Layout(width="300px"),
         )
-        
+
         # Default values based on method - from basic_settings in single_cell_tuning.ipynb
         method_defaults = {
-            'passive_properties': {
-                'inj_amp': -20.0,
-                'inj_delay': 1500.0,
-                'inj_dur': 1000.0,
-                'tstop': 2500.0,
-                'tau_method': 'exp2'
+            "passive_properties": {
+                "inj_amp": -20.0,
+                "inj_delay": 1500.0,
+                "inj_dur": 1000.0,
+                "tstop": 2500.0,
+                "tau_method": "exp2",
             },
-            'current_injection': {
-                'inj_amp': 50.0,
-                'inj_delay': 1500.0,
-                'inj_dur': 1000.0,
-                'tstop': 3000.0
+            "current_injection": {
+                "inj_amp": 50.0,
+                "inj_delay": 1500.0,
+                "inj_dur": 1000.0,
+                "tstop": 3000.0,
             },
-            'fi_curve': {
-                'i_start': -100.0,
-                'i_stop': 800.0,
-                'i_increment': 20.0,
-                'inj_delay': 1500.0,
-                'inj_dur': 1000.0
+            "fi_curve": {
+                "i_start": -100.0,
+                "i_stop": 800.0,
+                "i_increment": 20.0,
+                "inj_delay": 1500.0,
+                "inj_dur": 1000.0,
             },
-            'impedance_amplitude_profile': {
-                'inj_amp': 100.0,
-                'inj_delay': 1000.0,
-                'inj_dur': 15000.0,
-                'tstop': 15500.0,
-                'fstart': 0.0,
-                'fend': 15.0,
-                'chirp_type': 'linear'
-            }
+            "impedance_amplitude_profile": {
+                "inj_amp": 100.0,
+                "inj_delay": 1000.0,
+                "inj_dur": 15000.0,
+                "tstop": 15500.0,
+                "fstart": 0.0,
+                "fend": 15.0,
+                "chirp_type": "linear",
+            },
         }
-        
+
         # Common parameters - always plot results, no need for toggle
-        
+
         # Method-specific parameters - styled like synapses.py sliders
-        slider_style = {'description_width': 'initial'}
+        slider_style = {"description_width": "initial"}
         slider_layout = None  # Use default width for longer sliders
-        text_style = {'description_width': 'initial'}
-        text_layout = widgets.Layout(width='200px')
-        
+        text_style = {"description_width": "initial"}
+        text_layout = widgets.Layout(width="200px")
+
         # Initialize sliders with default values for passive_properties (initial method)
-        defaults = method_defaults['passive_properties']
-        
-        inj_amp_slider = widgets.FloatSlider(value=defaults['inj_amp'], min=-500.0, max=1000.0, step=10.0, description='Injection Amp (pA):', style=slider_style)
-        inj_delay_slider = widgets.FloatSlider(value=defaults['inj_delay'], min=0.0, max=3000.0, step=10.0, description='Injection Delay (ms):', style=slider_style)
-        inj_dur_slider = widgets.FloatSlider(value=defaults['inj_dur'], min=100.0, max=20000.0, step=100.0, description='Injection Duration (ms):', style=slider_style)
-        tstop_slider = widgets.FloatSlider(value=defaults['tstop'], min=500.0, max=25000.0, step=100.0, description='Total Time (ms):', style=slider_style)
-        
+        defaults = method_defaults["passive_properties"]
+
+        inj_amp_slider = widgets.FloatSlider(
+            value=defaults["inj_amp"],
+            min=-500.0,
+            max=1000.0,
+            step=10.0,
+            description="Injection Amp (pA):",
+            style=slider_style,
+        )
+        inj_delay_slider = widgets.FloatSlider(
+            value=defaults["inj_delay"],
+            min=0.0,
+            max=3000.0,
+            step=10.0,
+            description="Injection Delay (ms):",
+            style=slider_style,
+        )
+        inj_dur_slider = widgets.FloatSlider(
+            value=defaults["inj_dur"],
+            min=100.0,
+            max=20000.0,
+            step=100.0,
+            description="Injection Duration (ms):",
+            style=slider_style,
+        )
+        tstop_slider = widgets.FloatSlider(
+            value=defaults["tstop"],
+            min=500.0,
+            max=25000.0,
+            step=100.0,
+            description="Total Time (ms):",
+            style=slider_style,
+        )
+
         # FI curve specific
-        fi_defaults = method_defaults['fi_curve']
-        i_start_slider = widgets.FloatSlider(value=fi_defaults['i_start'], min=-500.0, max=500.0, step=10.0, description='I Start (pA):', style=slider_style)
-        i_stop_slider = widgets.FloatSlider(value=fi_defaults['i_stop'], min=0.0, max=2000.0, step=50.0, description='I Stop (pA):', style=slider_style)
-        i_increment_slider = widgets.FloatSlider(value=fi_defaults['i_increment'], min=10.0, max=500.0, step=10.0, description='I Increment (pA):', style=slider_style)
-        
+        fi_defaults = method_defaults["fi_curve"]
+        i_start_slider = widgets.FloatSlider(
+            value=fi_defaults["i_start"],
+            min=-500.0,
+            max=500.0,
+            step=10.0,
+            description="I Start (pA):",
+            style=slider_style,
+        )
+        i_stop_slider = widgets.FloatSlider(
+            value=fi_defaults["i_stop"],
+            min=0.0,
+            max=2000.0,
+            step=50.0,
+            description="I Stop (pA):",
+            style=slider_style,
+        )
+        i_increment_slider = widgets.FloatSlider(
+            value=fi_defaults["i_increment"],
+            min=10.0,
+            max=500.0,
+            step=10.0,
+            description="I Increment (pA):",
+            style=slider_style,
+        )
+
         # ZAP specific
-        zap_defaults = method_defaults['impedance_amplitude_profile']
-        fstart_slider = widgets.FloatSlider(value=zap_defaults['fstart'], min=0.0, max=50.0, step=1.0, description='Start Freq (Hz):', style=slider_style)
-        fend_slider = widgets.FloatSlider(value=zap_defaults['fend'], min=1.0, max=100.0, step=1.0, description='End Freq (Hz):', style=slider_style)
-        chirp_dropdown = widgets.Dropdown(options=['linear', 'exponential'], value=zap_defaults['chirp_type'], description='Chirp Type:', style=slider_style)
-        
+        zap_defaults = method_defaults["impedance_amplitude_profile"]
+        fstart_slider = widgets.FloatSlider(
+            value=zap_defaults["fstart"],
+            min=0.0,
+            max=50.0,
+            step=1.0,
+            description="Start Freq (Hz):",
+            style=slider_style,
+        )
+        fend_slider = widgets.FloatSlider(
+            value=zap_defaults["fend"],
+            min=1.0,
+            max=100.0,
+            step=1.0,
+            description="End Freq (Hz):",
+            style=slider_style,
+        )
+        chirp_dropdown = widgets.Dropdown(
+            options=["linear", "exponential"],
+            value=zap_defaults["chirp_type"],
+            description="Chirp Type:",
+            style=slider_style,
+        )
+
         # Passive properties specific
         tau_method_dropdown = widgets.Dropdown(
-            options=['simple', 'exp', 'exp2'], 
-            value=defaults['tau_method'], 
-            description='Tau Method:', 
-            style=slider_style
+            options=["simple", "exp", "exp2"],
+            value=defaults["tau_method"],
+            description="Tau Method:",
+            style=slider_style,
         )
-        
+
         # Sections
-        record_sec_text = widgets.Text(value='soma', description='Record Section:', style=text_style, layout=text_layout)
-        inj_sec_text = widgets.Text(value='soma', description='Injection Section:', style=text_style, layout=text_layout)
-        
+        record_sec_text = widgets.Text(
+            value="soma", description="Record Section:", style=text_style, layout=text_layout
+        )
+        inj_sec_text = widgets.Text(
+            value="soma", description="Injection Section:", style=text_style, layout=text_layout
+        )
+
         # Post init function
-        post_init_text = widgets.Text(value='', description='Post Init Function:', placeholder='e.g., insert_mechs(123)', style={'description_width': 'initial'}, layout=widgets.Layout(width='300px'))
-        
+        post_init_text = widgets.Text(
+            value="",
+            description="Post Init Function:",
+            placeholder="e.g., insert_mechs(123)",
+            style={"description_width": "initial"},
+            layout=widgets.Layout(width="300px"),
+        )
+
         run_button = widgets.Button(
-            description='Run Analysis', 
-            button_style='primary', 
-            icon='play',
-            layout=widgets.Layout(width='140px')
+            description="Run Analysis",
+            button_style="primary",
+            icon="play",
+            layout=widgets.Layout(width="140px"),
         )
-        
+
         reset_button = widgets.Button(
-            description='Reset to Defaults',
-            button_style='warning',
-            icon='refresh',
-            layout=widgets.Layout(width='150px')
+            description="Reset to Defaults",
+            button_style="warning",
+            icon="refresh",
+            layout=widgets.Layout(width="150px"),
         )
-        
-        save_path_text = widgets.Text(value='', description='Save Path:', placeholder='e.g., plot.png', style={'description_width': 'initial'}, layout=widgets.Layout(width='300px'))
-        
+
+        save_path_text = widgets.Text(
+            value="",
+            description="Save Path:",
+            placeholder="e.g., plot.png",
+            style={"description_width": "initial"},
+            layout=widgets.Layout(width="300px"),
+        )
+
         save_button = widgets.Button(
-            description='Save Plot', 
-            button_style='success', 
-            icon='save',
-            layout=widgets.Layout(width='120px')
+            description="Save Plot",
+            button_style="success",
+            icon="save",
+            layout=widgets.Layout(width="120px"),
         )
-        
+
         output_area = widgets.Output(
-            layout=widgets.Layout(border='1px solid #ccc', padding='10px', margin='10px 0 0 0')
+            layout=widgets.Layout(border="1px solid #ccc", padding="10px", margin="10px 0 0 0")
         )
-        
+
         # Layout containers - organized like synapse tuner
         # Top row - template and method selection
-        selection_row = widgets.HBox([
-            template_dropdown,
-            method_dropdown
-        ], layout=widgets.Layout(margin='0 0 10px 0'))
-        
+        selection_row = widgets.HBox(
+            [template_dropdown, method_dropdown], layout=widgets.Layout(margin="0 0 10px 0")
+        )
+
         # Button row - main controls
-        button_row = widgets.HBox([
-            run_button,
-            reset_button,
-            save_button
-        ], layout=widgets.Layout(margin='0 0 10px 0'))
-        
-        # Section row - recording and injection sections  
-        section_row = widgets.HBox([
-            record_sec_text,
-            inj_sec_text,
-            post_init_text
-        ], layout=widgets.Layout(margin='0 0 10px 0'))
-        
+        button_row = widgets.HBox(
+            [run_button, reset_button, save_button], layout=widgets.Layout(margin="0 0 10px 0")
+        )
+
+        # Section row - recording and injection sections
+        section_row = widgets.HBox(
+            [record_sec_text, inj_sec_text, post_init_text],
+            layout=widgets.Layout(margin="0 0 10px 0"),
+        )
+
         # Save row
-        save_row = widgets.HBox([
-            save_path_text
-        ], layout=widgets.Layout(margin='0 0 10px 0'))
-        
+        save_row = widgets.HBox([save_path_text], layout=widgets.Layout(margin="0 0 10px 0"))
+
         # Parameter columns - organized in columns like synapse tuner
-        injection_params_col1 = widgets.VBox([
-            inj_amp_slider,
-            inj_delay_slider
-        ], layout=widgets.Layout(margin='0 10px 0 0'))
-        
-        injection_params_col2 = widgets.VBox([
-            inj_dur_slider,
-            tstop_slider
-        ], layout=widgets.Layout(margin='0 0 0 10px'))
-        
+        injection_params_col1 = widgets.VBox(
+            [inj_amp_slider, inj_delay_slider], layout=widgets.Layout(margin="0 10px 0 0")
+        )
+
+        injection_params_col2 = widgets.VBox(
+            [inj_dur_slider, tstop_slider], layout=widgets.Layout(margin="0 0 0 10px")
+        )
+
         # Passive properties specific columns
-        passive_params_col1 = widgets.VBox([
-            inj_amp_slider,
-            inj_delay_slider
-        ], layout=widgets.Layout(margin='0 10px 0 0'))
-        
-        passive_params_col2 = widgets.VBox([
-            inj_dur_slider,
-            tstop_slider,
-            tau_method_dropdown
-        ], layout=widgets.Layout(margin='0 0 0 10px'))
-        
-        fi_params_col1 = widgets.VBox([
-            i_start_slider,
-            i_stop_slider
-        ], layout=widgets.Layout(margin='0 10px 0 0'))
-        
-        fi_params_col2 = widgets.VBox([
-            i_increment_slider,
-            inj_dur_slider  # Use duration for FI curve too
-        ], layout=widgets.Layout(margin='0 0 0 10px'))
-        
-        zap_params_col1 = widgets.VBox([
-            inj_amp_slider,
-            inj_delay_slider,
-            inj_dur_slider
-        ], layout=widgets.Layout(margin='0 10px 0 0'))
-        
-        zap_params_col2 = widgets.VBox([
-            tstop_slider,
-            fstart_slider,
-            fend_slider,
-            chirp_dropdown
-        ], layout=widgets.Layout(margin='0 0 0 10px'))
-        
+        passive_params_col1 = widgets.VBox(
+            [inj_amp_slider, inj_delay_slider], layout=widgets.Layout(margin="0 10px 0 0")
+        )
+
+        passive_params_col2 = widgets.VBox(
+            [inj_dur_slider, tstop_slider, tau_method_dropdown],
+            layout=widgets.Layout(margin="0 0 0 10px"),
+        )
+
+        fi_params_col1 = widgets.VBox(
+            [i_start_slider, i_stop_slider], layout=widgets.Layout(margin="0 10px 0 0")
+        )
+
+        fi_params_col2 = widgets.VBox(
+            [
+                i_increment_slider,
+                inj_dur_slider,  # Use duration for FI curve too
+            ],
+            layout=widgets.Layout(margin="0 0 0 10px"),
+        )
+
+        zap_params_col1 = widgets.VBox(
+            [inj_amp_slider, inj_delay_slider, inj_dur_slider],
+            layout=widgets.Layout(margin="0 10px 0 0"),
+        )
+
+        zap_params_col2 = widgets.VBox(
+            [tstop_slider, fstart_slider, fend_slider, chirp_dropdown],
+            layout=widgets.Layout(margin="0 0 0 10px"),
+        )
+
         # Function to update slider values based on method defaults
         def update_slider_values(method):
             """Update slider values to match the defaults for the selected method"""
             if method in method_defaults:
                 defaults = method_defaults[method]
-                
+
                 # Update common sliders if they exist in defaults
-                if 'inj_amp' in defaults:
-                    inj_amp_slider.value = defaults['inj_amp']
-                if 'inj_delay' in defaults:
-                    inj_delay_slider.value = defaults['inj_delay']
-                if 'inj_dur' in defaults:
-                    inj_dur_slider.value = defaults['inj_dur']
-                if 'tstop' in defaults:
-                    tstop_slider.value = defaults['tstop']
-                    
+                if "inj_amp" in defaults:
+                    inj_amp_slider.value = defaults["inj_amp"]
+                if "inj_delay" in defaults:
+                    inj_delay_slider.value = defaults["inj_delay"]
+                if "inj_dur" in defaults:
+                    inj_dur_slider.value = defaults["inj_dur"]
+                if "tstop" in defaults:
+                    tstop_slider.value = defaults["tstop"]
+
                 # Update method-specific sliders
-                if method == 'fi_curve':
-                    if 'i_start' in defaults:
-                        i_start_slider.value = defaults['i_start']
-                    if 'i_stop' in defaults:
-                        i_stop_slider.value = defaults['i_stop']
-                    if 'i_increment' in defaults:
-                        i_increment_slider.value = defaults['i_increment']
-                        
-                elif method == 'impedance_amplitude_profile':
-                    if 'fstart' in defaults:
-                        fstart_slider.value = defaults['fstart']
-                    if 'fend' in defaults:
-                        fend_slider.value = defaults['fend']
-                    if 'chirp_type' in defaults:
-                        chirp_dropdown.value = defaults['chirp_type']
-                        
-                elif method == 'passive_properties':
-                    if 'tau_method' in defaults:
-                        tau_method_dropdown.value = defaults['tau_method']
-            
-        
+                if method == "fi_curve":
+                    if "i_start" in defaults:
+                        i_start_slider.value = defaults["i_start"]
+                    if "i_stop" in defaults:
+                        i_stop_slider.value = defaults["i_stop"]
+                    if "i_increment" in defaults:
+                        i_increment_slider.value = defaults["i_increment"]
+
+                elif method == "impedance_amplitude_profile":
+                    if "fstart" in defaults:
+                        fstart_slider.value = defaults["fstart"]
+                    if "fend" in defaults:
+                        fend_slider.value = defaults["fend"]
+                    if "chirp_type" in defaults:
+                        chirp_dropdown.value = defaults["chirp_type"]
+
+                elif method == "passive_properties":
+                    if "tau_method" in defaults:
+                        tau_method_dropdown.value = defaults["tau_method"]
+
         # Function to update parameter visibility based on selected method
         def update_params(*args):
             method = method_dropdown.value
-            
+
             # Update slider values to defaults for the selected method
             update_slider_values(method)
-            
+
             # Update parameter column visibility
-            if method == 'passive_properties':
+            if method == "passive_properties":
                 param_columns.children = [widgets.HBox([passive_params_col1, passive_params_col2])]
-            elif method == 'current_injection':
-                param_columns.children = [widgets.HBox([injection_params_col1, injection_params_col2])]
-            elif method == 'fi_curve':
+            elif method == "current_injection":
+                param_columns.children = [
+                    widgets.HBox([injection_params_col1, injection_params_col2])
+                ]
+            elif method == "fi_curve":
                 param_columns.children = [widgets.HBox([fi_params_col1, fi_params_col2])]
-            elif method == 'impedance_amplitude_profile':
+            elif method == "impedance_amplitude_profile":
                 param_columns.children = [widgets.HBox([zap_params_col1, zap_params_col2])]
-        
-        method_dropdown.observe(update_params, 'value')
-        
+
+        method_dropdown.observe(update_params, "value")
+
         # Initialize parameter columns container
         param_columns = widgets.VBox([widgets.HBox([passive_params_col1, passive_params_col2])])
-        
+
         # Run function
         def run_analysis(b):
             output_area.clear_output()  # Clear immediately on click
             with output_area:
-        
                 template = template_dropdown.value
                 method = method_dropdown.value
                 record_sec = record_sec_text.value
                 inj_sec = inj_sec_text.value
                 post_init = post_init_text.value if post_init_text.value else None
-        
+
                 kwargs = {
-                    'record_sec': record_sec,
-                    'inj_sec': inj_sec,
-                    'plot': True  # Always plot results
+                    "record_sec": record_sec,
+                    "inj_sec": inj_sec,
+                    "plot": True,  # Always plot results
                 }
-        
+
                 if post_init:
-                    kwargs['post_init_function'] = post_init
-        
+                    kwargs["post_init_function"] = post_init
+
                 # Add method-specific parameters
-                if method == 'passive_properties':
-                    kwargs.update({
-                        'inj_amp': inj_amp_slider.value,
-                        'inj_delay': inj_delay_slider.value,
-                        'inj_dur': inj_dur_slider.value,
-                        'tstop': tstop_slider.value,
-                        'method': tau_method_dropdown.value
-                    })
-                elif method == 'current_injection':
-                    kwargs.update({
-                        'inj_amp': inj_amp_slider.value,
-                        'inj_delay': inj_delay_slider.value,
-                        'inj_dur': inj_dur_slider.value,
-                        'tstop': tstop_slider.value
-                    })
-                elif method == 'fi_curve':
-                    kwargs.update({
-                        'i_start': i_start_slider.value,
-                        'i_stop': i_stop_slider.value,
-                        'i_increment': i_increment_slider.value,
-                        'tstart': inj_delay_slider.value,
-                        'tdur': inj_dur_slider.value
-                    })
-                elif method == 'impedance_amplitude_profile':
-                    kwargs.update({
-                        'inj_amp': inj_amp_slider.value,
-                        'inj_delay': inj_delay_slider.value,
-                        'inj_dur': inj_dur_slider.value,
-                        'tstop': tstop_slider.value,
-                        'fstart': fstart_slider.value,
-                        'fend': fend_slider.value,
-                        'chirp_type': chirp_dropdown.value
-                    })
-        
-                print("="*60)
+                if method == "passive_properties":
+                    kwargs.update(
+                        {
+                            "inj_amp": inj_amp_slider.value,
+                            "inj_delay": inj_delay_slider.value,
+                            "inj_dur": inj_dur_slider.value,
+                            "tstop": tstop_slider.value,
+                            "method": tau_method_dropdown.value,
+                        }
+                    )
+                elif method == "current_injection":
+                    kwargs.update(
+                        {
+                            "inj_amp": inj_amp_slider.value,
+                            "inj_delay": inj_delay_slider.value,
+                            "inj_dur": inj_dur_slider.value,
+                            "tstop": tstop_slider.value,
+                        }
+                    )
+                elif method == "fi_curve":
+                    kwargs.update(
+                        {
+                            "i_start": i_start_slider.value,
+                            "i_stop": i_stop_slider.value,
+                            "i_increment": i_increment_slider.value,
+                            "tstart": inj_delay_slider.value,
+                            "tdur": inj_dur_slider.value,
+                        }
+                    )
+                elif method == "impedance_amplitude_profile":
+                    kwargs.update(
+                        {
+                            "inj_amp": inj_amp_slider.value,
+                            "inj_delay": inj_delay_slider.value,
+                            "inj_dur": inj_dur_slider.value,
+                            "tstop": tstop_slider.value,
+                            "fstart": fstart_slider.value,
+                            "fend": fend_slider.value,
+                            "chirp_type": chirp_dropdown.value,
+                        }
+                    )
+
+                print("=" * 60)
                 print(f"Running {method} for template: {template}")
-                print("="*60)
+                print("=" * 60)
                 print("Parameters:")
                 for key, value in kwargs.items():
                     print(f"  {key}: {value}")
-                print("-"*60)
-        
+                print("-" * 60)
+
                 try:
-                    if method == 'passive_properties':
+                    if method == "passive_properties":
                         result = self.passive_properties(template, **kwargs)
-        
-                    elif method == 'current_injection':
+
+                    elif method == "current_injection":
                         result = self.current_injection(template, **kwargs)
-                    elif method == 'fi_curve':
+                    elif method == "fi_curve":
                         result = self.fi_curve(template, **kwargs)
-                    elif method == 'impedance_amplitude_profile':
+                    elif method == "impedance_amplitude_profile":
                         result = self.impedance_amplitude_profile(template, **kwargs)
-        
-        
+
                 except Exception as e:
-                    print("="*60)
+                    print("=" * 60)
                     print(f"✗ Error running analysis: {e}")
-                    print("="*60)
+                    print("=" * 60)
                     import traceback
+
                     traceback.print_exc()
-        
+
         # Reset function
         def reset_to_defaults(b):
             output_area.clear_output()  # Clear immediately on click
@@ -1704,7 +1960,7 @@ class Profiler:
                 method = method_dropdown.value
                 update_slider_values(method)
                 print(f"Reset all parameters to defaults for {method}")
-        
+
         # Save function
         def save_plot(b):
             path = save_path_text.value
@@ -1723,24 +1979,21 @@ class Profiler:
             except Exception as e:
                 with output_area:
                     print(f"Error saving plot: {e}")
-        
+
         run_button.on_click(run_analysis)
         reset_button.on_click(reset_to_defaults)
         save_button.on_click(save_plot)
-        
+
         # Create main UI layout - matching synapse tuner structure
-        ui = widgets.VBox([
-            selection_row,
-            button_row, 
-            section_row,
-            param_columns,
-            save_row
-        ], layout=widgets.Layout(padding='10px'))
-        
+        ui = widgets.VBox(
+            [selection_row, button_row, section_row, param_columns, save_row],
+            layout=widgets.Layout(padding="10px"),
+        )
+
         # Display the interface - UI on top, output below (like synapse tuner)
         display(ui)
         display(output_area)
-        
+
         # Initial update
         update_params()
 
@@ -1765,9 +2018,9 @@ def run_and_plot(
     title, xlabel, ylabel: plot labels
     plot: whether or not to plot
     plot_injection_only: plot only the injection duration
-    Return: outputs by sim.execute()
+    Return: outputs by sim.run()
     """
-    X, Y = sim.execute()
+    X, Y = sim.run()
     X = np.array(X)
     Y = np.array(Y)
     if plot:
