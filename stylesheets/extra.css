@@ -1,0 +1,235 @@
+/* ===== DOWNLOAD BUTTON STYLING ===== */
+/* Controls the appearance of the download button for notebooks */
+.notebook-download-button {
+  display: inline-block;
+  padding: 8px 15px;
+  background-color: #46d11b; /* Green color */
+  color: white;
+  text-align: center;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: all 0.2s ease;
+  z-index: 10;         /* Ensures button stays on top of other elements */
+  border: 1px solid rgba(255,255,255,0.2);
+  cursor: pointer;
+  font-family: inherit;
+  margin-right: 10px;  /* Add margin between buttons */
+}
+
+/* Container for the download buttons */
+.notebook-button-container {
+  position: absolute;
+  top: 15px;          /* Distance from top of page */
+  right: 15px;        /* Distance from right edge */
+  display: flex;
+  flex-direction: row;
+  z-index: 10;
+}
+
+/* Hover effect for the download button */
+.notebook-download-button:hover {
+  background-color: #1976D2; /* Darker blue for hover state */
+  box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+  transform: translateY(-2px);
+}
+
+/* Down arrow icon before the button text */
+.notebook-download-button:before {
+  content: "⬇ ";
+  margin-right: 6px;
+}
+
+/* Add space to ensure the button doesn't overlap content */
+.md-content__inner {
+  position: relative;
+  padding-top: 55px !important;
+  margin: 0 auto;        /* Centers content */
+}
+
+/* ===== JUPYTER NOTEBOOK STYLING ===== */
+/* Hides the input/output prompts (In[1]:, Out[1]:) from Jupyter notebooks */
+.jp-InputPrompt, .jp-OutputPrompt {
+  display: none !important;
+}
+
+/* ===== LAYOUT STRUCTURE ===== */
+/* Global grid layout - controls overall page structure */
+.md-grid {
+  max-width: initial;    /* Removes default max width constraint */
+}
+
+/* ===== SIDEBAR NAVIGATION STYLING ===== */
+/* Controls the left sidebar width and position */
+.md-sidebar--primary {
+  width: 220px;          /* Width of the left navigation sidebar */
+}
+
+/* ===== TOC SIDEBAR STYLING ===== */
+/* Controls the right TOC sidebar width and position */
+.md-sidebar--secondary {
+  width: 300px;          /* Width of the TOC sidebar */
+}
+
+/* ===== TOC CONTENT CONTAINER ===== */
+/* Controls the scroll wrapper for the TOC */
+.md-sidebar--secondary .md-sidebar__scrollwrap {
+  width: 100%;          /* Makes scroll container use full width */
+  padding-right: 10px;  /* Adds space on right side */
+}
+
+/* Controls the navigation list in the TOC sidebar */
+.md-sidebar--secondary .md-nav {
+  width: 100%;          /* Makes navigation use full container width */
+}
+
+/* ===== TOC LABEL TEXT WRAPPING ===== */
+/* Prevents TOC labels from being truncated and enables wrapping */
+.md-nav__link {
+  white-space: normal !important;      /* Allows text to wrap to multiple lines */
+  overflow: visible !important;        /* Shows content even if it overflows container */
+  text-overflow: clip !important;      /* Disables ellipsis truncation */
+  line-height: 1.4;                    /* Spacing between lines of text */
+  padding: 2px 0;                      /* Vertical spacing around links */
+  word-wrap: break-word !important;    /* Allows long words to be broken */
+  word-break: break-word !important;   /* Breaks words at arbitrary points to prevent overflow */
+  hyphens: auto !important;            /* Adds hyphens when breaking words */
+  max-width: 100% !important;          /* Prevents text from extending beyond container */
+}
+
+/* Controls navigation section titles in the sidebar */
+.md-sidebar .md-nav__title {
+  white-space: normal;               /* Allows text to wrap */
+  overflow: visible;                 /* Shows all content */
+  text-overflow: clip;               /* Disables ellipsis truncation */
+  word-wrap: break-word !important;  /* Allows long words to be broken */
+  word-break: break-word !important; /* Breaks words at arbitrary points */
+  hyphens: auto !important;          /* Adds hyphens when breaking words */
+}
+
+/* Adds spacing between navigation items */
+.md-nav__item {
+  padding: 3px 0;
+}
+
+/* ===== NAVIGATION LIST STRUCTURE ===== */
+/* Makes navigation lists use full available width */
+.md-sidebar--primary .md-nav__list,
+.md-sidebar--secondary .md-nav__list {
+  width: 100%;
+}
+
+/* Controls individual navigation items in both sidebars */
+.md-sidebar--primary .md-nav__item,
+.md-sidebar--secondary .md-nav__item {
+  width: 100%;
+}
+
+/* ===== TOC LINK STYLING ===== */
+/* Controls individual TOC links */
+.md-sidebar--secondary .md-nav__link {
+  display: block;        /* Makes links block elements (full width) */
+  width: 100%;           /* Uses full available width */
+  margin-right: 0;       /* Removes right margin */
+  box-sizing: border-box; /* Includes padding in width calculations */
+}
+
+/* ===== TOC ITEM SPACING ===== */
+/* Controls spacing between TOC items */
+.md-sidebar--secondary .md-nav__item {
+  margin: 4px 0;         /* Vertical spacing between items */
+}
+
+/* ===== ACTIVE TOC ITEM ===== */
+/* Highlights the currently active TOC item */
+.md-sidebar--secondary .md-nav__link--active {
+  font-weight: bold;     /* Makes current TOC item bold */
+}
+
+/* ===== MAIN CONTENT AREA ===== */
+/* Controls the main content container */
+.md-content {
+  max-width: none;       /* Removes default width constraint */
+  margin: 0 auto;        /* Centers the content */
+}
+
+/* ===== CODE CELL STYLING ===== */
+/* Controls Jupyter notebook code cell width */
+.jp-Cell {
+  max-width: 100%;       /* Makes code cells use full width */
+}
+
+/* Controls code syntax highlighting containers */
+.jupyter-wrapper .highlight {
+  max-width: 100%;       /* Makes syntax highlighting use full width */
+  overflow-x: auto;      /* Adds horizontal scrolling for long code */
+}
+
+/* ===== JUPYTER OUTPUT STYLING ===== */
+/* Controls images in Jupyter notebook outputs */
+.jp-OutputArea-output img {
+  max-width: 100% !important;  /* Makes images scale down to fit */
+}
+
+/* Controls admonition blocks in the content */
+.md-typeset .admonition {
+  max-width: 100%;       /* Makes admonitions use full width */
+}
+
+/* Jupyter notebook specific spacing */
+.jupyter-wrapper {
+  margin: 0 -24px;           /* Negative margins to increase width */
+  padding: 0 24px;           /* Padding to offset the negative margins */
+  width: calc(100% + 48px);  /* Calculate width including negative margins */
+}
+
+/* ===== JUPYTER NOTEBOOK TEXT STYLING ===== */
+/* Controls font sizing in Jupyter notebook HTML content */
+.jp-RenderedHTMLCommon {
+  font-size: 16px !important;      /* Base font size for notebook content */
+  line-height: 1.6 !important;     /* Line height for readability */
+}
+
+/* Controls paragraph text in Jupyter notebooks */
+.jp-RenderedHTMLCommon p,
+.jp-RenderedMarkdown p,
+.jupyter-wrapper p {
+  font-size: inherit !important;   /* Inherits font size from parent */
+  line-height: inherit !important; /* Inherits line height from parent */
+  font-weight: normal;             /* Normal font weight for paragraphs */
+  margin: 1em 0;                   /* Vertical margins */
+}
+
+/* ===== JUPYTER HEADING STYLING ===== */
+/* Controls h1 headings in Jupyter notebooks */
+.jp-RenderedHTMLCommon h1,
+.jp-RenderedMarkdown h1,
+.jupyter-wrapper h1 {
+  font-size: 2em !important;      /* Size for h1 headings */
+  margin: 0.67em 0;               /* Spacing around h1 headings */
+}
+
+/* Controls h2 headings in Jupyter notebooks */
+.jp-RenderedHTMLCommon h2,
+.jp-RenderedMarkdown h2,
+.jupyter-wrapper h2 {
+  font-size: 1.5em !important;    /* Size for h2 headings */
+  margin: 0.83em 0;               /* Spacing around h2 headings */
+}
+
+/* Controls h3 headings in Jupyter notebooks */
+.jp-RenderedHTMLCommon h3,
+.jp-RenderedMarkdown h3,
+.jupyter-wrapper h3 {
+  font-size: 1.17em !important;   /* Size for h3 headings */
+  margin: 1em 0;                  /* Spacing around h3 headings */
+}
+
+/* ===== JUPYTER OUTPUT TEXT STYLING ===== */
+/* Controls text in Jupyter notebook outputs */
+.jp-RenderedHTMLCommon .jp-OutputArea-output {
+  font-size: 16px !important;     /* Font size for output text */
+  line-height: 1.6 !important;    /* Line height for output text */
+}
