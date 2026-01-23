@@ -214,6 +214,29 @@ class SimulationBase:
         """Convert NEURON recording vectors to Python lists."""
         return self.t_vec.to_python(), self.v_vec.to_python()
 
+    def _cleanup_stimuli(self):
+        """
+        Clean up all stimuli (IClamp, NetCon) to prevent interference with subsequent simulations.
+
+        This method removes references to stimulus objects that were created during
+        _setup_experiment(). NEURON objects persist in memory, so without cleanup,
+        multiple simulation runs would accumulate stimuli that all inject current
+        simultaneously, corrupting results.
+        """
+        # Delete the IClamp stimulus if it exists
+        if hasattr(self, "cell_src") and self.cell_src is not None:
+            try:
+                self.cell_src = None  # Delete reference to IClamp
+            except Exception:
+                pass
+
+        # Delete the NetCon object if it exists
+        if hasattr(self, "nc") and self.nc is not None:
+            try:
+                self.nc = None  # Delete reference to NetCon
+            except Exception:
+                pass
+
 
 class CurrentClamp(SimulationBase):
     def __init__(
@@ -379,7 +402,9 @@ class CurrentClamp(SimulationBase):
             print(f"Number of spikes: {self.nspks:d}")
             print()
 
-        return self._convert_vectors_to_python()
+        result = self._convert_vectors_to_python()
+        self._cleanup_stimuli()  # Clean up stimuli before returning
+        return result
 
     def execute(self) -> Tuple[list, list]:
         """
@@ -784,7 +809,9 @@ class Passive(CurrentClamp):
         )
         print_calc()
 
-        return self._convert_vectors_to_python()
+        result = self._convert_vectors_to_python()
+        self._cleanup_stimuli()  # Clean up stimuli before returning
+        return result
 
 
 class FI(SimulationBase):
@@ -1214,7 +1241,9 @@ class ZAP(CurrentClamp):
             "of membrane voltage to FFT amplitude of chirp current"
         )
         print()
-        return self._convert_vectors_to_python()
+        result = self._convert_vectors_to_python()
+        self._cleanup_stimuli()  # Clean up stimuli before returning
+        return result
 
 
 class Profiler:
@@ -1553,8 +1582,7 @@ class Profiler:
         """
         try:
             import ipywidgets as widgets
-            import matplotlib.pyplot as plt
-            from IPython.display import clear_output, display
+            from IPython.display import display
         except ImportError:
             raise ImportError(
                 "ipywidgets and matplotlib are required for interactive mode. Install with: pip install ipywidgets matplotlib"
