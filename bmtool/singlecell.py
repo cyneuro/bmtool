@@ -73,51 +73,6 @@ def load_allen_database_cells(morphology, dynamic_params, model_processing="aibs
     return create_cell
 
 
-def _create_cell_from_template(cell_or_template, post_init_function=None):
-    """
-    Helper function to create a cell from a template name or callable.
-
-    This is used internally to support the legacy API where users pass
-    template names or callables instead of pre-built cell objects.
-
-    Parameters:
-    -----------
-    cell_or_template : str or callable
-        Either the name of a cell template in HOC or a callable that creates a cell.
-    post_init_function : str, optional
-        Name of a method to call on the cell after creation.
-
-    Returns:
-    --------
-    NEURON cell object
-        The created and initialized cell.
-    """
-    # Get the cell constructor
-    if isinstance(cell_or_template, str):
-        create_cell = getattr(h, cell_or_template)
-        cell = create_cell()
-    elif callable(cell_or_template):
-        cell = cell_or_template()
-    else:
-        raise TypeError(
-            f"Expected str or callable for template, got {type(cell_or_template).__name__}"
-        )
-
-    # Call post-init function if provided
-    if post_init_function:
-        try:
-            post_init = getattr(cell, post_init_function)
-        except AttributeError as exc:
-            raise AttributeError(
-                f"Cell object has no post-init method '{post_init_function}'"
-            ) from exc
-        if not callable(post_init):
-            raise TypeError(f"post_init_function '{post_init_function}' on cell is not callable")
-        post_init()
-
-    return cell
-
-
 def get_target_site(cell, sec=("soma", 0), loc=0.5, site=""):
     """
     Get a segment and its section from a cell model using flexible section specification.
@@ -172,40 +127,11 @@ class SimulationBase:
     """
     Base class for NEURON single cell simulations using pre-built cells.
 
-    This class enables efficient parameter exploration by reusing the same
-    cell object across multiple simulations without rebuilding. Key features:
-
-    - Accept pre-initialized cells (no need to create new cells for each run)
-    - Support multiple runs with automatic state and stimulus reset
-    - Allow parameter modifications between runs
-    - Automatic cleanup of old stimuli when resetting
-
-    Typical Workflow
-    ----------------
-    The intended usage pattern for multiple simulations::
-
-        from bmtool.singlecell import CurrentClamp
-
-        # 1. Create simulation object with your cell
-        sim = CurrentClamp(cell, inj_amp=100.0, threshold=-20.0)
-
-        # 2. Run the simulation
-        t1, v1 = sim.run()
-
-        # 3. Modify cell parameters
-        cell.soma.gnabar_na = 0.22  # change Na conductance
-
-        # 4. Reset state (clears old stimuli, resets vectors, re-initializes NEURON)
-        sim.reset_state()
-
-        # 5. Run again with modified parameters (same cell, new stimulus)
-        t2, v2 = sim.run()
-
-        # Repeat steps 3-5 as needed for parameter exploration
-
-    The same cell object is reused without rebuilding, making parameter
-    exploration efficient. Recording vectors persist across runs but are
-    cleared before each new simulation.
+    This class provides common functionality for reusable simulations that:
+    - Accept a pre-initialized cell instead of creating one
+    - Support multiple runs with state resets between them
+    - Allow parameter modifications without rebuilding the cell
+    - Handle recording vector creation and management
     """
 
     def __init__(
@@ -235,12 +161,6 @@ class SimulationBase:
         threshold : float, optional
             Spike threshold (mV) for spike detection. Default is None (no spike detection).
         """
-        # Validate that cell is not None
-        if cell is None:
-            raise ValueError(
-                "SimulationBase requires a valid NEURON cell object; got None for 'cell'."
-            )
-
         self.cell = cell
         self.record_sec = record_sec
         self.record_loc = record_loc
@@ -283,36 +203,13 @@ class SimulationBase:
 
     def reset_state(self):
         """
-        Prepare for the next simulation run.
+        Reset NEURON state and clear vectors for multi-run capability.
 
-        This method resets NEURON's state, clears recording vectors, and cleans
-        up old stimuli so the next run can create new ones. Call this between
-        simulation runs, typically after modifying cell parameters.
-
-        Steps performed:
-
-        1. Reset NEURON's global state via ``h.stdinit()``
-        2. Clear recording vectors (keeps recording relationships intact)
-        3. Clean up old stimuli (IClamp, NetCon objects)
-
-        Important: Recording vectors retain their recording connections after
-        clearing, so no recreation of vectors is needed for subsequent runs.
-
-        Example::
-
-            sim = CurrentClamp(cell, threshold=-20.0)
-            t1, v1 = sim.run()
-
-            # Modify parameters
-            cell.soma.gnabar_na = 0.22
-
-            # Reset before next run
-            sim.reset_state()
-            t2, v2 = sim.run()  # ready with new parameters
+        Call this before re-running after modifying cell parameters.
         """
+        self._cleanup_stimuli()
         h.stdinit()
         self._clear_vectors()
-        self._cleanup_stimuli()  # Clean up old stimuli before next run
 
     def _convert_vectors_to_python(self):
         """Convert NEURON recording vectors to Python lists."""
@@ -320,17 +217,18 @@ class SimulationBase:
 
     def _cleanup_stimuli(self):
         """
-        Internal method to clean up stimuli.
+        Clean up all stimuli (IClamp, NetCon) to prevent interference with subsequent simulations.
 
-        This method removes references to stimulus objects. NEURON objects persist
-        in memory, so cleanup helps release resources when the simulation is done.
+        This method removes references to stimulus objects that were created during
+        _setup_experiment(). NEURON objects persist in memory, so without cleanup,
+        multiple simulation runs would accumulate stimuli that all inject current
+        simultaneously, corrupting results.
         """
         # Delete the IClamp stimulus if it exists
         if hasattr(self, "cell_src") and self.cell_src is not None:
             try:
                 self.cell_src = None  # Delete reference to IClamp
             except Exception:
-                # Silently handle exceptions if the NEURON object is already invalid
                 pass
 
         # Delete the NetCon object if it exists
@@ -338,7 +236,6 @@ class SimulationBase:
             try:
                 self.nc = None  # Delete reference to NetCon
             except Exception:
-                # Silently handle exceptions if the NEURON object is already invalid
                 pass
 
 
@@ -394,27 +291,33 @@ class CurrentClamp(SimulationBase):
 
         Notes:
         ------
-        Supports two APIs for creating cells:
+        Two approaches are supported:
 
-        1. **NEW - Pre-built cells** (recommended):
-            cell = SimpleSoma()  # or any cell type
+        1. Pass a pre-built cell object:
+            cell = SimpleSoma()  # or any other cell
             cc = CurrentClamp(cell, inj_amp=100)
             t, v = cc.run()
 
-        2. **LEGACY - Template names** (for backward compatibility):
-            cc = CurrentClamp('SimpleSoma', inj_amp=100)
-            t, v = cc.execute()  # Deprecated method name, use run() instead
+        2. Pass a template name (string) loaded into NEURON:
+            cc = CurrentClamp('CP_Cell', inj_amp=100)
+            t, v = cc.run()
         """
-        # Detect whether we have a cell object, template name, or factory
-        # - str: template name (legacy API)
-        # - type: class/factory to instantiate
-        # - else: already a pre-built cell instance (new API)
-        if isinstance(cell_or_template, str):
-            # Legacy API: string template name
-            cell = _create_cell_from_template(cell_or_template, post_init_function)
-        elif isinstance(cell_or_template, type):
-            # Factory class that needs to be instantiated
-            cell = _create_cell_from_template(cell_or_template, post_init_function)
+        # Detect whether we have a cell object or a template name
+        if isinstance(cell_or_template, str) or (
+            callable(cell_or_template) and not hasattr(cell_or_template, "soma")
+        ):
+            # Legacy API: create cell from template
+            create_cell = (
+                getattr(h, cell_or_template)
+                if isinstance(cell_or_template, str)
+                else cell_or_template
+            )
+            if callable(cell_or_template):
+                cell = cell_or_template()
+            else:
+                cell = create_cell()
+            if post_init_function:
+                eval(f"cell.{post_init_function}")
         else:
             # New API: cell object already provided
             cell = cell_or_template
@@ -465,18 +368,9 @@ class CurrentClamp(SimulationBase):
         print(f"Injection location: {self.inj_seg}")
         print(f"Recording: {self.rec_seg}._ref_v")
 
-    def setup(self):
-        """
-        DEPRECATED: Use _setup_experiment() instead.
-        This method is kept for backward compatibility.
-        """
-        self._setup_experiment()
-
     def run(self) -> Tuple[list, list]:
         """
         Run the current clamp simulation and return recorded data.
-
-        This is the NEW recommended method name. Use this for reusable simulations.
 
         This method:
         1. Initializes the simulation duration
@@ -502,24 +396,7 @@ class CurrentClamp(SimulationBase):
             print(f"Number of spikes: {self.nspks:d}")
             print()
 
-        result = self._convert_vectors_to_python()
-        return result
-
-    def execute(self) -> Tuple[list, list]:
-        """
-        DEPRECATED: Use run() instead.
-        This method is kept for backward compatibility.
-
-        Run the current clamp simulation and return recorded data.
-
-        Returns:
-        --------
-        tuple
-            (time_vector, voltage_vector) where:
-            - time_vector: List of time points (ms)
-            - voltage_vector: List of membrane potentials (mV) at those time points
-        """
-        return self.run()
+        return self._convert_vectors_to_python()
 
 
 class Passive(CurrentClamp):
@@ -836,7 +713,7 @@ class Passive(CurrentClamp):
         v_fit = self.single_exponential(self.t_vec_inj, *self.popt)
         return t_vec, v_fit
 
-    def execute(self):
+    def run(self):
         """
         Run the simulation and calculate passive membrane properties.
 
@@ -860,19 +737,6 @@ class Passive(CurrentClamp):
         - tau: Membrane time constant in ms
         """
         print("Running simulation for passive properties...")
-        return self.run()
-
-    def run(self):
-        """
-        Run the simulation and calculate passive membrane properties.
-
-        This is the NEW recommended method. Runs simulation and performs analysis.
-
-        Returns:
-        --------
-        tuple
-            (time_vector, voltage_vector) from the simulation
-        """
         h.tstop = self.tstop
         h.finitialize(h.v_init)
         h.continuerun(self.tstop)
@@ -908,8 +772,7 @@ class Passive(CurrentClamp):
         )
         print_calc()
 
-        result = self._convert_vectors_to_python()
-        return result
+        return self._convert_vectors_to_python()
 
 
 class FI(SimulationBase):
@@ -961,26 +824,33 @@ class FI(SimulationBase):
 
         Notes:
         ------
-        NEW APPROACH (RECOMMENDED): Uses single cell with state reset between sweeps.
-        This is more memory efficient and allows parameter modifications.
+        Two approaches are supported:
 
-        Example:
+        1. Pass a pre-built cell object:
             cell = SimpleSoma()
             fi = FI(cell, i_start=0, i_stop=500, i_increment=100)
             amps, spikes = fi.run()
 
-        LEGACY APPROACH: Still supported by passing a template name (deprecated).
+        2. Pass a template name (string) loaded into NEURON:
+            fi = FI('CP_Cell', i_start=0, i_stop=500, i_increment=100)
+            amps, spikes = fi.run()
         """
-        # Detect whether we have a cell object, template name, or factory
-        # - str: template name (legacy API)
-        # - type: class/factory to instantiate
-        # - else: already a pre-built cell instance (new API)
-        if isinstance(cell_or_template, str):
-            # Legacy API: string template name
-            cell = _create_cell_from_template(cell_or_template, post_init_function)
-        elif isinstance(cell_or_template, type):
-            # Factory class that needs to be instantiated
-            cell = _create_cell_from_template(cell_or_template, post_init_function)
+        # Detect whether we have a cell object or a template name
+        if isinstance(cell_or_template, str) or (
+            callable(cell_or_template) and not hasattr(cell_or_template, "soma")
+        ):
+            # Legacy API: create cell from template
+            create_cell = (
+                getattr(h, cell_or_template)
+                if isinstance(cell_or_template, str)
+                else cell_or_template
+            )
+            if callable(cell_or_template):
+                cell = cell_or_template()
+            else:
+                cell = create_cell()
+            if post_init_function:
+                eval(f"cell.{post_init_function}")
         else:
             # New API: cell object already provided
             cell = cell_or_template
@@ -1050,10 +920,11 @@ class FI(SimulationBase):
             # Set current amplitude for this trial
             self.iclamp.amp = amp
 
-            # Reset NEURON state and clear vectors (includes initialization)
+            # Reset NEURON state and clear vectors
             self.reset_state()
 
             # Run simulation for this amplitude
+            h.finitialize(h.v_init)
             h.continuerun(self.tstop)
 
             # Count spikes in this trial
@@ -1075,44 +946,6 @@ class FI(SimulationBase):
         print()
 
         return [amp * 1000 for amp in self.amps], self.nspks
-
-    def _cleanup_stimuli(self):
-        """
-        Clean up or neutralize stimuli specific to the FI protocol.
-
-        Overrides the base implementation to handle the `iclamp` attribute
-        used by FI instead of the generic `cell_src` stimulus.
-        """
-        # Safely neutralize the IClamp if it exists
-        if hasattr(self, "iclamp") and self.iclamp is not None:
-            try:
-                # Set amplitude to zero so no current is injected in future runs
-                self.iclamp.amp = 0.0
-            except Exception:
-                # Silently handle exceptions if the underlying NEURON object is invalid
-                pass
-
-        # Also clean up NetCon from base class
-        if hasattr(self, "nc") and self.nc is not None:
-            try:
-                self.nc = None
-            except Exception:
-                # Silently handle exceptions if the NEURON object is already invalid
-                pass
-
-    def execute(self):
-        """
-        DEPRECATED: Use run() instead.
-        This method is kept for backward compatibility.
-        """
-        return self.run()
-
-    def setup(self):
-        """
-        DEPRECATED: Use _setup_experiment() instead.
-        This method is kept for backward compatibility.
-        """
-        self._setup_experiment()
 
 
 class ZAP(CurrentClamp):
@@ -1296,18 +1129,9 @@ class ZAP(CurrentClamp):
         print(f"Resonant Peak Frequency: {self.peak_freq:.3g} (Hz)")
         return freq, impedance
 
-    def execute(self) -> Tuple[list, list]:
-        """
-        DEPRECATED: Use run() instead.
-        This method is kept for backward compatibility.
-        """
-        return self.run()
-
     def run(self) -> Tuple[list, list]:
         """
         Run the ZAP simulation and calculate the impedance profile.
-
-        This is the NEW recommended method.
 
         This method:
         1. Sets up the chirp current
@@ -1356,8 +1180,7 @@ class ZAP(CurrentClamp):
             "of membrane voltage to FFT amplitude of chirp current"
         )
         print()
-        result = self._convert_vectors_to_python()
-        return result
+        return self._convert_vectors_to_python()
 
 
 class Profiler:
@@ -1529,7 +1352,7 @@ class Profiler:
             method=method,
             **kwargs,
         )
-        time, amp = passive.execute()
+        time, amp = passive.run()
 
         if plot:
             plt.figure()
@@ -1569,7 +1392,7 @@ class Profiler:
             inj_sec=inj_sec,
             **kwargs,
         )
-        time, amp = ccl.execute()
+        time, amp = ccl.run()
 
         if plot:
             plt.figure()
@@ -1619,7 +1442,7 @@ class Profiler:
             inj_sec=inj_sec,
             **kwargs,
         )
-        amp, nspk = fi.execute()
+        amp, nspk = fi.run()
 
         if plot:
             plt.figure()
@@ -1659,7 +1482,7 @@ class Profiler:
             chirp_type=chirp_type,
             **kwargs,
         )
-        time, amp = zap.execute()
+        time, amp = zap.run()
 
         if plot:
             plt.figure()
@@ -2195,9 +2018,9 @@ def run_and_plot(
     title, xlabel, ylabel: plot labels
     plot: whether or not to plot
     plot_injection_only: plot only the injection duration
-    Return: outputs by sim.execute()
+    Return: outputs by sim.run()
     """
-    X, Y = sim.execute()
+    X, Y = sim.run()
     X = np.array(X)
     Y = np.array(Y)
     if plot:
