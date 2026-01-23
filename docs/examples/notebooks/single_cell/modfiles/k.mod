@@ -1,4 +1,4 @@
-: spike-generating sodium channel (Pyramid)
+: spike-generating potassium channel (Pyramid)
 
 NEURON {
 	SUFFIX k
@@ -27,7 +27,7 @@ PARAMETER {
 	nk = 15 (mV)
 	
 	ncbase = 1.1 (ms)
-	ncamp = 4.72(ms)
+	ncamp = 4.72 (ms)
 	nvpeak = -79 (mV)
 	nsigma = 50 (mV)
 	
@@ -66,7 +66,6 @@ DERIVATIVE states {
 }
 
 PROCEDURE rate(v (mV)) {
-	LOCAL na, nb
 	UNITSOFF
 
 	ninf = 1/(1+exp((nvhalf-v)/nk))

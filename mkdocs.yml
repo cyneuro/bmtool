@@ -83,6 +83,7 @@ nav:
       - Single Cell:
           - Overview: examples/single-cell.md
           - Single Cell Analysis: examples/notebooks/single_cell/single_cell_analysis.ipynb
+          - Simple Cell Tuning: examples/notebooks/single_cell/Simple_cell_tuning.ipynb
       - Synapses:
           - Overview: examples/synapses.md
           - BMTK Chemical Synapse Tuner: examples/notebooks/synapses/synaptic_tuner/bmtk_chem_syn_tuner.ipynb
