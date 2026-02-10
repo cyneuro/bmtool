@@ -3,6 +3,7 @@ import math
 import os
 import smtplib
 import sys
+from functools import partial
 from argparse import SUPPRESS, RawTextHelpFormatter
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
@@ -231,6 +232,47 @@ def load_nodes_from_config(config):
         config = "simulation_config.json"
     networks = load_config(config)["networks"]
     return load_nodes_from_paths(networks["nodes"])
+
+
+def df2node_id(df):
+    """Get node ids from a node dataframe into a list"""
+    return df.index.tolist()
+
+
+def get_pop(node_df, value, key="pop_name"):
+    """Get dataframe of nodes matching a specific property from nodes dataframe
+    key, value: key-value pair of a property. Default property: population name
+    """
+    return node_df.loc[node_df[key] == value]
+
+
+def get_pop_id(node_df, value, key="pop_name"):
+    """Get ids of nodes matching a specific property from nodes dataframe"""
+    return df2node_id(get_pop(node_df, value, key=key))
+
+
+def get_populations(node_df, values, key="pop_name", only_id=False):
+    """Get a dictionary of {value: nodes} matching different values of
+    a property from nodes dataframe. Default property: population name
+    only_id: whether return only node ids or a dataframe of nodes
+    """
+    func = partial(get_pop_id, key=key) if only_id else partial(get_pop, key=key)
+    return {v: func(node_df, v) for v in values}
+
+
+def lognormal(mean, stdev, size=None, rng=np.random.default_rng()):
+    """Generate random values from lognormal given mean and stdev"""
+    sigma2 = np.log((stdev / mean) ** 2 + 1)
+    mu = np.log(mean) - sigma2 / 2
+    sigma = sigma2 ** 0.5
+    return rng.lognormal(mu, sigma, size)
+
+
+def num_prop(ratio, N):
+    """Calculate numbers of total N in proportion to ratio"""
+    ratio = np.asarray(ratio)
+    p = np.cumsum(np.insert(ratio.ravel(), 0, 0))  # cumulative proportion
+    return np.diff(np.round(N / p[-1] * p).astype(int)).reshape(ratio.shape)
 
 
 def load_nodes_from_paths(node_paths):
