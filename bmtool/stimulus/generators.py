@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def get_stim_cycle(on_time, off_time, t_start=0.0, t_stop=10.0):
+def get_stim_cycle(on_time, off_time, t_start=0.0, t_stop=10.0, verbose=False):
     """Get burst input stimulus parameters, (duration, number) of cycles.
     Poisson input is first on for on_time, starting at t_start, then off for
     off_time. This repeats until the last on_time can complete before t_stop.
@@ -13,7 +13,7 @@ def get_stim_cycle(on_time, off_time, t_start=0.0, t_stop=10.0):
 
 def get_fr_short(n_assemblies, firing_rate=(0., 0., 0.),
                  on_time=1.0, off_time=0.5,
-                 t_start=0.0, t_stop=10.0, n_cycles=None, n_rounds=1, verbose=True,
+                 t_start=0.0, t_stop=10.0, n_cycles=None, n_rounds=1, verbose=False,
                  assembly_index=None):
     """Short burst is delivered to each assembly sequentially within each cycle.
     
@@ -172,7 +172,7 @@ def get_fr_short(n_assemblies, firing_rate=(0., 0., 0.),
 
 def get_fr_long(n_assemblies, firing_rate=(0., 0., 0.),
                 on_time=1.0, off_time=0.5,
-                t_start=0.0, t_stop=10.0, n_cycles=None, verbose=True,
+                t_start=0.0, t_stop=10.0, n_cycles=None, verbose=False,
                 assembly_index=None):
     """Long burst where one assembly is active per cycle.
     
@@ -829,7 +829,7 @@ def get_fr_fade(n_assemblies, off_rate=10., firing_rate=(0., 0., 0., 0.),
 
 def get_fr_loop(n_assemblies, firing_rate=(0., 0., 0.),
                 on_times=(1.0, ), off_time=0.5,
-                t_start=0.0, t_stop=10.0):
+                t_start=0.0, t_stop=10.0, verbose=False):
     """Poisson input is first on for on_time starting at t_start, then off for
     off_time.
     """

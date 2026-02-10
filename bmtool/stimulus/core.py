@@ -59,7 +59,7 @@ class StimulusBuilder:
             
         return df
 
-    def create_assemblies(self, name, network_name, method='random', **kwargs):
+    def create_assemblies(self, name, network_name, method='random', seed=None, **kwargs):
         """Create node assemblies (subsets) and store them by name.
         
         Args:
@@ -69,6 +69,7 @@ class StimulusBuilder:
                 - 'random': Assign nodes to n_assemblies randomly.
                 - 'grid': Group nodes into a spatial grid based on x, y position.
                 - 'property': Group nodes by a column name (e.g., 'pulse_group_id').
+            seed (int, optional): Random seed for reproducibility. Overrides instance net_seed for this call.
             **kwargs: Arguments passed to the respective assembly generator:
                 - pop_name (str): Filter nodes before assembly creation.
                 - n_assemblies (int): Number of assemblies for 'random'.
@@ -80,13 +81,16 @@ class StimulusBuilder:
         nodes_df = self.get_nodes(network_name, kwargs.get('pop_name'))
         node_ids = nodes_df.index.values
         
+        # Use provided seed or default to instance net_seed
+        rng = np.random.default_rng(seed if seed is not None else self.net_seed)
+        
         if method == 'random':
             n_assemblies = kwargs.get('n_assemblies', 1)
             prob = kwargs.get('prob_in_assembly', 1.0)
             
             # Use utility to get assignments
             assy_indices = assemblies.assign_assembly(
-                len(node_ids), n_assemblies, rng=self.rng, prob_in_assembly=prob
+                len(node_ids), n_assemblies, rng=rng, seed=None, prob_in_assembly=prob
             )
             
             # Map back to node IDs
@@ -105,7 +109,7 @@ class StimulusBuilder:
             prob = kwargs.get('probability', 1.0)
             
             assembly_list = assemblies.get_assemblies_by_property(
-                nodes_df, prop_name, probability=prob, rng=self.rng
+                nodes_df, prop_name, probability=prob, rng=rng, seed=None
             )
             self.assemblies[name] = assembly_list
             
@@ -137,13 +141,15 @@ class StimulusBuilder:
         
         return rates
             
-    def generate_stimulus(self, output_path, pattern_type, assembly_name, **kwargs):
+    def generate_stimulus(self, output_path, pattern_type, assembly_name, verbose=False, seed=None, **kwargs):
         """Generate a BMTK Poisson spike file (SONATA) for a specific assembly group.
         
         Args:
             output_path (str): Path to save the resulting .h5 file.
             pattern_type (str): Firing rate template ('short', 'long', 'ramp', etc).
             assembly_name (str): Name of the assembly group created via create_assemblies.
+            verbose (bool): If True, print detailed information (default: False).
+            seed (int, optional): Random seed for Poisson spike generation. Overrides instance psg_seed for this call.
             **kwargs: Arguments passed to the generator function and PoissonSpikeGenerator.
                 - population (str): Name of the spike population (for BMTK).
                 - firing_rate (3-tuple): (off_rate, burst_rate, silent_rate).
@@ -161,29 +167,34 @@ class StimulusBuilder:
         # Get population name for PSG (consumed here)
         population = kwargs.pop('population', 'stimulus')
         
+        # Use provided seed or default to instance psg_seed
+        psg_seed = seed if seed is not None else self.psg_seed
+        
         # Dispatch to generator
         generator_func = getattr(generators, f"get_fr_{pattern_type}", None)
         if not generator_func:
              raise ValueError(f"Unknown pattern type: {pattern_type}")
         
         # Generate traces
-        params = generator_func(n_assemblies=n_assemblies, **kwargs)
+        params = generator_func(n_assemblies=n_assemblies, verbose=verbose, **kwargs)
         
         # Create PSG
-        psg = PoissonSpikeGenerator(population=population, seed=self.psg_seed)
+        psg = PoissonSpikeGenerator(population=population, seed=psg_seed)
         
         # Add spikes
-        print(f"Generating spiking for {n_assemblies} assemblies...")
+        if verbose:
+            print(f"Generating spiking for {n_assemblies} assemblies...")
         for ids, param_dict in zip(assembly_list, params):
             psg.add(node_ids=ids, firing_rate=param_dict['firing_rate'], times=param_dict['times'])
             
         # Write to file
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         psg.to_sonata(output_path)
-        print(f"Written stimulus to {output_path}")
+        if verbose:
+            print(f"Written stimulus to {output_path}")
 
     def generate_baseline(self, output_path, network_name, pop_name=None, distribution='constant', 
-                         mean=None, stdev=None, firing_rate=None, t_start=0.0, t_stop=10.0):
+                         mean=None, stdev=None, firing_rate=None, t_start=0.0, t_stop=10.0, verbose=False, seed=None):
         """Generate baseline activity for a selection of nodes.
         
         Args:
@@ -195,12 +206,17 @@ class StimulusBuilder:
             stdev (float): Standard deviation for lognormal/normal.
             firing_rate (float, optional): Constant firing rate.
             t_start, t_stop (float): Time range for activity.
+            verbose (bool): If True, print detailed information (default: False).
+            seed (int, optional): Random seed for distribution sampling. Overrides instance psg_seed for this call.
         """
         nodes_df = self.get_nodes(network_name, pop_name)
         node_ids = nodes_df.index.values.tolist()
         
+        # Use provided seed or default to instance psg_seed
+        psg_seed = seed if seed is not None else self.psg_seed
+        
         population = network_name # Default population name in PSG
-        psg = PoissonSpikeGenerator(population=population, seed=self.psg_seed)
+        psg = PoissonSpikeGenerator(population=population, seed=psg_seed)
         
         times = (t_start, t_stop)
         
@@ -228,10 +244,11 @@ class StimulusBuilder:
         # Write to file
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         psg.to_sonata(output_path)
-        print(f"Written baseline to {output_path}")
+        if verbose:
+            print(f"Written baseline to {output_path}")
 
     def generate_shell_input(self, output_path, network_name, shell_params, 
-                            distribution='lognormal', t_start=0.0, t_stop=15.0):
+                            distribution='lognormal', t_start=0.0, t_stop=15.0, verbose=False, seed=None):
         """Generate shell (background) stimulus with population-specific rates.
         
         Args:
@@ -241,9 +258,15 @@ class StimulusBuilder:
                 Example: {'ET': (1.9, 1.8), 'IT': (1.3, 1.4), 'PV': (7.5, 6.4), 'SST': (5.0, 6.0)}
             distribution (str): 'lognormal' or 'normal' (default: 'lognormal').
             t_start, t_stop (float): Time range for activity.
+            verbose (bool): If True, print detailed information (default: False).
+            seed (int, optional): Random seed for distribution sampling. Overrides instance psg_seed for this call.
         """
         nodes_df = self.get_nodes(network_name)
-        psg = PoissonSpikeGenerator(population=network_name, seed=self.psg_seed)
+        
+        # Use provided seed or default to instance psg_seed
+        psg_seed = seed if seed is not None else self.psg_seed
+        
+        psg = PoissonSpikeGenerator(population=network_name, seed=psg_seed)
         
         total_nodes = 0
         for pop_name, (mean, stdev) in shell_params.items():
@@ -263,4 +286,5 @@ class StimulusBuilder:
         # Write to file
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         psg.to_sonata(output_path)
-        print(f"Generated shell stimulus ({distribution}): {total_nodes} nodes to {output_path}")
+        if verbose:
+            print(f"Generated shell stimulus ({distribution}): {total_nodes} nodes to {output_path}")
