@@ -672,6 +672,7 @@ def get_fr_join(n_assemblies, firing_rate=(0., 0., 0.),
     
     return all_params
 
+
 def get_fr_fade(n_assemblies, off_rate=10., firing_rate=(0., 0., 0., 0.),
                 on_time=1.0, off_time=0.5,
                 ramp_on_time=None, ramp_off_time=None,
@@ -826,6 +827,7 @@ def get_fr_fade(n_assemblies, off_rate=10., firing_rate=(0., 0., 0., 0.),
         })
     
     return params
+
 
 def get_fr_loop(n_assemblies, firing_rate=(0., 0., 0.),
                 on_times=(1.0, ), off_time=0.5,

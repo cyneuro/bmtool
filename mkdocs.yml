@@ -64,6 +64,7 @@ nav:
       - Single Cell: modules/singlecell.md
       - Synapses: modules/synapses.md
       - Connectors: modules/connectors.md
+      - Stimulus: modules/stimulus.md
       - BMPlot:
           - Overview: modules/bmplot.md
           - Connection Plotting: modules/bmplot/connections.md
@@ -94,6 +95,9 @@ nav:
           - Overview: examples/connectors.md
           - Connectors Tutorial: examples/notebooks/connectors/connectors.ipynb
           - Gaussian Dropoff Tutorial: examples/notebooks/connectors/GaussianDropoff_tutorial.ipynb
+      - Stimulus:
+          - Overview: examples/stimulus.md
+          - Stimulus Tutorial: examples/notebooks/stimulus/stimulus_tutorial.ipynb
       - BMPlot:
           - Overview: examples/bmplot.md
           - BMPlot Tutorial: examples/notebooks/bmplot/bmplot.ipynb
@@ -112,6 +116,7 @@ nav:
       - Single Cell: api/singlecell.md
       - Synapses: api/synapses.md
       - Connectors: api/connectors.md
+      - Stimulus: api/stimulus.md
       - BMPlot:
           - Overview: api/bmplot.md
           - Connection Plotting: api/bmplot/connections.md
