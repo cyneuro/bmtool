@@ -80,19 +80,29 @@ sb.create_assemblies(
 
 ### Generate Stimulus
 
-Once you have assemblies, generate a stimulus file:
+Use `generate_stimulus()` to create time-varying firing patterns for your assemblies. 
+First create assemblies with `create_assemblies()`, then generate stimulus patterns:
 
 ```python
+# Create assembly first
+sb.create_assemblies(
+    name='stim_groups',
+    network_name='my_network',
+    method='property',
+    property_name='pulse_group_id'
+)
+
+# Then generate stimulus
 sb.generate_stimulus(
     output_path='stimulus.h5',
-    pattern_type='long',               # Firing pattern type
-    assembly_name='random_groups',     # Use this assembly group
-    population='stimulus',             # Population name in BMTK
-    firing_rate=(0.0, 50.0, 0.0),    # (off_rate, burst_rate, silent_rate)
-    t_start=1.0,                       # Start time (seconds)
-    t_stop=15.0,                       # End time (seconds)
-    on_time=1.0,                       # Duration of active period
-    off_time=0.5                       # Duration of silent period
+    pattern_type='long',
+    assembly_name='stim_groups',    # Use pre-created assembly
+    population='stimulus',
+    firing_rate=(0.0, 50.0, 0.0),
+    t_start=1.0,
+    t_stop=15.0,
+    on_time=1.0,
+    off_time=0.5
 )
 ```
 
@@ -285,38 +295,41 @@ sb.create_assemblies(
 
 ## Advanced Features
 
-### Generate Baseline Activity
+### Generate Background Activity
 
-Create background activity across all nodes in a network with a specified firing rate distribution.
+Create background spiking activity grouped by node properties with mixed distribution types on a per-group basis.
 
+**Population-specific rates**:
 ```python
-sb.generate_baseline(
-    output_path='baseline.h5',
-    network_name='cortex',
-    distribution='lognormal',  # 'lognormal', 'normal', or 'constant'
-    mean=20.0,                 # Mean firing rate (Hz)
-    stdev=2.0,                 # Standard deviation
+params = {
+    'PN': {'mean_firing_rate': 20.0, 'stdev': 2.0},   # lognormal distribution
+    'PV': {'mean_firing_rate': 30.0},                  # constant rate (no stdev)
+    'SST': {'mean_firing_rate': 15.0, 'stdev': 1.5}   # lognormal distribution
+}
+
+sb.generate_background(
+    output_path='background.h5',
+    network_name='input',
+    population_params=params,
     t_start=0.0,
     t_stop=15.0
 )
 ```
 
-### Generate Population-Specific Shell Input
-
-Create background activity with different firing rates for each population.
-
+**Group by custom property** (e.g., layer instead of pop_name):
 ```python
-shell_params = {
-    'PN': (20.0, 2.0),   # (mean, stdev) Hz for PN cells
-    'PV': (30.0, 3.0),   # (mean, stdev) Hz for PV cells
-    'SST': (15.0, 1.5)   # (mean, stdev) Hz for SST cells
+layer_params = {
+    'L1': {'mean_firing_rate': 10.0, 'stdev': 1.0},
+    'L2/3': {'mean_firing_rate': 15.0, 'stdev': 2.0},
+    'L4': {'mean_firing_rate': 25.0},  # constant rate
+    'L5': {'mean_firing_rate': 20.0, 'stdev': 1.8}
 }
 
-sb.generate_shell_input(
-    output_path='shell.h5',
-    network_name='input',
-    shell_params=shell_params,
-    distribution='lognormal',
+sb.generate_background(
+    output_path='layer_background.h5',
+    network_name='cortex',
+    population_params=layer_params,
+    groupby='layer',  # Use 'layer' column instead of 'pop_name'
     t_start=0.0,
     t_stop=15.0
 )

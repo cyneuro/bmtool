@@ -49,18 +49,22 @@ from bmtool.stimulus.core import StimulusBuilder
 
 sb = StimulusBuilder(config='your_config.json', net_seed=123, psg_seed=1)
 
-# Generate baseline
-sb.generate_baseline(output_path='baseline.h5', network_name='input', 
-                     distribution='lognormal', mean=20.0, stdev=2.0,
-                     t_start=0.0, t_stop=15.0)
+# Generate background with mixed distribution types
+params = {
+    'PN': {'mean_firing_rate': 20.0, 'stdev': 2.0},     # lognormal
+    'PV': {'mean_firing_rate': 30.0},                    # constant
+    'SST': {'mean_firing_rate': 15.0, 'stdev': 1.5}    # lognormal
+}
+sb.generate_background(output_path='background.h5', network_name='input',
+                       population_params=params, t_start=0.0, t_stop=15.0)
 
-# Create assemblies
-sb.create_assemblies(name='stim_groups', network_name='input', 
-                    method='random', n_assemblies=5)
+# Generate stimulus: create assemblies first
+sb.create_assemblies(name='stim_groups', network_name='thalamus', 
+                    method='property', property_name='pulse_group_id')
 
-# Generate stimulus
+# Then generate stimulus patterns
 sb.generate_stimulus(output_path='stimulus.h5', pattern_type='long',
-                    assembly_name='stim_groups', population='stimulus',
+                    assembly_name='stim_groups', population='thalamus',
                     firing_rate=(0.0, 50.0, 0.0), t_start=1.0, t_stop=15.0,
                     on_time=1.0, off_time=0.5)
 ```
