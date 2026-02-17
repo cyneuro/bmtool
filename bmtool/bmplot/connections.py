@@ -249,7 +249,15 @@ def percent_connection_matrix(
         include_gap=include_gap,
     )
     if title is None or title == "":
-        title = "Percent Connectivity"
+        print(method)
+        if method == "uni":
+            title = "Unidirectional Percent Connectivity"
+        elif method == "bi":
+            title = "Bidirectional Percent Connectivity"
+        elif method == "total":
+            title = "Total Percent Connectivity"
+        else:
+            title = "Percent Connectivity"
 
     if return_dict:
         result_dict = plot_connection_info(
