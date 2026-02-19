@@ -1,11 +1,18 @@
 import h5py
 import numpy as np
 import xarray as xr
+from typing import Union, List, Dict, Any
 
 from ..util.util import load_nodes_from_config
 
 
-def load_synapse_report(h5_file_path, config_path, edge_name):
+def load_synapse_report(
+    h5_file_path: str,
+    config_path: str,
+    edge_name: str,
+    source_groupby: Union[str, List[str]],
+    target_groupby: Union[str, List[str]],
+) -> xr.Dataset:
     """
     Load and process a synapse report from a bmtk simulation into an xarray.
 
@@ -18,13 +25,50 @@ def load_synapse_report(h5_file_path, config_path, edge_name):
     edge_name : str
         Edge name in format 'source_to_target' (e.g., 'thalamic_tone_to_LA')
         This determines which source and target networks to load for population mapping
+    source_groupby : str or List[str]
+        Node property column name(s) to use for labeling source synapses.
+        Examples: 'pop_name', ['pop_name', 'model_type']
+    target_groupby : str or List[str]
+        Node property column name(s) to use for labeling target synapses.
+        Examples: 'pop_name', ['pop_name', 'model_type']
 
     Returns:
     --------
     xarray.Dataset
-        An xarray containing the synapse report data with proper population labeling
-        including source_pop, target_pop, and connection_label coordinates
+        An xarray containing the synapse report data with proper population labeling.
+        For each column in source_groupby/target_groupby, separate coordinates are created:
+        'source_{column}', 'target_{column}', etc.
+        A 'connection_label' coordinate is also created with pipe-delimited values
+        (e.g., 'Pyr|biophys->PV|biophys').
+
+    Examples:
+    ---------
+    # Group by single column (default behavior):
+    ds = load_synapse_report(
+        h5_file_path='output/synapse_report.h5',
+        config_path='simulation_config.json',
+        edge_name='LA_to_LA',
+        source_groupby='pop_name',
+        target_groupby='pop_name'
+    )
+
+    # Group by multiple columns:
+    ds = load_synapse_report(
+        h5_file_path='output/synapse_report.h5',
+        config_path='simulation_config.json',
+        edge_name='LA_to_LA',
+        source_groupby=['pop_name', 'model_type'],
+        target_groupby=['pop_name', 'model_type']
+    )
+    # Returns dataset with coordinates:
+    # source_pop_name, source_model_type, target_pop_name, target_model_type, connection_label
     """
+    # Normalize groupby parameters to lists
+    if isinstance(source_groupby, str):
+        source_groupby = [source_groupby]
+    if isinstance(target_groupby, str):
+        target_groupby = [target_groupby]
+
     # Parse edge_name to extract source and target networks
     if "_to_" not in edge_name:
         raise ValueError(
@@ -83,58 +127,101 @@ def load_synapse_report(h5_file_path, config_path, edge_name):
     source_nodes = all_nodes[source_network]
     target_nodes = all_nodes[target_network]
 
-    # Create mappings from node IDs to population names
-    src_id_to_pop = dict(zip(source_nodes.index, source_nodes["pop_name"]))
-    trg_id_to_pop = dict(zip(target_nodes.index, target_nodes["pop_name"]))
+    # Validate that requested groupby columns exist in node dataframes
+    missing_src_cols = [col for col in source_groupby if col not in source_nodes.columns]
+    if missing_src_cols:
+        raise KeyError(
+            f"Columns {missing_src_cols} not found in source network '{source_network}'. "
+            f"Available columns: {list(source_nodes.columns)}"
+        )
+    
+    missing_trg_cols = [col for col in target_groupby if col not in target_nodes.columns]
+    if missing_trg_cols:
+        raise KeyError(
+            f"Columns {missing_trg_cols} not found in target network '{target_network}'. "
+            f"Available columns: {list(target_nodes.columns)}"
+        )
+
+    # Create mappings from node IDs to groupby column values
+    # source_mappings[col] = {node_id: column_value}
+    source_mappings: Dict[str, Dict[int, Any]] = {}
+    for col in source_groupby:
+        source_mappings[col] = dict(zip(source_nodes.index, source_nodes[col]))
+    
+    target_mappings: Dict[str, Dict[int, Any]] = {}
+    for col in target_groupby:
+        target_mappings[col] = dict(zip(target_nodes.index, target_nodes[col]))
+
+    # Determine default values for external inputs (src_id = -1)
+    # Get the most common value or "unknown" if heterogeneous
+    src_external_values = {}
+    for col in source_groupby:
+        unique_vals = source_nodes[col].unique()
+        if len(unique_vals) == 1:
+            src_external_values[col] = unique_vals[0]
+        else:
+            src_external_values[col] = "unknown"
 
     # Get the number of synapses
     n_synapses = data.shape[1]
 
-    # Create arrays to hold the source and target populations for each synapse
-    source_pops = []
-    target_pops = []
+    # Create arrays to hold the groupby values for each synapse
+    # synapse_values[col] = [val_for_synapse_0, val_for_synapse_1, ...]
+    source_values: Dict[str, List[Any]] = {col: [] for col in source_groupby}
+    target_values: Dict[str, List[Any]] = {col: [] for col in target_groupby}
     connection_labels = []
-
-    # Determine the source population for external inputs (src_id = -1)
-    # Check if all nodes in source network have the same pop_name
-    unique_src_pops = source_nodes["pop_name"].unique()
-    if len(unique_src_pops) == 1:
-        external_src_pop = unique_src_pops[0]
-    else:
-        external_src_pop = "unknown"
 
     # Process each synapse
     for i in range(n_synapses):
         src_id = src_ids[i]
         trg_id = trg_ids[i]
 
-        # Get population names
-        # For external inputs, src_id is typically -1
-        if src_id == -1:
-            src_pop = external_src_pop
-        else:
-            src_pop = src_id_to_pop.get(src_id, f"unknown_{src_id}")
+        # Get source groupby values
+        src_label_parts = []
+        for col in source_groupby:
+            if src_id == -1:
+                # External input: use default value for this column
+                val = src_external_values[col]
+            else:
+                val = source_mappings[col].get(src_id, f"unknown_{src_id}")
+            source_values[col].append(val)
+            src_label_parts.append(str(val))
         
-        trg_pop = trg_id_to_pop.get(trg_id, f"unknown_{trg_id}")
+        # Get target groupby values
+        trg_label_parts = []
+        for col in target_groupby:
+            val = target_mappings[col].get(trg_id, f"unknown_{trg_id}")
+            target_values[col].append(val)
+            trg_label_parts.append(str(val))
+        
+        # Create connection label with pipe-delimited format
+        src_label = "|".join(src_label_parts)
+        trg_label = "|".join(trg_label_parts)
+        connection_labels.append(f"{src_label}->{trg_label}")
 
-        source_pops.append(src_pop)
-        target_pops.append(trg_pop)
-        connection_labels.append(f"{src_pop}->{trg_pop}")
+    # Create coordinates dictionary dynamically based on groupby columns
+    coords = {
+        "time": time,
+        "synapse": np.arange(n_synapses),
+        "source_id": ("synapse", src_ids),
+        "target_id": ("synapse", trg_ids),
+        "sec_id": ("synapse", sec_id),
+        "sec_x": ("synapse", sec_x),
+        "connection_label": ("synapse", connection_labels),
+    }
+    
+    # Add source groupby coordinates
+    for col in source_groupby:
+        coords[f"source_{col}"] = ("synapse", source_values[col])
+    
+    # Add target groupby coordinates
+    for col in target_groupby:
+        coords[f"target_{col}"] = ("synapse", target_values[col])
 
     # Create xarray dataset
     ds = xr.Dataset(
         data_vars={"synapse_value": (["time", "synapse"], data)},
-        coords={
-            "time": time,
-            "synapse": np.arange(n_synapses),
-            "source_pop": ("synapse", source_pops),
-            "target_pop": ("synapse", target_pops),
-            "source_id": ("synapse", src_ids),
-            "target_id": ("synapse", trg_ids),
-            "sec_id": ("synapse", sec_id),
-            "sec_x": ("synapse", sec_x),
-            "connection_label": ("synapse", connection_labels),
-        },
+        coords=coords,
         attrs={"description": "Synapse report data from bmtk simulation"},
     )
 
