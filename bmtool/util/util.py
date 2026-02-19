@@ -1240,12 +1240,18 @@ def percent_connections(
             uni = round(num_uni / (num_sources * num_targets) * 100, 2)
             bi = round(num_bi / (num_sources * num_targets) * 100, 2)
         
+        # Calculate innervation percentage (% of target neurons receiving at least one connection)
+        unique_target_nodes = cons['target_node_id'].nunique()
+        innervation = round(unique_target_nodes / num_targets * 100, 2)
+        
         if method == "total":
             return total
         if method == "uni":
             return uni
         if method == "bi":
             return bi
+        if method == "innervation":
+            return innervation
 
     return relation_matrix(
         config, nodes, edges, sources, targets, sids, tids, prepend_pop, relation_func=precent_func
