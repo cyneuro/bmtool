@@ -26,10 +26,10 @@ def load_synapse_report(
         Edge name in format 'source_to_target' (e.g., 'thalamic_tone_to_LA')
         This determines which source and target networks to load for population mapping
     source_groupby : str or List[str]
-        Node property column name(s) to use for labeling source synapses.
+        Node property column name(s) to load as coordinates for filtering.
         Examples: 'pop_name', ['pop_name', 'model_type']
     target_groupby : str or List[str]
-        Node property column name(s) to use for labeling target synapses.
+        Node property column name(s) to load as coordinates for filtering.
         Examples: 'pop_name', ['pop_name', 'model_type']
 
     Returns:
@@ -38,8 +38,8 @@ def load_synapse_report(
         An xarray containing the synapse report data with proper population labeling.
         For each column in source_groupby/target_groupby, separate coordinates are created:
         'source_{column}', 'target_{column}', etc.
-        A 'connection_label' coordinate is also created with pipe-delimited values
-        (e.g., 'Pyr|biophys->PV|biophys').
+        The 'connection_label' coordinate uses only pop_name for simple labeling
+        (e.g., 'Pyr->PV'), while all groupby columns are available as coordinates for filtering.
 
     Examples:
     ---------
@@ -52,7 +52,7 @@ def load_synapse_report(
         target_groupby='pop_name'
     )
 
-    # Group by multiple columns:
+    # Group by multiple columns for filtering (connection_label still uses only pop_name):
     ds = load_synapse_report(
         h5_file_path='output/synapse_report.h5',
         config_path='simulation_config.json',
@@ -61,7 +61,8 @@ def load_synapse_report(
         target_groupby=['pop_name', 'model_type']
     )
     # Returns dataset with coordinates:
-    # source_pop_name, source_model_type, target_pop_name, target_model_type, connection_label
+    # source_pop_name, source_model_type, target_pop_name, target_model_type
+    # connection_label (based on pop_name only)
     """
     # Normalize groupby parameters to lists
     if isinstance(source_groupby, str):
@@ -194,10 +195,14 @@ def load_synapse_report(
             target_values[col].append(val)
             trg_label_parts.append(str(val))
         
-        # Create connection label with pipe-delimited format
-        src_label = "|".join(src_label_parts)
-        trg_label = "|".join(trg_label_parts)
-        connection_labels.append(f"{src_label}->{trg_label}")
+        # Create connection label using only pop_name (not all groupby columns)
+        if src_id == -1:
+            src_pop = src_external_values.get('pop_name', 'unknown')
+        else:
+            src_pop = source_mappings['pop_name'].get(src_id, f"unknown_{src_id}")
+        
+        trg_pop = target_mappings['pop_name'].get(trg_id, f"unknown_{trg_id}")
+        connection_labels.append(f"{src_pop}->{trg_pop}")
 
     # Create coordinates dictionary dynamically based on groupby columns
     coords = {
