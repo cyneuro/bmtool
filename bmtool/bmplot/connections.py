@@ -193,7 +193,11 @@ def percent_connection_matrix(
     no_prepend_pop : bool, optional
         If True, population name is not displayed before sid or tid in the plot. Default is False.
     method : str, optional
-        Method for calculating percent connectivity. Options: 'total', 'uni', 'bi'.
+        Method for calculating percent connectivity. Options:
+        - 'total': Pairwise connection probability (connections / (sources * targets) * 100)
+        - 'uni': Unidirectional connection probability
+        - 'bi': Bidirectional connection probability
+        - 'innervation': Percentage of target neurons receiving at least one connection
         Default is 'total'.
     include_gap : bool, optional
         If True, include gap junctions in analysis. If False, only include chemical synapses.
@@ -249,13 +253,14 @@ def percent_connection_matrix(
         include_gap=include_gap,
     )
     if title is None or title == "":
-        print(method)
         if method == "uni":
             title = "Unidirectional Percent Connectivity"
         elif method == "bi":
             title = "Bidirectional Percent Connectivity"
         elif method == "total":
             title = "Total Percent Connectivity"
+        elif method == "innervation":
+            title = "Percentage of target neurons receiving at least one connection"
         else:
             title = "Percent Connectivity"
 
