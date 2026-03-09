@@ -1,7 +1,8 @@
+from typing import Any, Dict, List, Union
+
 import h5py
 import numpy as np
 import xarray as xr
-from typing import Union, List, Dict, Any
 
 from ..util.util import load_nodes_from_config
 
