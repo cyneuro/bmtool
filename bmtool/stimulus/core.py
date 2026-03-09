@@ -1,9 +1,12 @@
 import os
+
 import numpy as np
-import pandas as pd
-from bmtool.util import util
 from bmtk.utils.reports.spike_trains import PoissonSpikeGenerator
-from . import generators, assemblies
+
+from bmtool.util import util
+
+from . import assemblies, generators
+
 
 class StimulusBuilder:
     """Class to manage and generate stimuli for BMTK networks.

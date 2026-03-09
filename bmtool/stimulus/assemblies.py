@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+
 from bmtool.util.util import num_prop
 
 

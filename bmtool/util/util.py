@@ -3,12 +3,12 @@ import math
 import os
 import smtplib
 import sys
-from functools import partial
 from argparse import SUPPRESS, RawTextHelpFormatter
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import COMMASPACE, formatdate
+from functools import partial
 from os.path import basename
 from pathlib import Path
 from typing import Dict, List, Union
