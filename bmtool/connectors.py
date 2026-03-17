@@ -1447,6 +1447,244 @@ class UnidirectionConnector(AbstractConnector):
             df.to_csv(self.report_name, mode="w", header=True, index=False)
 
 
+class FileBasedConnector(UnidirectionConnector):
+    """
+    Connector that reads source and target node IDs from a CSV file and creates
+    connections based on exact matches of node ID pairs.
+
+    Overview:
+    ---------
+    FileBasedConnector enables you to specify connections between two populations
+    (source and target) by reading node ID pairs from a CSV file. During network
+    building, the connector iterates through all possible source-target pairs and
+    creates connections wherever a match is found in the loaded CSV file. This is
+    useful when you want to replicate connection patterns from an existing network
+    or apply a pre-computed connectivity matrix.
+
+    How it Works:
+    -------------
+    1. The connector loads node ID pairs from a CSV file during initialization.
+    2. When setup_nodes() is called, it receives the source and target NodePool
+       objects and creates a mapping from absolute node IDs to relative indices
+       (0 to N-1 within each population).
+    3. During network.build(), the connector's make_connection() method is called
+       for each possible source-target pair. It checks whether the pair exists in
+       the loaded connections set and returns the number of synapses if a match
+       is found, or 0 otherwise.
+    4. The connector automatically detects whether node IDs in the CSV are
+       "relative" (0 to N-1, numbered within each population) or "absolute"
+       (global node IDs). This detection happens by checking if any CSV ID is
+       outside the valid range of absolute IDs in the target network.
+
+    CSV File Format:
+    ----------------
+    The CSV file must contain exactly two columns with these exact names:
+        - 'source_node_id': The ID of the source node
+        - 'target_node_id': The ID of the target node
+
+    Each row represents a single connection to be created. The file should have
+    no header row requirement (pandas reads the column names from the first row).
+
+    Example CSV format:
+        source_node_id,target_node_id
+        0,5
+        0,12
+        1,8
+        2,15
+        ...
+
+    Node ID Specifications:
+    ----------------------
+    Node IDs in the CSV can be specified in two ways:
+
+    1. RELATIVE IDs (Recommended when replaying from a different network):
+       - Node IDs number from 0 to N-1 within each population.
+       - Example: For a PV population with 85 nodes, use IDs 0-84.
+                  For an ET population with 425 nodes, use IDs 0-424.
+       - Relative IDs are robust to network offset changes (e.g., if the target
+         ET population starts at node 65 instead of 0, connections still work).
+       - Use relative IDs when extracting connections from an existing network
+         and applying them to a newly built network with different global offsets.
+
+       To generate relative IDs from an existing network:
+           bio_nodes['relative_id'] = bio_nodes.groupby('pop_name').cumcount()
+           pv_to_et_df[['source_relative_id', 'target_relative_id']].rename(
+               columns={'source_relative_id': 'source_node_id', 
+                        'target_relative_id': 'target_node_id'}
+           ).to_csv('connections.csv', index=False)
+
+    2. ABSOLUTE IDs (Global node IDs from the current network):
+       - Node IDs are the global node indices used by the BMTK network.
+       - Example: If PV nodes are 0-84 and ET nodes are 65-489 in the network,
+                  use those exact values in the CSV.
+       - Absolute IDs only work if the target network has the exact same node
+         numbering scheme as when the CSV was generated.
+       - Use absolute IDs when applying connections within the same network or
+         when network structure is fixed.
+
+    ID Format Specification:
+    -----------------------
+    You must explicitly specify which ID format the CSV uses via the use_relative_ids
+    parameter when creating the connector:
+    - use_relative_ids=True: Node IDs in the CSV are relative (0 to N-1 within each
+      population). The connector maps them to absolute IDs using the target network.
+    - use_relative_ids=False: Node IDs in the CSV are absolute/global IDs. The
+      connector uses them directly without mapping.
+    - The choice is printed when verbose=True for confirmation.
+
+    Usage Example:
+    ---------------
+    # Load connections from CSV
+    conn = FileBasedConnector('my_connections.csv', n_syn=1)
+
+    # Set up the connector with source and target populations
+    conn.setup_nodes(
+        source=network.nodes(pop_name='PV'),
+        target=network.nodes(pop_name='ET')
+    )
+
+    # Add edges to the network
+    network.add_edges(
+        **conn.edge_params(),
+        dynamics_params='synapse_params.json',
+        model_template='Exp2Syn'
+    )
+
+    # Build the network
+    network.build()
+
+    Parameters:
+    -----------
+    filename : str
+        Path to the CSV file containing connections. The CSV must have exactly
+        two columns named 'source_node_id' and 'target_node_id'.
+
+    n_syn : int or callable, optional
+        Number of synapses for each connection found in the file. Can be:
+        - A constant integer (default: 1)
+        - A callable function that takes (source_node, target_node) and returns
+          the number of synapses (useful for distance-dependent synapses)
+
+    verbose : bool, optional
+        Whether to print detailed information about the connector's operation,
+        including ID detection results and connection statistics. Default: True.
+
+    save_report : bool, optional
+        Whether to save a connection report to a file. Default: False.
+
+    report_name : str, optional
+        Name of the report file. Only used if save_report=True.
+        Default: 'conn.csv'
+
+    use_relative_ids : bool, optional
+        Whether the CSV file uses relative node IDs (0 to N-1 within each population)
+        or absolute/global node IDs. Default: True (use relative IDs).
+        - True: CSV IDs will be mapped from relative (0-based per population) to
+          absolute node IDs using the source and target node pools.
+        - False: CSV IDs are used as absolute/global node IDs without mapping.
+
+    Notes:
+    ------
+    - Connections are stored as a set of (source_id, target_id) tuples for O(1)
+      lookup during network building.
+    - The total number of possible connections checked during building is
+      len(source_nodes) * len(target_nodes).
+    - For large networks and large CSV files, this can be time-consuming.
+      Consider using vectorized operations or pre-filtering if performance
+      is a concern.
+    - Each row in the CSV should represent a single connection. If you need
+      multiple synapses between the same pair or distance-dependent synapses,
+      use the n_syn parameter.
+    """
+
+    def __init__(
+        self, filename, n_syn=1, verbose=True, save_report=False, report_name=None,
+        use_relative_ids=True
+    ):
+        super().__init__(
+            p=1.0,
+            n_syn=n_syn,
+            verbose=verbose,
+            save_report=save_report,
+            report_name=report_name,
+        )
+        self.filename = filename
+        self.use_relative_ids = use_relative_ids
+        self.connections = set()
+        self._load_connections()
+
+    def _load_connections(self):
+        """Load source and target node IDs from the CSV file"""
+        import pandas as pd
+
+        df = pd.read_csv(self.filename)
+        if (
+            "source_node_id" not in df.columns
+            or "target_node_id" not in df.columns
+        ):
+            raise ValueError(
+                f"CSV file {self.filename} must contain 'source_node_id' and 'target_node_id' columns"
+            )
+
+        for _, row in df.iterrows():
+            self.connections.add(
+                (int(row["source_node_id"]), int(row["target_node_id"]))
+            )
+
+    def make_connection(self, source, target, *args, **kwargs):
+        """Assign number of synapses based on the loaded connections"""
+        # Initialize in the first iteration
+        if self.iter_count == 0:
+            self.initialize()
+            if self.verbose:
+                src_str, trg_str = self.get_nodes_info()
+                print(
+                    f"\nStart building file-based connection from {self.filename}"
+                    f"\n  from {src_str}\n  to {trg_str}",
+                    flush=True,
+                )
+            
+            # Build mapping from absolute node_id to relative index if using relative IDs
+            if self.use_relative_ids:
+                self.source_id_map = {node.node_id: i for i, node in enumerate(self.source)}
+                self.target_id_map = {node.node_id: i for i, node in enumerate(self.target)}
+            
+            if self.verbose:
+                id_type = 'relative' if self.use_relative_ids else 'absolute/global'
+                print(f"  Using {id_type} node IDs from {self.filename}", flush=True)
+
+        sid, tid = source.node_id, target.node_id
+        
+        match = False
+        if self.use_relative_ids:
+            rel_sid = self.source_id_map.get(sid)
+            rel_tid = self.target_id_map.get(tid)
+            if (rel_sid, rel_tid) in self.connections:
+                match = True
+        else:
+            if (sid, tid) in self.connections:
+                match = True
+
+        if match:
+            nsyns = self.n_syn(source, target)
+            self.n_conn += 1
+        else:
+            nsyns = 0
+
+        self.iter_count += 1
+        self.n_poss += 1
+
+        # Detect end of iteration
+        if self.iter_count == self.n_pair:
+            if self.verbose:
+                self.connection_number_info()
+                self.timer.report("Done! \nTime for building connections")
+            if self.save_report:
+                self.save_connection_report()
+
+        return nsyns
+
+
 class GapJunction(UnidirectionConnector):
     """
     Object for buiilding gap junction connections in bmtk network model with
