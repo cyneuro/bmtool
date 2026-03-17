@@ -1,0 +1,43 @@
+{
+  "manifest": {
+    "$BASE_DIR": "${configdir}",
+    "$NETWORK_DIR": "$BASE_DIR/network",
+    "$COMPONENTS_DIR": "$BASE_DIR/components"
+  },
+  "components": {
+    "biophysical_neuron_models_dir": "$COMPONENTS_DIR/biophysical_neuron_models",
+    "filter_models_dir": "$COMPONENTS_DIR/filter_models",
+    "mechanisms_dir": "$COMPONENTS_DIR/mechanisms/modfiles",
+    "morphologies_dir": "$COMPONENTS_DIR/morphologies",
+    "point_neuron_models_dir": "$COMPONENTS_DIR/point_neuron_models",
+    "synaptic_models_dir": "$COMPONENTS_DIR/synaptic_models",
+    "templates_dir": "$COMPONENTS_DIR/templates"
+  },
+  "networks": {
+    "nodes": [
+      {
+        "nodes_file": "$NETWORK_DIR/bio_net_nodes.h5",
+        "node_types_file": "$NETWORK_DIR/bio_net_node_types.csv"
+      },
+      {
+        "nodes_file": "$NETWORK_DIR/background_nodes.h5",
+        "node_types_file": "$NETWORK_DIR/background_node_types.csv"
+      }
+    ],
+    "edges": [
+      {
+        "edge_types_file": "$NETWORK_DIR/bio_net_bio_net_edge_types.csv",
+        "edges_file": "$NETWORK_DIR/bio_net_bio_net_edges.h5"
+      },
+      {
+        "edge_types_file": "$NETWORK_DIR/background_bio_net_edge_types.csv",
+        "edges_file": "$NETWORK_DIR/background_bio_net_edges.h5"
+      }
+    ],
+    "gap_juncs": [
+      {
+        "gap_juncs_file": "/home/gjgpb9/V1-Network-Model/bmtool/docs/examples/notebooks/bmplot/network/bio_net_gap_juncs.h5"
+      }
+    ]
+  }
+}
