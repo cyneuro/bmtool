@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import time
+import uuid
 
 import numpy as np
 import requests
@@ -209,14 +210,16 @@ class SimulationBlock:
         self.status_list = status_list
         self.job_ids = []
         self.component_path = component_path
+        self.run_uuid = str(uuid.uuid4())[:8]
 
-    def create_batch_script(self, case_name, command):
+    def create_batch_script(self, case_name, command, config_file=None):
         """
         Creates a SLURM batch script for the given simulation case.
 
         Args:
             case_name (str): Name of the simulation case.
             command (str): Command to run the simulation.
+            config_file (str): Optional path to the config file to use.
 
         Returns:
             str: Path to the batch script file.
@@ -233,9 +236,20 @@ class SimulationBlock:
         additional_commands_str = "\n".join(self.additional_commands)
         # Conditional account linegit
         account_line = f"#SBATCH --account={self.account}\n" if self.account else ""
-        env_var_component_path = (
-            f"export COMPONENT_PATH={self.component_path}" if self.component_path else ""
-        )
+
+        # If a specific config file is provided, update the command to use it
+        if config_file and config_file in command:
+             # command already has config_file
+             pass
+        elif config_file:
+            # this is a bit naive, might need adjustment depending on how command is structured
+            parts = command.split()
+            for i, part in enumerate(parts):
+                if part.endswith(".json"):
+                    parts[i] = config_file
+                    break
+            command = " ".join(parts)
+
         mem_per_cpu = int(
             np.ceil(int(self.mem) / int(self.ntasks))
         )  # do ceil cause more mem is always better then less
@@ -257,9 +271,6 @@ class SimulationBlock:
 # Additional user-defined commands
 {additional_commands_str}
 
-#enviroment vars
-{env_var_component_path}
-
 export OUTPUT_DIR={case_output_dir}
 
 {command}
@@ -270,12 +281,16 @@ export OUTPUT_DIR={case_output_dir}
 
         return batch_script_path
 
-    def submit_block(self):
+    def submit_block(self, config_files=None):
         """
         Submits all simulation cases in the block as separate SLURM jobs.
+
+        Args:
+            config_files (dict): Map of case_name to config_file path.
         """
         for case_name, command in self.simulation_cases.items():
-            script_path = self.create_batch_script(case_name, command)
+            config_file = config_files.get(case_name) if config_files else None
+            script_path = self.create_batch_script(case_name, command, config_file=config_file)
             result = subprocess.run(["sbatch", script_path], capture_output=True, text=True)
             if result.returncode == 0:
                 job_id = result.stdout.strip().split()[-1]
@@ -379,6 +394,34 @@ def globus_transfer(source_endpoint, dest_endpoint, source_path, dest_path):
     os.system(command)
 
 
+def get_synaptic_params(path_to_syn_folder):
+    """Gets values of all json files and puts them into one list"""
+    combined_data = []
+    if not os.path.exists(path_to_syn_folder):
+        return combined_data
+    # List all files in the input folder
+    for filename in os.listdir(path_to_syn_folder):
+        if filename.endswith(".json"):
+            file_path = os.path.join(path_to_syn_folder, filename)
+
+            # Open and read the JSON file
+            try:
+                with open(file_path, "r") as file:
+                    data = json.load(file)
+                    # Append the filename and its data
+                    combined_data.append({"filename": filename, "data": data})
+            except Exception as e:
+                print(f"Error reading {file_path}: {e}")
+    return combined_data
+
+
+def save_synaptic_params(data, path_to_output_file):
+    """Saves combined json data into one file"""
+    os.makedirs(os.path.dirname(path_to_output_file), exist_ok=True)
+    with open(path_to_output_file, "w") as output_file:
+        json.dump(data, output_file, indent=4)
+
+
 class BlockRunner:
     """
     Class to handle submitting multiple blocks sequentially.
@@ -420,132 +463,205 @@ class BlockRunner:
             block.component_path = self.original_component_paths[i]
         print("Component paths restored to original values.", flush=True)
 
+    def _archive_block(self, block, config_files, circuit_configs, destination_dir):
+        """
+        Helper to move files after a block completes.
+        Moves cloned components, simulation configs, and circuit configs to the block output directory.
+        """
+        block_output_dir = os.path.join(block.output_base_dir, block.block_name)
+        os.makedirs(block_output_dir, exist_ok=True)
+
+        # Move components directory
+        archived_comp_path = os.path.join(block_output_dir, os.path.basename(destination_dir))
+        if os.path.exists(destination_dir):
+            shutil.move(destination_dir, archived_comp_path)
+            print(f"Archived components to {archived_comp_path}", flush=True)
+
+        # Move simulation configs
+        for config_path in config_files.values():
+            if os.path.exists(config_path):
+                shutil.move(config_path, os.path.join(block_output_dir, os.path.basename(config_path)))
+
+        # Move circuit configs
+        for c_config_path in circuit_configs.values():
+            if os.path.exists(c_config_path):
+                shutil.move(c_config_path, os.path.join(block_output_dir, os.path.basename(c_config_path)))
+
     def submit_blocks_sequentially(self):
         """
-        Submits all blocks sequentially, ensuring each block starts only after the previous block has completed or is running.
-        Updates the JSON file with new parameters before each block run.
+        Submits all blocks sequentially, ensuring each block starts only after the previous block has completed.
         """
         for i, block in enumerate(self.blocks):
-            print(block.output_base_dir)
-            # Update JSON file with new parameter value
-            if self.json_file_path is None and self.param_values is None:
-                source_dir = block.component_path
-                destination_dir = f"{source_dir}{i+1}"
-                block.component_path = destination_dir
-                shutil.copytree(
-                    source_dir, destination_dir, dirs_exist_ok=True
-                )  # create new components folder
-                print(f"skipping json editing for block {block.block_name}", flush=True)
-            else:
-                if len(self.blocks) != len(self.param_values):
-                    raise Exception("Number of blocks needs to each number of params given")
-                new_value = self.param_values[i]
-                # hope this path is correct
-                source_dir = block.component_path
-                destination_dir = f"{source_dir}{i+1}"
-                block.component_path = destination_dir
+            source_dir = block.component_path
+            destination_dir = os.path.join(os.getcwd(), f"components_{block.run_uuid}")
+            shutil.copytree(source_dir, destination_dir, dirs_exist_ok=True)
+            
+            config_files = {}
+            circuit_configs = {}
 
-                shutil.copytree(
-                    source_dir, destination_dir, dirs_exist_ok=True
-                )  # create new components folder
-                json_file_path = os.path.join(destination_dir, self.json_file_path)
+            # Create ONE unique circuit config per block (since components are the same for all cases in a block)
+            # We'll use the first simulation case to find the original circuit config
+            first_case_name = list(block.simulation_cases.keys())[0]
+            first_case_command = block.simulation_cases[first_case_name]
+            original_sim_config = next((p for p in first_case_command.split() if p.endswith(".json")), "simulation_config.json")
+            
+            with open(original_sim_config, "r") as f:
+                temp_sim_data = json.load(f)
+            
+            original_circuit_config = temp_sim_data.get("network", "circuit_config.json")
+            new_circuit_name = f"circuit_config_{block.run_uuid}.json"
+            new_circuit_path = os.path.join(os.getcwd(), new_circuit_name)
+            
+            with open(original_circuit_config, "r") as f:
+                circ_data = json.load(f)
+            
+            circ_data["manifest"]["$COMPONENTS_DIR"] = destination_dir
 
+            with open(new_circuit_path, "w") as f:
+                json.dump(circ_data, f, indent=4)
+            
+            circuit_configs["shared"] = new_circuit_path
+
+            for case_name, case_command in block.simulation_cases.items():
+                original_sim_config = next((p for p in case_command.split() if p.endswith(".json")), None)
+                if not original_sim_config: continue
+
+                new_sim_path = os.path.join(os.getcwd(), f"simulation_config_{block.run_uuid}_{case_name}.json")
+                config_files[case_name] = new_sim_path
+
+                with open(original_sim_config, "r") as f:
+                    sim_data = json.load(f)
+
+                sim_data["network"] = new_circuit_path
+                
+                # Update $OUTPUT_DIR in manifest to the correct block and case directory
+                block_case_output = os.path.join(block.output_base_dir, block.block_name, case_name)
+                sim_data["manifest"]["$OUTPUT_DIR"] = block_case_output
+                os.makedirs(block_case_output, exist_ok=True)
+                
+                with open(new_sim_path, "w") as f:
+                    json.dump(sim_data, f, indent=4)
+
+            # Apply parameter sweeps (once per block/destination_dir) BEFORE generating synaptic report
+            if self.json_file_path is not None and self.param_values is not None:
+                new_val = self.param_values[i]
+                target_json = os.path.join(destination_dir, self.json_file_path)
                 if self.syn_dict is None:
-                    json_editor = seedSweep(json_file_path, self.param_name)
-                    json_editor.edit_json(new_value)
+                    seedSweep(target_json, self.param_name).edit_json(new_val)
                 else:
-                    # need to keep the orignal around
-                    syn_dict_temp = copy.deepcopy(self.syn_dict)
-                    json_to_be_ratioed = syn_dict_temp["json_file_path"]
-                    corrected_ratio_path = os.path.join(destination_dir, json_to_be_ratioed)
-                    syn_dict_temp["json_file_path"] = corrected_ratio_path
-                    json_editor = multiSeedSweep(
-                        json_file_path, self.param_name, syn_dict=syn_dict_temp, base_ratio=1
-                    )
-                    json_editor.edit_all_jsons(new_value)
+                    sd_copy = copy.deepcopy(self.syn_dict)
+                    sd_copy["json_file_path"] = os.path.join(destination_dir, sd_copy["json_file_path"])
+                    multiSeedSweep(target_json, self.param_name, syn_dict=sd_copy, base_ratio=1).edit_all_jsons(new_val)
+            
+            # Generate synaptic report (once per block) AFTER parameter sweeps for accuracy
+            syn_models_rel = circ_data["components"]["synaptic_models_dir"].replace("$COMPONENTS_DIR/", "")
+            syn_data = get_synaptic_params(os.path.join(destination_dir, syn_models_rel))
+            block_output_dir = os.path.join(block.output_base_dir, block.block_name)
+            os.makedirs(block_output_dir, exist_ok=True)
+            save_synaptic_params(syn_data, os.path.join(block_output_dir, f"synaptic_report_{block.run_uuid}.json"))
 
-            # Submit the block
             print(f"Submitting block: {block.block_name}", flush=True)
-            block.submit_block()
+
+            print(f"Submitting block: {block.block_name}", flush=True)
+            block.submit_block(config_files=config_files)
+
             if self.webhook:
-                message = f"SIMULATION UPDATE: Block {i} has been submitted! There are {(len(self.blocks)-1)-i} left to be submitted"
-                send_teams_message(self.webhook, message)
+                send_teams_message(self.webhook, f"Submitted {block.block_name}. {len(self.blocks)-1-i} remaining.")
 
-            # Wait for the block to complete
-            if i == len(self.blocks) - 1:
-                while not block.check_block_status():
-                    print(f"Waiting for the last block {i} to complete...")
-                    time.sleep(self.check_interval)
-            else:  # Not the last block so if job is running lets start a new one (checks status list)
-                while not block.check_block_status():
-                    print(f"Waiting for block {i} to complete...")
-                    time.sleep(self.check_interval)
+            while not block.check_block_status():
+                time.sleep(self.check_interval)
 
-            print(f"Block {block.block_name} completed.", flush=True)
-        print("All blocks are done!", flush=True)
-        # Restore component paths to their original values
+            self._archive_block(block, config_files, circuit_configs, destination_dir)
+
         self.restore_component_paths()
         if self.webhook:
-            message = "SIMULATION UPDATE: Simulation are Done!"
-            send_teams_message(self.webhook, message)
+            send_teams_message(self.webhook, "Simulations complete.")
 
     def submit_blocks_parallel(self):
         """
-        submits all the blocks at once onto the queue. To do this the components dir will be cloned and each block will have its own.
-        Also the json_file_path should be the path after the components dir
+        Submits all blocks to the queue simultaneously and archives them as they finish.
         """
+        active_trackers = [] # List of (block, config_files, circuit_configs, destination_dir)
+
         for i, block in enumerate(self.blocks):
-            if self.param_values is None:
-                source_dir = block.component_path
-                destination_dir = f"{source_dir}{i+1}"
-                block.component_path = destination_dir
-                shutil.copytree(
-                    source_dir, destination_dir, dirs_exist_ok=True
-                )  # create new components folder
-                print(f"skipping json editing for block {block.block_name}", flush=True)
-            else:
-                if block.component_path is None:
-                    raise Exception(
-                        "Unable to use parallel submitter without defining the component path"
-                    )
-                new_value = self.param_values[i]
+            source_dir = block.component_path
+            destination_dir = os.path.join(os.getcwd(), f"components_{block.run_uuid}")
+            shutil.copytree(source_dir, destination_dir, dirs_exist_ok=True)
+            
+            config_files = {}
+            circuit_configs = {}
 
-                source_dir = block.component_path
-                destination_dir = f"{source_dir}{i+1}"
-                block.component_path = destination_dir
+            # Create ONE unique circuit config per block
+            first_case_name = list(block.simulation_cases.keys())[0]
+            first_case_command = block.simulation_cases[first_case_name]
+            original_sim_config = next((p for p in first_case_command.split() if p.endswith(".json")), "simulation_config.json")
+            
+            with open(original_sim_config, "r") as f:
+                temp_sim_data = json.load(f)
+            
+            original_circuit_config = temp_sim_data.get("network", "circuit_config.json")
+            new_circuit_name = f"circuit_config_{block.run_uuid}.json"
+            new_circuit_path = os.path.join(os.getcwd(), new_circuit_name)
+            
+            with open(original_circuit_config, "r") as f:
+                circ_data = json.load(f)
+            
+            circ_data["manifest"]["$COMPONENTS_DIR"] = destination_dir
 
-                shutil.copytree(
-                    source_dir, destination_dir, dirs_exist_ok=True
-                )  # create new components folder
-                json_file_path = os.path.join(destination_dir, self.json_file_path)
+            with open(new_circuit_path, "w") as f:
+                json.dump(circ_data, f, indent=4)
+            
+            circuit_configs["shared"] = new_circuit_path
 
+            for case_name, case_command in block.simulation_cases.items():
+                original_sim_config = next((p for p in case_command.split() if p.endswith(".json")), None)
+                if not original_sim_config: continue
+
+                new_sim_path = os.path.join(os.getcwd(), f"simulation_config_{block.run_uuid}_{case_name}.json")
+                config_files[case_name] = new_sim_path
+
+                with open(original_sim_config, "r") as f:
+                    sim_data = json.load(f)
+
+                sim_data["network"] = new_circuit_path
+                
+                # Update $OUTPUT_DIR in manifest to the correct block and case directory
+                block_case_output = os.path.join(block.output_base_dir, block.block_name, case_name)
+                sim_data["manifest"]["$OUTPUT_DIR"] = block_case_output
+                os.makedirs(block_case_output, exist_ok=True)
+                
+                with open(new_sim_path, "w") as f:
+                    json.dump(sim_data, f, indent=4)
+
+            # Apply parameter sweeps (once per block/destination_dir) BEFORE generating synaptic report
+            if self.json_file_path is not None and self.param_values is not None:
+                target_json = os.path.join(destination_dir, self.json_file_path)
                 if self.syn_dict is None:
-                    json_editor = seedSweep(json_file_path, self.param_name)
-                    json_editor.edit_json(new_value)
+                    seedSweep(target_json, self.param_name).edit_json(self.param_values[i])
                 else:
-                    # need to keep the orignal around
-                    syn_dict_temp = copy.deepcopy(self.syn_dict)
-                    json_to_be_ratioed = syn_dict_temp["json_file_path"]
-                    corrected_ratio_path = os.path.join(destination_dir, json_to_be_ratioed)
-                    syn_dict_temp["json_file_path"] = corrected_ratio_path
-                    json_editor = multiSeedSweep(
-                        json_file_path, self.param_name, syn_dict_temp, base_ratio=1
-                    )
-                    json_editor.edit_all_jsons(new_value)
-                # submit block with new component path
-            print(f"Submitting block: {block.block_name}", flush=True)
-            block.submit_block()
-            if i == len(self.blocks) - 1:
-                print(
-                    "\nEverything has been submitted. You can close out of this or keep this script running to get a message when everything is finished\n"
-                )
-                while not block.check_block_status():
-                    print(f"Waiting for the last block {i} to complete...")
-                    time.sleep(self.check_interval)
+                    sd_copy = copy.deepcopy(self.syn_dict)
+                    sd_copy["json_file_path"] = os.path.join(destination_dir, sd_copy["json_file_path"])
+                    multiSeedSweep(target_json, self.param_name, syn_dict=sd_copy, base_ratio=1).edit_all_jsons(self.param_values[i])
+            
+            # Generate synaptic report (once per block) AFTER parameter sweeps for accuracy
+            syn_models_rel = circ_data["components"]["synaptic_models_dir"].replace("$COMPONENTS_DIR/", "")
+            syn_data = get_synaptic_params(os.path.join(destination_dir, syn_models_rel))
+            block_output_dir = os.path.join(block.output_base_dir, block.block_name)
+            os.makedirs(block_output_dir, exist_ok=True)
+            save_synaptic_params(syn_data, os.path.join(block_output_dir, f"synaptic_report_{block.run_uuid}.json"))
 
-        print("All blocks are done!", flush=True)
-        # Restore component paths to their original values
+            block.submit_block(config_files=config_files)
+            active_trackers.append((block, config_files, circuit_configs, destination_dir))
+
+        while active_trackers:
+            for tracker in active_trackers[:]:
+                block, cfgs, c_cfgs, d_dir = tracker
+                if block.check_block_status():
+                    self._archive_block(block, cfgs, c_cfgs, d_dir)
+                    active_trackers.remove(tracker)
+            time.sleep(self.check_interval)
+
         self.restore_component_paths()
         if self.webhook:
-            message = "SIMULATION UPDATE: Simulations are Done!"
-            send_teams_message(self.webhook, message)
+            send_teams_message(self.webhook, "All parallel blocks complete.")
+
