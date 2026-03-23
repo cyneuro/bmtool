@@ -10,6 +10,14 @@ from scipy.special import erf
 
 rng = np.random.default_rng()
 
+
+def _get_default_rng():
+    """Return the current module-level default RNG.
+    Using a getter ensures that if the user sets `connectors.rng = seeded_rng`,
+    all internal functions that fall back to the default will pick up the new value."""
+    return rng
+
+
 report_name = "conn.csv"
 
 ##############################################################################
@@ -57,7 +65,7 @@ def decision(prob, size=None, rng=None):
         Boolean result(s) of the random decision(s). True if the random number
         is less than prob, False otherwise.
     """
-    rng = connectors.rng if rng is None else rng
+    rng = _get_default_rng() if rng is None else rng
     return rng.random(size) < prob
 
 
@@ -79,7 +87,7 @@ def decisions(prob, rng=None):
         the random decisions.
     """
     prob = np.asarray(prob)
-    rng = connectors.rng if rng is None else rng
+    rng = _get_default_rng() if rng is None else rng
     return rng.random(prob.shape) < prob
 
 
@@ -136,7 +144,7 @@ class DistantDependentProbability(ProbabilityFunction):
         else:
             return 0.0
 
-    def decisions(self, dist):
+    def decisions(self, dist, rng=None):
         """Return bool array of decisions given distance array"""
         dist = np.asarray(dist)
         dec = np.zeros(dist.shape, dtype=bool)
@@ -144,7 +152,7 @@ class DistantDependentProbability(ProbabilityFunction):
         dist = dist[mask]
         prob = np.empty(dist.shape)
         prob[:] = self.probability(dist)
-        dec[mask] = decisions(prob)
+        dec[mask] = decisions(prob, rng=rng)
         return dec
 
 
@@ -377,7 +385,7 @@ class NormalizedReciprocalRate(ProbabilityFunction):
         """Return probability for single distance input"""
         return self.probability(dist, p0, p1)
 
-    def decisions(self, dist, p0, p1, cond=None):
+    def decisions(self, dist, p0, p1, cond=None, rng=None):
         """Return bool array of decisions
         dist: distance (scalar or array). Will be ignored if NRR is constant.
         p0, p1: forward and backward probability (scalar or array)
@@ -385,6 +393,8 @@ class NormalizedReciprocalRate(ProbabilityFunction):
             Conditional probability will be returned if specified. The condition
             event is determined by connection direction (0 for forward, or 1 for
             backward) and outcomes (bool array of whether connection exists).
+        rng : numpy.random.Generator, optional
+            Random number generator. If None, uses the default generator.
         """
         dist, p0, p1 = map(np.asarray, (dist, p0, p1))
         pr = np.empty(dist.shape)
@@ -394,7 +404,7 @@ class NormalizedReciprocalRate(ProbabilityFunction):
             mask = np.asarray(cond[1])
             pr[mask] /= p1 if cond[0] else p0
             pr[~mask] = 0.0
-        return decisions(pr)
+        return decisions(pr, rng=rng)
 
 
 # Connector Classes
@@ -710,7 +720,7 @@ class ReciprocalConnector(AbstractConnector):
         self.stage = 0
         self.iter_count = 0
 
-        self.rng = np.random.default_rng() if rng is None else rng
+        self.rng = _get_default_rng() if rng is None else rng
 
     # *** Two methods executed during bmtk edge creation net.add_edges() ***
     def setup_nodes(self, source=None, target=None):
@@ -1318,7 +1328,7 @@ class UnidirectionConnector(AbstractConnector):
         self.conn_prop = {}
         self.iter_count = 0
 
-        self.rng = np.random.default_rng() if rng is None else rng
+        self.rng = _get_default_rng() if rng is None else rng
 
     # *** Two methods executed during bmtk edge creation net.add_edges() ***
     def setup_nodes(self, source=None, target=None):
@@ -1837,9 +1847,10 @@ class CorrelatedGapJunction(GapJunction):
         verbose=True,
         save_report=True,
         report_name=None,
+        rng=None,
     ):
         super().__init__(
-            p=p_non, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None
+            p=p_non, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None, rng=rng
         )
         self.vars["p_non"] = self.vars.pop("p")
         self.vars["p_uni"] = p_uni
@@ -2001,7 +2012,7 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
     def __init__(self, gap_connector, p0_elec, p1_elec, pr_elec, p0_nonelec, p1_nonelec, pr_nonelec, 
                  p0_elec_arg=None, p1_elec_arg=None, pr_elec_arg=None,
                  p0_nonelec_arg=None, p1_nonelec_arg=None, pr_nonelec_arg=None,
-                 n_syn0=1, n_syn1=1, verbose=True, save_report=True, report_name=None):
+                 n_syn0=1, n_syn1=1, verbose=True, save_report=True, report_name=None, rng=None):
         # Store original parameters like ReciprocalConnector
         args = locals()
         var_set = ("p0_elec", "p0_elec_arg", "p1_elec", "p1_elec_arg", "pr_elec", "pr_elec_arg",
@@ -2015,6 +2026,7 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
         self.report_name = report_name or "conn.csv"
         self.conn_prop = [{}, {}]
         self.stage = 0
+        self.rng = _get_default_rng() if rng is None else rng
         # Track gap junction decisions and connections for detailed reporting
         self.gap_decisions = {}
         self.connection_stats = {'elec': {'pairs': 0, 'uni': 0, 'recp': 0}, 
@@ -2475,7 +2487,7 @@ def syn_const_delay(
     rng=None, **kwargs
 ):
     """Synapse delay constant with some random fluctuation."""
-    rng = connectors.rng if rng is None else rng
+    rng = _get_default_rng() if rng is None else rng
     del_fluc = fluc_stdev * rng.normal()
     delay = dist / SYN_VELOCITY + SYN_MIN_DELAY + del_fluc
     delay = min(max(delay, DELAY_LOWBOUND), DELAY_UPBOUND)
@@ -2490,6 +2502,8 @@ def syn_dist_delay_feng(
     fluc_stdev=FLUC_STDEV,
     delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
     connector=None,
+    rng=None,
+    **kwargs
 ):
     """Synpase delay linearly dependent on distance.
     min_delay: minimum delay (ms)
@@ -2497,7 +2511,10 @@ def syn_dist_delay_feng(
     fluc_stdev: standard deviation of random Gaussian fluctuation (ms)
     delay_bound: (lower, upper) bounds of delay (ms)
     connector: connector object from which to read distance
+    rng : numpy.random.Generator, optional
+        Random number generator. If None, uses the default generator.
     """
+    rng = _get_default_rng() if rng is None else rng
     if connector is None:
         dist = euclid_dist(target["positions"], source["positions"])
     else:
@@ -2511,7 +2528,7 @@ def syn_dist_delay_feng(
 def syn_section_PN(source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), rng=None, **kwargs):
     """Synapse location follows a Bernoulli distribution, with probability p
     to obtain the former in sec_id and sec_x"""
-    rng = np.random.default_rng() if rng is None else rng
+    rng = _get_default_rng() if rng is None else rng
     syn_loc = int(not decision(p, rng=rng))
     return sec_id[syn_loc], sec_x[syn_loc]
 
@@ -2535,5 +2552,5 @@ def syn_dist_delay_feng_section_PN(
 
 
 def syn_uniform_delay_section(source, target, low=DELAY_LOWBOUND, high=DELAY_UPBOUND, rng=None, **kwargs):
-    rng = np.random.default_rng() if rng is None else rng
+    rng = _get_default_rng() if rng is None else rng
     return rng.uniform(low, high)
