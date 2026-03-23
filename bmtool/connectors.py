@@ -38,7 +38,7 @@ def num_prop(ratio, N):
     return np.diff(np.round(N / p[-1] * p).astype(int)).reshape(ratio.shape)
 
 
-def decision(prob, size=None):
+def decision(prob, size=None, rng=None):
     """
     Make random decision(s) based on input probability.
 
@@ -48,6 +48,8 @@ def decision(prob, size=None):
         Probability threshold between 0 and 1.
     size : int or tuple, optional
         Size of the output array. If None, a single decision is returned.
+    rng : numpy.random.Generator, optional
+        Random number generator. If None, uses the default generator.
 
     Returns:
     --------
@@ -55,10 +57,11 @@ def decision(prob, size=None):
         Boolean result(s) of the random decision(s). True if the random number
         is less than prob, False otherwise.
     """
+    rng = connectors.rng if rng is None else rng
     return rng.random(size) < prob
 
 
-def decisions(prob):
+def decisions(prob, rng=None):
     """
     Make multiple random decisions based on input probabilities.
 
@@ -66,6 +69,8 @@ def decisions(prob):
     -----------
     prob : array-like
         Array of probability thresholds between 0 and 1.
+    rng : numpy.random.Generator, optional
+        Random number generator. If None, uses the default generator.
 
     Returns:
     --------
@@ -74,6 +79,7 @@ def decisions(prob):
         the random decisions.
     """
     prob = np.asarray(prob)
+    rng = connectors.rng if rng is None else rng
     return rng.random(prob.shape) < prob
 
 
@@ -676,6 +682,7 @@ class ReciprocalConnector(AbstractConnector):
         verbose=True,
         save_report=True,
         report_name=None,
+        rng = None
     ):
         args = locals()
         var_set = ("p0", "p0_arg", "p1", "p1_arg", "pr", "pr_arg", "n_syn0", "n_syn1")
@@ -702,6 +709,8 @@ class ReciprocalConnector(AbstractConnector):
         self.conn_prop = [{}, {}]
         self.stage = 0
         self.iter_count = 0
+
+        self.rng = np.random.default_rng() if rng is None else rng
 
     # *** Two methods executed during bmtk edge creation net.add_edges() ***
     def setup_nodes(self, source=None, target=None):
@@ -1106,10 +1115,10 @@ class ReciprocalConnector(AbstractConnector):
 
             # Make random decision
             if forward:
-                forward = decision(p0)
+                forward = decision(p0, rng=self.rng)
             if backward:
                 pr = self.pr(self._pr_arg(i, j), p0, p1)
-                backward = decision(self.cond_backward(forward, p0, p1, pr))
+                backward = decision(self.cond_backward(forward, p0, p1, pr), rng=self.rng)
 
             # Make connection
             if forward:
@@ -1294,7 +1303,7 @@ class UnidirectionConnector(AbstractConnector):
     """
 
     def __init__(
-        self, p=1.0, p_arg=None, n_syn=1, verbose=True, save_report=True, report_name=None
+        self, p=1.0, p_arg=None, n_syn=1, verbose=True, save_report=True, report_name=None, rng=None
     ):
         args = locals()
         var_set = ("p", "p_arg", "n_syn")
@@ -1308,6 +1317,8 @@ class UnidirectionConnector(AbstractConnector):
 
         self.conn_prop = {}
         self.iter_count = 0
+
+        self.rng = np.random.default_rng() if rng is None else rng
 
     # *** Two methods executed during bmtk edge creation net.add_edges() ***
     def setup_nodes(self, source=None, target=None):
@@ -1377,7 +1388,7 @@ class UnidirectionConnector(AbstractConnector):
         p = self.p(p_arg)
         possible = p > 0
         self.n_poss += possible
-        if possible and decision(p):
+        if possible and decision(p, rng=self.rng):
             nsyns = self.n_syn(source, target)
             self.add_conn_prop(source.node_id, target.node_id, p_arg)
             self.n_conn += 1
@@ -1706,9 +1717,9 @@ class GapJunction(UnidirectionConnector):
         Similar to `UnidirectionConnector`.
     """
 
-    def __init__(self, p=1.0, p_arg=None, verbose=True, save_report=True, report_name=None):
+    def __init__(self, p=1.0, p_arg=None, verbose=True, save_report=True, report_name=None, rng=None):
         super().__init__(
-            p=p, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None
+            p=p, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None, rng=rng
         )
 
     def setup_nodes(self, source=None, target=None):
@@ -1738,7 +1749,7 @@ class GapJunction(UnidirectionConnector):
             p = self.p(p_arg)
             possible = p > 0
             self.n_poss += possible
-            if possible and decision(p):
+            if possible and decision(p, rng=self.rng):
                 nsyns = 1
                 sid, tid = source.node_id, target.node_id
                 self.add_conn_prop(sid, tid, p_arg)
@@ -1879,7 +1890,7 @@ class CorrelatedGapJunction(GapJunction):
             p = self.ps[conn_type](p_arg)
             possible = p > 0
             self.n_poss += possible
-            if possible and decision(p):
+            if possible and decision(p, rng=self.rng):
                 nsyns = 1
                 self.add_conn_prop(sid, tid, p_arg)
                 self.add_conn_prop(tid, sid, p_arg)
@@ -2177,11 +2188,11 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
                     p0, p1, pr = self.calc_pair(i, j, False)
                 
                 # First decide forward connection
-                forward = decision(p0)
+                forward = decision(p0, rng=self.rng)
                 
                 # Then decide backward connection based on forward result
                 backward_prob = self.cond_backward_prob(forward, p0, p1, pr)
-                backward = decision(backward_prob)
+                backward = decision(backward_prob, rng=self.rng)
                 
                 # Track connection statistics
                 if forward and backward:
@@ -2461,8 +2472,10 @@ def syn_const_delay(
     fluc_stdev=FLUC_STDEV,
     delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
     connector=None,
+    rng=None, **kwargs
 ):
     """Synapse delay constant with some random fluctuation."""
+    rng = connectors.rng if rng is None else rng
     del_fluc = fluc_stdev * rng.normal()
     delay = dist / SYN_VELOCITY + SYN_MIN_DELAY + del_fluc
     delay = min(max(delay, DELAY_LOWBOUND), DELAY_UPBOUND)
@@ -2495,30 +2508,32 @@ def syn_dist_delay_feng(
     return delay
 
 
-def syn_section_PN(source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs):
+def syn_section_PN(source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), rng=None, **kwargs):
     """Synapse location follows a Bernoulli distribution, with probability p
     to obtain the former in sec_id and sec_x"""
-    syn_loc = int(not decision(p))
+    rng = np.random.default_rng() if rng is None else rng
+    syn_loc = int(not decision(p, rng=rng))
     return sec_id[syn_loc], sec_x[syn_loc]
 
 
 def syn_const_delay_feng_section_PN(
-    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs
+    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), rng=None, **kwargs
 ):
     """Assign both synapse delay and location with constant distance assumed"""
-    delay = syn_const_delay(source, target, **kwargs)
-    s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x)
+    delay = syn_const_delay(source, target, rng=rng, **kwargs)
+    s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x, rng=rng)
     return delay, s_id, s_x
 
 
 def syn_dist_delay_feng_section_PN(
-    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs
+    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), rng=None, **kwargs
 ):
     """Assign both synapse delay and location"""
-    delay = syn_dist_delay_feng(source, target, **kwargs)
-    s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x)
+    delay = syn_dist_delay_feng(source, target, rng=rng, **kwargs)
+    s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x, rng=rng)
     return delay, s_id, s_x
 
 
-def syn_uniform_delay_section(source, target, low=DELAY_LOWBOUND, high=DELAY_UPBOUND, **kwargs):
+def syn_uniform_delay_section(source, target, low=DELAY_LOWBOUND, high=DELAY_UPBOUND, rng=None, **kwargs):
+    rng = np.random.default_rng() if rng is None else rng
     return rng.uniform(low, high)
