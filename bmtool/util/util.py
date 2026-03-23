@@ -74,7 +74,7 @@ class CellVarsFile(object):
 
         # Look for variabl and mapping groups
         for var_name in self._h5_root.keys():
-            # print(self._h5_root.keys())
+            print(self._h5_root.keys())
             hf_grp = self._h5_root[var_name]
 
             if var_name == "data":
