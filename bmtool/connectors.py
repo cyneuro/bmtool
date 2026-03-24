@@ -641,6 +641,14 @@ class ReciprocalConnector(AbstractConnector):
             the opposite case. However, it requires large memory allocation
             as the population size grows. Set it to False if there is a memory
             issue.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic connection decisions in both forward and backward
+            directions. Provide a seeded generator for reproducible
+            connectivity. If None (default), fall back to the module-level
+            default RNG returned by _get_default_rng().
+        save_report: Whether to save connection report to CSV file.
+        report_name: Filename for connection report. If None, uses the
+            module-level report_name.
         verbose: Whether show verbose information in console.
 
     Returns:
@@ -1295,6 +1303,13 @@ class UnidirectionConnector(AbstractConnector):
         n_syn: Number of synapses in the forward connection if connected. It
             can be a constant or a (deterministic or random) function whose
             input arguments are two node objects in BMTK like p_arg.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic connection decisions. Provide a seeded generator for
+            reproducible connectivity. If None (default), fall back to the
+            module-level default RNG returned by _get_default_rng().
+        save_report: Whether to save connection report to CSV file.
+        report_name: Filename for connection report. If None, uses the
+            module-level report_name.
         verbose: Whether show verbose information in console.
 
     Returns:
@@ -1718,6 +1733,13 @@ class GapJunction(UnidirectionConnector):
             can be a constant or a deterministic function whose value must be
             within range [0, 1]. When p is constant, the connection is
             homogenous.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic gap-junction decisions. Provide a seeded generator for
+            reproducible connectivity. If None (default), fall back to the
+            module-level default RNG returned by _get_default_rng().
+        save_report: Whether to save connection report to CSV file.
+        report_name: Filename for connection report. If None, uses the
+            module-level report_name.
         verbose: Whether show verbose information in console.
 
     Returns:
@@ -1729,7 +1751,7 @@ class GapJunction(UnidirectionConnector):
 
     def __init__(self, p=1.0, p_arg=None, verbose=True, save_report=True, report_name=None, rng=None):
         super().__init__(
-            p=p, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None, rng=rng
+            p=p, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=report_name, rng=rng
         )
 
     def setup_nodes(self, source=None, target=None):
@@ -1828,6 +1850,13 @@ class CorrelatedGapJunction(GapJunction):
             within this population, which contains the connection information
             in its attribute `conn_prop`. So this connector should have
             generated the chemical synapses before generating the gap junction.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic gap-junction decisions. Provide a seeded generator for
+            reproducible connectivity. If None (default), fall back to the
+            module-level default RNG returned by _get_default_rng().
+        save_report: Whether to save connection report to CSV file.
+        report_name: Filename for connection report. If None, uses the
+            module-level report_name.
         verbose: Whether show verbose information in console.
 
     Returns:
@@ -1987,6 +2016,11 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
         n_syn0, n_syn1: Number of synapses for forward/backward connections if
             established. Can be constants or functions of node properties.
             Limited to 255 due to uint8 storage.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic forward/backward chemical connection decisions.
+            Provide a seeded generator for reproducible connectivity.
+            If None (default), fall back to the module-level default RNG
+            returned by _get_default_rng().
         verbose: Whether to print detailed connection statistics and progress.
         save_report: Whether to save connection report to CSV file.
         report_name: Filename for connection report (default: "conn.csv").
@@ -2486,11 +2520,30 @@ def syn_const_delay(
     connector=None,
     rng=None, **kwargs
 ):
-    """Synapse delay constant with some random fluctuation."""
+    """Synapse delay approximately constant with some random fluctuation.
+    Parameters
+    ----------
+    source, target : optional
+        Included for API consistency; not used in this implementation.
+    dist : float, optional
+        Distance between source and target (micron).
+    min_delay : float, optional
+        Minimum delay (ms).
+    velocity : float, optional
+        Synapse conduction velocity (micron/ms).
+    fluc_stdev : float, optional
+        Standard deviation of random Gaussian fluctuation (ms).
+    delay_bound : tuple of (float, float), optional
+        Lower and upper bounds for the delay (ms).
+    connector : optional
+        Included for API consistency; not used in this implementation.
+    rng : numpy.random.Generator, optional
+        Random number generator. If None, uses the default generator.
+    """
     rng = _get_default_rng() if rng is None else rng
     del_fluc = fluc_stdev * rng.normal()
-    delay = dist / SYN_VELOCITY + SYN_MIN_DELAY + del_fluc
-    delay = min(max(delay, DELAY_LOWBOUND), DELAY_UPBOUND)
+    delay = dist / velocity + min_delay + del_fluc
+    delay = min(max(delay, delay_bound[0]), delay_bound[1])
     return delay
 
 
