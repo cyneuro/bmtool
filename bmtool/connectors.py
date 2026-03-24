@@ -10,6 +10,14 @@ from scipy.special import erf
 
 rng = np.random.default_rng()
 
+
+def _get_default_rng():
+    """Return the current module-level default RNG.
+    Using a getter ensures that if the user sets `connectors.rng = seeded_rng`,
+    all internal functions that fall back to the default will pick up the new value."""
+    return rng
+
+
 report_name = "conn.csv"
 
 ##############################################################################
@@ -38,7 +46,7 @@ def num_prop(ratio, N):
     return np.diff(np.round(N / p[-1] * p).astype(int)).reshape(ratio.shape)
 
 
-def decision(prob, size=None):
+def decision(prob, size=None, rng=None):
     """
     Make random decision(s) based on input probability.
 
@@ -48,6 +56,8 @@ def decision(prob, size=None):
         Probability threshold between 0 and 1.
     size : int or tuple, optional
         Size of the output array. If None, a single decision is returned.
+    rng : numpy.random.Generator, optional
+        Random number generator. If None, uses the default generator.
 
     Returns:
     --------
@@ -55,10 +65,11 @@ def decision(prob, size=None):
         Boolean result(s) of the random decision(s). True if the random number
         is less than prob, False otherwise.
     """
+    rng = _get_default_rng() if rng is None else rng
     return rng.random(size) < prob
 
 
-def decisions(prob):
+def decisions(prob, rng=None):
     """
     Make multiple random decisions based on input probabilities.
 
@@ -66,6 +77,8 @@ def decisions(prob):
     -----------
     prob : array-like
         Array of probability thresholds between 0 and 1.
+    rng : numpy.random.Generator, optional
+        Random number generator. If None, uses the default generator.
 
     Returns:
     --------
@@ -74,6 +87,7 @@ def decisions(prob):
         the random decisions.
     """
     prob = np.asarray(prob)
+    rng = _get_default_rng() if rng is None else rng
     return rng.random(prob.shape) < prob
 
 
@@ -130,7 +144,7 @@ class DistantDependentProbability(ProbabilityFunction):
         else:
             return 0.0
 
-    def decisions(self, dist):
+    def decisions(self, dist, rng=None):
         """Return bool array of decisions given distance array"""
         dist = np.asarray(dist)
         dec = np.zeros(dist.shape, dtype=bool)
@@ -138,7 +152,7 @@ class DistantDependentProbability(ProbabilityFunction):
         dist = dist[mask]
         prob = np.empty(dist.shape)
         prob[:] = self.probability(dist)
-        dec[mask] = decisions(prob)
+        dec[mask] = decisions(prob, rng=rng)
         return dec
 
 
@@ -371,7 +385,7 @@ class NormalizedReciprocalRate(ProbabilityFunction):
         """Return probability for single distance input"""
         return self.probability(dist, p0, p1)
 
-    def decisions(self, dist, p0, p1, cond=None):
+    def decisions(self, dist, p0, p1, cond=None, rng=None):
         """Return bool array of decisions
         dist: distance (scalar or array). Will be ignored if NRR is constant.
         p0, p1: forward and backward probability (scalar or array)
@@ -379,6 +393,8 @@ class NormalizedReciprocalRate(ProbabilityFunction):
             Conditional probability will be returned if specified. The condition
             event is determined by connection direction (0 for forward, or 1 for
             backward) and outcomes (bool array of whether connection exists).
+        rng : numpy.random.Generator, optional
+            Random number generator. If None, uses the default generator.
         """
         dist, p0, p1 = map(np.asarray, (dist, p0, p1))
         pr = np.empty(dist.shape)
@@ -388,7 +404,7 @@ class NormalizedReciprocalRate(ProbabilityFunction):
             mask = np.asarray(cond[1])
             pr[mask] /= p1 if cond[0] else p0
             pr[~mask] = 0.0
-        return decisions(pr)
+        return decisions(pr, rng=rng)
 
 
 # Connector Classes
@@ -625,6 +641,14 @@ class ReciprocalConnector(AbstractConnector):
             the opposite case. However, it requires large memory allocation
             as the population size grows. Set it to False if there is a memory
             issue.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic connection decisions in both forward and backward
+            directions. Provide a seeded generator for reproducible
+            connectivity. If None (default), fall back to the module-level
+            default RNG returned by _get_default_rng().
+        save_report: Whether to save connection report to CSV file.
+        report_name: Filename for connection report. If None, uses the
+            module-level report_name.
         verbose: Whether show verbose information in console.
 
     Returns:
@@ -676,6 +700,7 @@ class ReciprocalConnector(AbstractConnector):
         verbose=True,
         save_report=True,
         report_name=None,
+        rng = None
     ):
         args = locals()
         var_set = ("p0", "p0_arg", "p1", "p1_arg", "pr", "pr_arg", "n_syn0", "n_syn1")
@@ -702,6 +727,8 @@ class ReciprocalConnector(AbstractConnector):
         self.conn_prop = [{}, {}]
         self.stage = 0
         self.iter_count = 0
+
+        self.rng = _get_default_rng() if rng is None else rng
 
     # *** Two methods executed during bmtk edge creation net.add_edges() ***
     def setup_nodes(self, source=None, target=None):
@@ -1106,10 +1133,10 @@ class ReciprocalConnector(AbstractConnector):
 
             # Make random decision
             if forward:
-                forward = decision(p0)
+                forward = decision(p0, rng=self.rng)
             if backward:
                 pr = self.pr(self._pr_arg(i, j), p0, p1)
-                backward = decision(self.cond_backward(forward, p0, p1, pr))
+                backward = decision(self.cond_backward(forward, p0, p1, pr), rng=self.rng)
 
             # Make connection
             if forward:
@@ -1276,6 +1303,13 @@ class UnidirectionConnector(AbstractConnector):
         n_syn: Number of synapses in the forward connection if connected. It
             can be a constant or a (deterministic or random) function whose
             input arguments are two node objects in BMTK like p_arg.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic connection decisions. Provide a seeded generator for
+            reproducible connectivity. If None (default), fall back to the
+            module-level default RNG returned by _get_default_rng().
+        save_report: Whether to save connection report to CSV file.
+        report_name: Filename for connection report. If None, uses the
+            module-level report_name.
         verbose: Whether show verbose information in console.
 
     Returns:
@@ -1294,7 +1328,7 @@ class UnidirectionConnector(AbstractConnector):
     """
 
     def __init__(
-        self, p=1.0, p_arg=None, n_syn=1, verbose=True, save_report=True, report_name=None
+        self, p=1.0, p_arg=None, n_syn=1, verbose=True, save_report=True, report_name=None, rng=None
     ):
         args = locals()
         var_set = ("p", "p_arg", "n_syn")
@@ -1308,6 +1342,8 @@ class UnidirectionConnector(AbstractConnector):
 
         self.conn_prop = {}
         self.iter_count = 0
+
+        self.rng = _get_default_rng() if rng is None else rng
 
     # *** Two methods executed during bmtk edge creation net.add_edges() ***
     def setup_nodes(self, source=None, target=None):
@@ -1377,7 +1413,7 @@ class UnidirectionConnector(AbstractConnector):
         p = self.p(p_arg)
         possible = p > 0
         self.n_poss += possible
-        if possible and decision(p):
+        if possible and decision(p, rng=self.rng):
             nsyns = self.n_syn(source, target)
             self.add_conn_prop(source.node_id, target.node_id, p_arg)
             self.n_conn += 1
@@ -1697,6 +1733,13 @@ class GapJunction(UnidirectionConnector):
             can be a constant or a deterministic function whose value must be
             within range [0, 1]. When p is constant, the connection is
             homogenous.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic gap-junction decisions. Provide a seeded generator for
+            reproducible connectivity. If None (default), fall back to the
+            module-level default RNG returned by _get_default_rng().
+        save_report: Whether to save connection report to CSV file.
+        report_name: Filename for connection report. If None, uses the
+            module-level report_name.
         verbose: Whether show verbose information in console.
 
     Returns:
@@ -1706,9 +1749,9 @@ class GapJunction(UnidirectionConnector):
         Similar to `UnidirectionConnector`.
     """
 
-    def __init__(self, p=1.0, p_arg=None, verbose=True, save_report=True, report_name=None):
+    def __init__(self, p=1.0, p_arg=None, verbose=True, save_report=True, report_name=None, rng=None):
         super().__init__(
-            p=p, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None
+            p=p, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=report_name, rng=rng
         )
 
     def setup_nodes(self, source=None, target=None):
@@ -1738,7 +1781,7 @@ class GapJunction(UnidirectionConnector):
             p = self.p(p_arg)
             possible = p > 0
             self.n_poss += possible
-            if possible and decision(p):
+            if possible and decision(p, rng=self.rng):
                 nsyns = 1
                 sid, tid = source.node_id, target.node_id
                 self.add_conn_prop(sid, tid, p_arg)
@@ -1807,6 +1850,13 @@ class CorrelatedGapJunction(GapJunction):
             within this population, which contains the connection information
             in its attribute `conn_prop`. So this connector should have
             generated the chemical synapses before generating the gap junction.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic gap-junction decisions. Provide a seeded generator for
+            reproducible connectivity. If None (default), fall back to the
+            module-level default RNG returned by _get_default_rng().
+        save_report: Whether to save connection report to CSV file.
+        report_name: Filename for connection report. If None, uses the
+            module-level report_name.
         verbose: Whether show verbose information in console.
 
     Returns:
@@ -1826,9 +1876,10 @@ class CorrelatedGapJunction(GapJunction):
         verbose=True,
         save_report=True,
         report_name=None,
+        rng=None,
     ):
         super().__init__(
-            p=p_non, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None
+            p=p_non, p_arg=p_arg, verbose=verbose, save_report=save_report, report_name=None, rng=rng
         )
         self.vars["p_non"] = self.vars.pop("p")
         self.vars["p_uni"] = p_uni
@@ -1879,7 +1930,7 @@ class CorrelatedGapJunction(GapJunction):
             p = self.ps[conn_type](p_arg)
             possible = p > 0
             self.n_poss += possible
-            if possible and decision(p):
+            if possible and decision(p, rng=self.rng):
                 nsyns = 1
                 self.add_conn_prop(sid, tid, p_arg)
                 self.add_conn_prop(tid, sid, p_arg)
@@ -1965,6 +2016,11 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
         n_syn0, n_syn1: Number of synapses for forward/backward connections if
             established. Can be constants or functions of node properties.
             Limited to 255 due to uint8 storage.
+        rng: Random number generator (`numpy.random.Generator`) used for
+            stochastic forward/backward chemical connection decisions.
+            Provide a seeded generator for reproducible connectivity.
+            If None (default), fall back to the module-level default RNG
+            returned by _get_default_rng().
         verbose: Whether to print detailed connection statistics and progress.
         save_report: Whether to save connection report to CSV file.
         report_name: Filename for connection report (default: "conn.csv").
@@ -1990,7 +2046,7 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
     def __init__(self, gap_connector, p0_elec, p1_elec, pr_elec, p0_nonelec, p1_nonelec, pr_nonelec, 
                  p0_elec_arg=None, p1_elec_arg=None, pr_elec_arg=None,
                  p0_nonelec_arg=None, p1_nonelec_arg=None, pr_nonelec_arg=None,
-                 n_syn0=1, n_syn1=1, verbose=True, save_report=True, report_name=None):
+                 n_syn0=1, n_syn1=1, verbose=True, save_report=True, report_name=None, rng=None):
         # Store original parameters like ReciprocalConnector
         args = locals()
         var_set = ("p0_elec", "p0_elec_arg", "p1_elec", "p1_elec_arg", "pr_elec", "pr_elec_arg",
@@ -2004,6 +2060,7 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
         self.report_name = report_name or "conn.csv"
         self.conn_prop = [{}, {}]
         self.stage = 0
+        self.rng = _get_default_rng() if rng is None else rng
         # Track gap junction decisions and connections for detailed reporting
         self.gap_decisions = {}
         self.connection_stats = {'elec': {'pairs': 0, 'uni': 0, 'recp': 0}, 
@@ -2177,11 +2234,11 @@ class GapJunctionConditionalReciprocalConnector(AbstractConnector):
                     p0, p1, pr = self.calc_pair(i, j, False)
                 
                 # First decide forward connection
-                forward = decision(p0)
+                forward = decision(p0, rng=self.rng)
                 
                 # Then decide backward connection based on forward result
                 backward_prob = self.cond_backward_prob(forward, p0, p1, pr)
-                backward = decision(backward_prob)
+                backward = decision(backward_prob, rng=self.rng)
                 
                 # Track connection statistics
                 if forward and backward:
@@ -2461,11 +2518,32 @@ def syn_const_delay(
     fluc_stdev=FLUC_STDEV,
     delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
     connector=None,
+    rng=None, **kwargs
 ):
-    """Synapse delay constant with some random fluctuation."""
+    """Synapse delay approximately constant with some random fluctuation.
+    Parameters
+    ----------
+    source, target : optional
+        Included for API consistency; not used in this implementation.
+    dist : float, optional
+        Distance between source and target (micron).
+    min_delay : float, optional
+        Minimum delay (ms).
+    velocity : float, optional
+        Synapse conduction velocity (micron/ms).
+    fluc_stdev : float, optional
+        Standard deviation of random Gaussian fluctuation (ms).
+    delay_bound : tuple of (float, float), optional
+        Lower and upper bounds for the delay (ms).
+    connector : optional
+        Included for API consistency; not used in this implementation.
+    rng : numpy.random.Generator, optional
+        Random number generator. If None, uses the default generator.
+    """
+    rng = _get_default_rng() if rng is None else rng
     del_fluc = fluc_stdev * rng.normal()
-    delay = dist / SYN_VELOCITY + SYN_MIN_DELAY + del_fluc
-    delay = min(max(delay, DELAY_LOWBOUND), DELAY_UPBOUND)
+    delay = dist / velocity + min_delay + del_fluc
+    delay = min(max(delay, delay_bound[0]), delay_bound[1])
     return delay
 
 
@@ -2477,6 +2555,8 @@ def syn_dist_delay_feng(
     fluc_stdev=FLUC_STDEV,
     delay_bound=(DELAY_LOWBOUND, DELAY_UPBOUND),
     connector=None,
+    rng=None,
+    **kwargs
 ):
     """Synpase delay linearly dependent on distance.
     min_delay: minimum delay (ms)
@@ -2484,7 +2564,10 @@ def syn_dist_delay_feng(
     fluc_stdev: standard deviation of random Gaussian fluctuation (ms)
     delay_bound: (lower, upper) bounds of delay (ms)
     connector: connector object from which to read distance
+    rng : numpy.random.Generator, optional
+        Random number generator. If None, uses the default generator.
     """
+    rng = _get_default_rng() if rng is None else rng
     if connector is None:
         dist = euclid_dist(target["positions"], source["positions"])
     else:
@@ -2495,30 +2578,32 @@ def syn_dist_delay_feng(
     return delay
 
 
-def syn_section_PN(source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs):
+def syn_section_PN(source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), rng=None, **kwargs):
     """Synapse location follows a Bernoulli distribution, with probability p
     to obtain the former in sec_id and sec_x"""
-    syn_loc = int(not decision(p))
+    rng = _get_default_rng() if rng is None else rng
+    syn_loc = int(not decision(p, rng=rng))
     return sec_id[syn_loc], sec_x[syn_loc]
 
 
 def syn_const_delay_feng_section_PN(
-    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs
+    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), rng=None, **kwargs
 ):
     """Assign both synapse delay and location with constant distance assumed"""
-    delay = syn_const_delay(source, target, **kwargs)
-    s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x)
+    delay = syn_const_delay(source, target, rng=rng, **kwargs)
+    s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x, rng=rng)
     return delay, s_id, s_x
 
 
 def syn_dist_delay_feng_section_PN(
-    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), **kwargs
+    source, target, p=0.9, sec_id=(1, 2), sec_x=(0.4, 0.6), rng=None, **kwargs
 ):
     """Assign both synapse delay and location"""
-    delay = syn_dist_delay_feng(source, target, **kwargs)
-    s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x)
+    delay = syn_dist_delay_feng(source, target, rng=rng, **kwargs)
+    s_id, s_x = syn_section_PN(source, target, p=p, sec_id=sec_id, sec_x=sec_x, rng=rng)
     return delay, s_id, s_x
 
 
-def syn_uniform_delay_section(source, target, low=DELAY_LOWBOUND, high=DELAY_UPBOUND, **kwargs):
+def syn_uniform_delay_section(source, target, low=DELAY_LOWBOUND, high=DELAY_UPBOUND, rng=None, **kwargs):
+    rng = _get_default_rng() if rng is None else rng
     return rng.uniform(low, high)
