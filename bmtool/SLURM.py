@@ -527,7 +527,9 @@ class BlockRunner:
                 original_sim_config = next((p for p in case_command.split() if p.endswith(".json")), None)
                 if not original_sim_config: continue
 
-                new_sim_path = os.path.join(os.getcwd(), f"simulation_config_{block.run_uuid}_{case_name}.json")
+                # Put duplicate config in same directory as original to preserve relative path resolution
+                original_config_dir = os.path.dirname(os.path.abspath(original_sim_config))
+                new_sim_path = os.path.join(original_config_dir, f"simulation_config_{block.run_uuid}_{case_name}.json")
                 config_files[case_name] = new_sim_path
 
                 with open(original_sim_config, "r") as f:
@@ -618,7 +620,9 @@ class BlockRunner:
                 original_sim_config = next((p for p in case_command.split() if p.endswith(".json")), None)
                 if not original_sim_config: continue
 
-                new_sim_path = os.path.join(os.getcwd(), f"simulation_config_{block.run_uuid}_{case_name}.json")
+                # Put duplicate config in same directory as original to preserve relative path resolution
+                original_config_dir = os.path.dirname(os.path.abspath(original_sim_config))
+                new_sim_path = os.path.join(original_config_dir, f"simulation_config_{block.run_uuid}_{case_name}.json")
                 config_files[case_name] = new_sim_path
 
                 with open(original_sim_config, "r") as f:
