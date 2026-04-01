@@ -8,6 +8,7 @@ import uuid
 
 import numpy as np
 import requests
+import bmtk.simulator.core.simulation_config as bmtk_config
 
 
 def check_job_status(job_id):
@@ -505,10 +506,10 @@ class BlockRunner:
             first_case_command = block.simulation_cases[first_case_name]
             original_sim_config = next((p for p in first_case_command.split() if p.endswith(".json")), "simulation_config.json")
             
-            with open(original_sim_config, "r") as f:
-                temp_sim_data = json.load(f)
+            # Use BMTK's config parser to resolve manifest variables like $BASE_DIR automatically
+            resolved_config = bmtk_config.from_json(original_sim_config)
+            original_circuit_config = resolved_config.get("network")
             
-            original_circuit_config = temp_sim_data.get("network", "circuit_config.json")
             new_circuit_name = f"circuit_config_{block.run_uuid}.json"
             new_circuit_path = os.path.join(os.getcwd(), new_circuit_name)
             
@@ -596,10 +597,10 @@ class BlockRunner:
             first_case_command = block.simulation_cases[first_case_name]
             original_sim_config = next((p for p in first_case_command.split() if p.endswith(".json")), "simulation_config.json")
             
-            with open(original_sim_config, "r") as f:
-                temp_sim_data = json.load(f)
+            # Use BMTK's config parser to resolve manifest variables like $BASE_DIR automatically
+            resolved_config = bmtk_config.from_json(original_sim_config)
+            original_circuit_config = resolved_config.get("network")
             
-            original_circuit_config = temp_sim_data.get("network", "circuit_config.json")
             new_circuit_name = f"circuit_config_{block.run_uuid}.json"
             new_circuit_path = os.path.join(os.getcwd(), new_circuit_name)
             
