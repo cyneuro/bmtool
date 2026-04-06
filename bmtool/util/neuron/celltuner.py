@@ -2074,11 +2074,14 @@ class CellTunerGUI:
                         print("TextXSemanticError: Unable to parse " + mech)
                         print(e)
                         # import pdb;pdb.set_trace()
-                # except AttributeError as e:
-                #    if self.print_debug or True:
-                #        print("AttributeError: Unable to parse " + mech)
-                #        print(e)
-                #        import pdb;pdb.set_trace()
+                except AttributeError as e:
+                    if self.print_debug:
+                        print("AttributeError: Unable to parse " + mech)
+                        print(e)
+                except Exception as e:
+                    if self.print_debug:
+                        print("Exception: Unable to parse " + mech)
+                        print(e)
         # import pdb;pdb.set_trace()
         return
 
