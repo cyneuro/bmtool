@@ -500,28 +500,8 @@ class BlockRunner:
             config_files = {}
             circuit_configs = {}
 
-            # Create ONE unique circuit config per block (since components are the same for all cases in a block)
-            # We'll use the first simulation case to find the original circuit config
-            first_case_name = list(block.simulation_cases.keys())[0]
-            first_case_command = block.simulation_cases[first_case_name]
-            original_sim_config = next((p for p in first_case_command.split() if p.endswith(".json")), "simulation_config.json")
-            
-            # Use BMTK's config parser to resolve manifest variables like $BASE_DIR automatically
-            resolved_config = bmtk_config.from_json(original_sim_config)
-            original_circuit_config = resolved_config.get("network")
-            
-            new_circuit_name = f"circuit_config_{block.run_uuid}.json"
-            new_circuit_path = os.path.join(os.getcwd(), new_circuit_name)
-            
-            with open(original_circuit_config, "r") as f:
-                circ_data = json.load(f)
-            
-            circ_data["manifest"]["$COMPONENTS_DIR"] = destination_dir
-
-            with open(new_circuit_path, "w") as f:
-                json.dump(circ_data, f, indent=4)
-            
-            circuit_configs["shared"] = new_circuit_path
+            # Keep track of the first circ_data for synaptic report generation
+            first_circ_data = None
 
             for case_name, case_command in block.simulation_cases.items():
                 original_sim_config = next((p for p in case_command.split() if p.endswith(".json")), None)
@@ -534,6 +514,26 @@ class BlockRunner:
 
                 with open(original_sim_config, "r") as f:
                     sim_data = json.load(f)
+
+                # Use BMTK's config parser to resolve manifest variables like $BASE_DIR automatically
+                resolved_config = bmtk_config.from_json(original_sim_config)
+                original_circuit_config = resolved_config.get("network")
+
+                # Generate a unique circuit config for this case
+                new_circuit_path = os.path.join(os.getcwd(), f"circuit_config_{block.run_uuid}_{case_name}.json")
+                circuit_configs[case_name] = new_circuit_path
+
+                # Clone and update the circuit config for this case
+                with open(original_circuit_config, "r") as f:
+                    circ_data = json.load(f)
+
+                if first_circ_data is None:
+                    first_circ_data = circ_data
+                
+                circ_data["manifest"]["$COMPONENTS_DIR"] = destination_dir
+
+                with open(new_circuit_path, "w") as f:
+                    json.dump(circ_data, f, indent=4)
 
                 sim_data["network"] = new_circuit_path
                 
@@ -557,7 +557,7 @@ class BlockRunner:
                     multiSeedSweep(target_json, self.param_name, syn_dict=sd_copy, base_ratio=1).edit_all_jsons(new_val)
             
             # Generate synaptic report (once per block) AFTER parameter sweeps for accuracy
-            syn_models_rel = circ_data["components"]["synaptic_models_dir"].replace("$COMPONENTS_DIR/", "")
+            syn_models_rel = first_circ_data["components"]["synaptic_models_dir"].replace("$COMPONENTS_DIR/", "")
             syn_data = get_synaptic_params(os.path.join(destination_dir, syn_models_rel))
             block_output_dir = os.path.join(block.output_base_dir, block.block_name)
             os.makedirs(block_output_dir, exist_ok=True)
@@ -594,27 +594,8 @@ class BlockRunner:
             config_files = {}
             circuit_configs = {}
 
-            # Create ONE unique circuit config per block
-            first_case_name = list(block.simulation_cases.keys())[0]
-            first_case_command = block.simulation_cases[first_case_name]
-            original_sim_config = next((p for p in first_case_command.split() if p.endswith(".json")), "simulation_config.json")
-            
-            # Use BMTK's config parser to resolve manifest variables like $BASE_DIR automatically
-            resolved_config = bmtk_config.from_json(original_sim_config)
-            original_circuit_config = resolved_config.get("network")
-            
-            new_circuit_name = f"circuit_config_{block.run_uuid}.json"
-            new_circuit_path = os.path.join(os.getcwd(), new_circuit_name)
-            
-            with open(original_circuit_config, "r") as f:
-                circ_data = json.load(f)
-            
-            circ_data["manifest"]["$COMPONENTS_DIR"] = destination_dir
-
-            with open(new_circuit_path, "w") as f:
-                json.dump(circ_data, f, indent=4)
-            
-            circuit_configs["shared"] = new_circuit_path
+            # Keep track of the first circ_data for synaptic report generation
+            first_circ_data = None
 
             for case_name, case_command in block.simulation_cases.items():
                 original_sim_config = next((p for p in case_command.split() if p.endswith(".json")), None)
@@ -627,6 +608,26 @@ class BlockRunner:
 
                 with open(original_sim_config, "r") as f:
                     sim_data = json.load(f)
+
+                # Use BMTK's config parser to resolve manifest variables like $BASE_DIR automatically
+                resolved_config = bmtk_config.from_json(original_sim_config)
+                original_circuit_config = resolved_config.get("network")
+
+                # Generate a unique circuit config for this case
+                new_circuit_path = os.path.join(os.getcwd(), f"circuit_config_{block.run_uuid}_{case_name}.json")
+                circuit_configs[case_name] = new_circuit_path
+
+                # Clone and update the circuit config for this case
+                with open(original_circuit_config, "r") as f:
+                    circ_data = json.load(f)
+
+                if first_circ_data is None:
+                    first_circ_data = circ_data
+                
+                circ_data["manifest"]["$COMPONENTS_DIR"] = destination_dir
+
+                with open(new_circuit_path, "w") as f:
+                    json.dump(circ_data, f, indent=4)
 
                 sim_data["network"] = new_circuit_path
                 
@@ -649,7 +650,7 @@ class BlockRunner:
                     multiSeedSweep(target_json, self.param_name, syn_dict=sd_copy, base_ratio=1).edit_all_jsons(self.param_values[i])
             
             # Generate synaptic report (once per block) AFTER parameter sweeps for accuracy
-            syn_models_rel = circ_data["components"]["synaptic_models_dir"].replace("$COMPONENTS_DIR/", "")
+            syn_models_rel = first_circ_data["components"]["synaptic_models_dir"].replace("$COMPONENTS_DIR/", "")
             syn_data = get_synaptic_params(os.path.join(destination_dir, syn_models_rel))
             block_output_dir = os.path.join(block.output_base_dir, block.block_name)
             os.makedirs(block_output_dir, exist_ok=True)
