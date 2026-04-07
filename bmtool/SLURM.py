@@ -670,4 +670,3 @@ class BlockRunner:
         self.restore_component_paths()
         if self.webhook:
             send_teams_message(self.webhook, "All parallel blocks complete.")
-
