@@ -79,7 +79,10 @@ nav:
           - Network Connectivity: modules/analysis/netcon_reports.md
       - SLURM: modules/slurm.md
       - Graphs: modules/graphs.md
-  - CLI: cli.md
+  - CLI:
+      - Overview: cli/index.md
+      - Plotting: cli/plot.md
+      - Cell Utilities: cli/cell.md
   - Examples:
       - Single Cell:
           - Overview: examples/single-cell.md
