@@ -2573,7 +2573,7 @@ class GapJunctionTuner:
         gap junction coupling between two cells.
         """
         import ipywidgets as widgets
-        from IPython.display import display, clear_output
+        from IPython.display import clear_output, display
 
         # Connection dropdown
         connection_options = sorted(list(self.conn_type_settings.keys()))

@@ -1,9 +1,12 @@
 import os
+
 import numpy as np
-import pandas as pd
-from bmtool.util import util
 from bmtk.utils.reports.spike_trains import PoissonSpikeGenerator
-from . import generators, assemblies
+
+from bmtool.util import util
+
+from . import assemblies, generators
+
 
 class StimulusBuilder:
     """Class to manage and generate stimuli for BMTK networks.
@@ -140,16 +143,129 @@ class StimulusBuilder:
             raise ValueError(f"Unknown distribution: {distribution}. Must be 'lognormal' or 'normal'.")
         
         return rates
+    
+    def generate_background(self, output_path, network_name, population_params,
+                           groupby='pop_name', t_start=0.0, t_stop=10.0, 
+                           verbose=False, seed=None):
+        """Generate background (spontaneous) activity for network nodes grouped by property.
+        
+        This function generates baseline spiking activity, grouped by a specified node property.
+        Each group can use either a constant firing rate or a distribution-based rate.
+        
+        Args:
+            output_path (str): Path to save the resulting .h5 file.
+            network_name (str): BMTK network name.
+            population_params (dict): Parameters for each population/group.
+                Keys should match values in the node property specified by groupby.
+                Each value is a dict with:
+                    - 'mean_firing_rate' (float): Mean firing rate in Hz (required)
+                    - 'stdev' (float, optional): Standard deviation. If provided, uses lognormal distribution.
+                                                If omitted, uses constant firing rate.
+                Example:
+                    {
+                        'PN': {'mean_firing_rate': 20.0, 'stdev': 2.0},
+                        'PV': {'mean_firing_rate': 30.0},  # constant rate
+                        'SST': {'mean_firing_rate': 15.0, 'stdev': 1.5}
+                    }
+            groupby (str): Node property to group by (default: 'pop_name').
+                          Will match against keys in population_params.
+            t_start, t_stop (float): Time range for activity (seconds).
+            verbose (bool): If True, print detailed information (default: False).
+            seed (int, optional): Random seed for distribution sampling. Overrides instance psg_seed.
+            
+        Examples:
+            # Population-specific rates with mixed distributions
+            params = {
+                'PN': {'mean_firing_rate': 20.0, 'stdev': 2.0},
+                'PV': {'mean_firing_rate': 30.0},  # constant rate
+                'SST': {'mean_firing_rate': 15.0, 'stdev': 1.5}
+            }
+            sb.generate_background(
+                output_path='background.h5',
+                network_name='input',
+                population_params=params,
+                t_start=0.0, t_stop=15.0
+            )
+            
+            # Group by custom property (e.g., layer)
+            layer_params = {
+                'L1': {'mean_firing_rate': 10.0, 'stdev': 1.0},
+                'L2/3': {'mean_firing_rate': 15.0, 'stdev': 2.0}
+            }
+            sb.generate_background(
+                output_path='layer_background.h5',
+                network_name='input',
+                population_params=layer_params,
+                groupby='layer'
+            )
+        """
+        if population_params is None or not isinstance(population_params, dict):
+            raise ValueError("population_params must be a non-empty dict")
+        
+        nodes_df = self.get_nodes(network_name)
+        
+        # Verify groupby column exists
+        if groupby not in nodes_df.columns:
+            raise ValueError(f"Node property '{groupby}' not found in network '{network_name}'")
+        
+        # Use provided seed or default to instance psg_seed
+        psg_seed = seed if seed is not None else self.psg_seed
+        
+        population = network_name  # Default population name in PSG
+        psg = PoissonSpikeGenerator(population=population, seed=psg_seed)
+        
+        times = (t_start, t_stop)
+        total_nodes = 0
+        
+        for group_key, params in population_params.items():
+            # Find nodes matching this group
+            nodes_in_group = nodes_df[nodes_df[groupby] == group_key].index.values
+            
+            if len(nodes_in_group) == 0:
+                if verbose:
+                    print(f"  Warning: No nodes found with {groupby}='{group_key}'")
+                continue
+            
+            total_nodes += len(nodes_in_group)
+            
+            if not isinstance(params, dict) or 'mean_firing_rate' not in params:
+                raise ValueError(f"params['{group_key}'] must be a dict with 'mean_firing_rate' key")
+            
+            mean_rate = params['mean_firing_rate']
+            stdev = params.get('stdev', None)
+            
+            # Determine: constant vs distribution-based
+            if stdev is not None:
+                # Use distribution (lognormal)
+                firing_rates = self._generate_firing_rates(len(nodes_in_group), mean_rate, stdev, 'lognormal')
+                for node_id, rate in zip(nodes_in_group, firing_rates):
+                    psg.add(node_ids=node_id, firing_rate=rate, times=times)
+                if verbose:
+                    print(f"  {group_key}: {len(nodes_in_group)} nodes, {mean_rate:.1f}±{stdev:.1f} Hz (lognormal)")
+            else:
+                # Use constant firing rate
+                psg.add(node_ids=nodes_in_group.tolist(), firing_rate=mean_rate, times=times)
+                if verbose:
+                    print(f"  {group_key}: {len(nodes_in_group)} nodes, {mean_rate:.1f} Hz (constant)")
+        
+        # Write to file
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        psg.to_sonata(output_path)
+        if verbose:
+            print(f"Generated background activity: {total_nodes} nodes to {output_path}")
             
     def generate_stimulus(self, output_path, pattern_type, assembly_name, verbose=False, seed=None, **kwargs):
         """Generate a BMTK Poisson spike file (SONATA) for a specific assembly group.
+        
+        Use create_assemblies() first to define your stimulus assemblies, then call this
+        function to generate time-varying firing patterns for those assemblies.
         
         Args:
             output_path (str): Path to save the resulting .h5 file.
             pattern_type (str): Firing rate template ('short', 'long', 'ramp', etc).
             assembly_name (str): Name of the assembly group created via create_assemblies.
             verbose (bool): If True, print detailed information (default: False).
-            seed (int, optional): Random seed for Poisson spike generation. Overrides instance psg_seed for this call.
+            seed (int, optional): Random seed for Poisson spike generation. Overrides instance psg_seed.
             **kwargs: Arguments passed to the generator function and PoissonSpikeGenerator.
                 - population (str): Name of the spike population (for BMTK).
                 - firing_rate (3-tuple): (off_rate, burst_rate, silent_rate).
@@ -157,9 +273,20 @@ class StimulusBuilder:
                 - off_time (float): Duration of silent period.
                 - t_start (float): Start time of cycles.
                 - t_stop (float): End time of cycles.
+                
+        Example:
+            # First create assemblies
+            sb.create_assemblies(name='stim_groups', network_name='thalamus', 
+                                method='property', property_name='pulse_group_id')
+            
+            # Then generate stimulus
+            sb.generate_stimulus(output_path='stim.h5', pattern_type='long', 
+                                assembly_name='stim_groups', population='thalamus',
+                                firing_rate=(0.0, 50.0, 0.0), t_start=1.0, t_stop=15.0,
+                                on_time=1.0, off_time=0.5)
         """
         if assembly_name not in self.assemblies:
-            raise ValueError(f"Assembly '{assembly_name}' not defined.")
+            raise ValueError(f"Assembly '{assembly_name}' not defined. Use create_assemblies() first.")
             
         assembly_list = self.assemblies[assembly_name]
         n_assemblies = len(assembly_list)
@@ -192,99 +319,3 @@ class StimulusBuilder:
         psg.to_sonata(output_path)
         if verbose:
             print(f"Written stimulus to {output_path}")
-
-    def generate_baseline(self, output_path, network_name, pop_name=None, distribution='constant', 
-                         mean=None, stdev=None, firing_rate=None, t_start=0.0, t_stop=10.0, verbose=False, seed=None):
-        """Generate baseline activity for a selection of nodes.
-        
-        Args:
-            output_path (str): Path to save the resulting .h5 file.
-            network_name (str): BMTK network name.
-            pop_name (str, optional): Filter nodes by population name.
-            distribution (str): 'constant', 'lognormal', or 'normal'.
-            mean (float): Mean for lognormal/normal or constant rate (if firing_rate omitted).
-            stdev (float): Standard deviation for lognormal/normal.
-            firing_rate (float, optional): Constant firing rate.
-            t_start, t_stop (float): Time range for activity.
-            verbose (bool): If True, print detailed information (default: False).
-            seed (int, optional): Random seed for distribution sampling. Overrides instance psg_seed for this call.
-        """
-        nodes_df = self.get_nodes(network_name, pop_name)
-        node_ids = nodes_df.index.values.tolist()
-        
-        # Use provided seed or default to instance psg_seed
-        psg_seed = seed if seed is not None else self.psg_seed
-        
-        population = network_name # Default population name in PSG
-        psg = PoissonSpikeGenerator(population=population, seed=psg_seed)
-        
-        times = (t_start, t_stop)
-        
-        if distribution == 'constant':
-            if firing_rate is None:
-                if mean is not None: 
-                    firing_rate = mean
-                else:
-                    raise ValueError("Must provide firing_rate for constant distribution")
-            
-            psg.add(node_ids=node_ids, firing_rate=firing_rate, times=times)
-            
-        elif distribution in ['lognormal', 'normal']:
-            if mean is None or stdev is None:
-                raise ValueError(f"Must provide mean and stdev for {distribution} distribution")
-            
-            firing_rates = self._generate_firing_rates(len(node_ids), mean, stdev, distribution)
-            
-            for node_id, fr in zip(node_ids, firing_rates):
-                psg.add(node_ids=node_id, firing_rate=fr, times=times)
-                
-        else:
-             raise ValueError(f"Unknown distribution: {distribution}")
-             
-        # Write to file
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        psg.to_sonata(output_path)
-        if verbose:
-            print(f"Written baseline to {output_path}")
-
-    def generate_shell_input(self, output_path, network_name, shell_params, 
-                            distribution='lognormal', t_start=0.0, t_stop=15.0, verbose=False, seed=None):
-        """Generate shell (background) stimulus with population-specific rates.
-        
-        Args:
-            output_path (str): Path to save the resulting .h5 file.
-            network_name (str): BMTK network name.
-            shell_params (dict): Population-specific (mean, stdev) tuples.
-                Example: {'ET': (1.9, 1.8), 'IT': (1.3, 1.4), 'PV': (7.5, 6.4), 'SST': (5.0, 6.0)}
-            distribution (str): 'lognormal' or 'normal' (default: 'lognormal').
-            t_start, t_stop (float): Time range for activity.
-            verbose (bool): If True, print detailed information (default: False).
-            seed (int, optional): Random seed for distribution sampling. Overrides instance psg_seed for this call.
-        """
-        nodes_df = self.get_nodes(network_name)
-        
-        # Use provided seed or default to instance psg_seed
-        psg_seed = seed if seed is not None else self.psg_seed
-        
-        psg = PoissonSpikeGenerator(population=network_name, seed=psg_seed)
-        
-        total_nodes = 0
-        for pop_name, (mean, stdev) in shell_params.items():
-            nodes_in_pop = nodes_df[nodes_df['pop_name'] == pop_name].index.values
-            if len(nodes_in_pop) == 0:
-                continue
-            
-            total_nodes += len(nodes_in_pop)
-            
-            # Generate rates using helper function
-            rates = self._generate_firing_rates(len(nodes_in_pop), mean, stdev, distribution)
-            
-            # Add to PSG
-            for node_id, rate in zip(nodes_in_pop, rates):
-                psg.add(node_ids=node_id, firing_rate=rate, times=(t_start, t_stop))
-        
-        # Write to file
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        psg.to_sonata(output_path)
-        if verbose:
-            print(f"Generated shell stimulus ({distribution}): {total_nodes} nodes to {output_path}")

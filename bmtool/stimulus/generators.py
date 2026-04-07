@@ -74,7 +74,7 @@ def get_fr_short(n_assemblies, firing_rate=(0., 0., 0.),
     n_rounds_int = int(np.ceil(n_rounds))
     
     if verbose:
-        print(f"\nCycle information:")
+        print("\nCycle information:")
         print(f"Time per cycle: {t_cycle}")
         print(f"Number of cycles: {n_cycle}")
         print(f"Bursts per cycle: {n_bursts_per_cycle}")
@@ -218,7 +218,7 @@ def get_fr_long(n_assemblies, firing_rate=(0., 0., 0.),
     n_selected = len(assembly_index)
 
     if verbose:
-        print(f"\nCycle information:")
+        print("\nCycle information:")
         print(f"Time per cycle: {t_cycle}")
         print(f"Number of cycles: {n_cycle}")
 
@@ -367,7 +367,7 @@ def get_fr_ramp(n_assemblies, firing_rate=(0., 0., 0., 0.),
     n_selected = len(assembly_index)
 
     if verbose:
-        print(f"\nCycle information:")
+        print("\nCycle information:")
         print(f"Time per cycle: {t_cycle}")
         print(f"Number of cycles: {n_cycle}")
         print(f"Ramp timing: {ramp_on_time} to {ramp_off_time} within on_time of {on_time}")
@@ -530,7 +530,7 @@ def get_fr_join(n_assemblies, firing_rate=(0., 0., 0.),
         t_offset = t_offset[::-1]
 
     if verbose:
-        print(f"Cycle information:")
+        print("Cycle information:")
         print(f"Time per cycle: {t_cycle}")
         print(f"Number of cycles: {n_cycle}")
         print(f"Recruitment timing: {ramp_on_time} to {ramp_off_time}")
@@ -725,7 +725,7 @@ def get_fr_fade(n_assemblies, off_rate=10., firing_rate=(0., 0., 0., 0.),
     n_selected = len(assembly_index)
     
     if verbose:
-        print(f"\nCycle information:")
+        print("\nCycle information:")
         print(f"Time per cycle: {t_cycle}")
         print(f"Number of cycles: {n_cycle}")
         print(f"Ramp timing: {ramp_on_time} to {ramp_off_time} within on_time of {on_time}")

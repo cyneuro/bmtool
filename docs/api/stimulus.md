@@ -5,6 +5,13 @@
 ### StimulusBuilder
 
 ::: bmtool.stimulus.core.StimulusBuilder
+    options:
+      members:
+        - __init__
+        - get_nodes
+        - create_assemblies
+        - generate_background
+        - generate_stimulus
 
 ## Firing Rate Generators
 

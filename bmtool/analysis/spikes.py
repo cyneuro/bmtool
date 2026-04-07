@@ -553,7 +553,10 @@ def compare_firing_over_times(
 
 
 def find_bursting_cells(
-    df: pd.DataFrame, isi_threshold: float = 10, burst_count_threshold: int = 1
+    df: pd.DataFrame,
+    isi_threshold: float = 10,
+    burst_count_threshold: int = 1,
+    groupby: str = "pop_name",
 ) -> pd.DataFrame:
     """
     Finds bursting cells in a population based on a time difference threshold.
@@ -561,16 +564,18 @@ def find_bursting_cells(
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame containing spike data with columns for timestamps, node_ids, and pop_name
+        DataFrame containing spike data with columns for timestamps, node_ids, and specified groupby
     isi_threshold : float, optional
         Time difference threshold in milliseconds to identify bursts
     burst_count_threshold : int, optional
         Number of bursts required to identify a bursting cell
+    groupby : str, optional
+        The column to group by and append the burster suffix to
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with bursting cells renamed in their pop_name column
+        DataFrame with bursting cells renamed in their specified groupby column
     """
     # Create a new DataFrame with the time differences
     diff_df = df.copy()
@@ -581,7 +586,9 @@ def find_bursting_cells(
 
     # Group by node_ids and check if any row has a burst instance
     # check if there are enough bursts
-    burst_summary = diff_df.groupby("node_ids")["is_burst_instance"].sum() >= burst_count_threshold
+    burst_summary = (
+        diff_df.groupby("node_ids")["is_burst_instance"].sum() >= burst_count_threshold
+    )
 
     # Convert to a DataFrame with reset index
     burst_cells = burst_summary.reset_index(name="is_burst")
@@ -590,19 +597,67 @@ def find_bursting_cells(
     burst_cells = pd.merge(burst_cells, df, on="node_ids")
 
     # Create a mask for burst cells that don't already have "_bursters" in their name
-    burst_mask = burst_cells["is_burst"] & ~burst_cells["pop_name"].str.contains(
+    burst_mask = burst_cells["is_burst"] & ~burst_cells[groupby].str.contains(
         "_bursters", na=False
     )
 
     # Add "_bursters" suffix only to those cells
-    burst_cells.loc[burst_mask, "pop_name"] = burst_cells.loc[burst_mask, "pop_name"] + "_bursters"
+    burst_cells.loc[burst_mask, groupby] = burst_cells.loc[burst_mask, groupby] + "_bursters"
 
-    for pop in sorted(burst_cells["pop_name"].unique()):
+    for pop in sorted(burst_cells[groupby].unique()):
         print(
-            f"Number of cells in {pop}: {burst_cells[burst_cells['pop_name'] == pop]['node_ids'].nunique()}"
+            f"Number of cells in {pop}: {burst_cells[burst_cells[groupby] == pop]['node_ids'].nunique()}"
         )
 
     return burst_cells
+
+
+def find_burst_times(timestamps: pd.Series, isi_threshold: float = 10):
+    """
+    Finds the start times of bursts from a series of timestamps.
+    A burst start is defined as the first spike in a sequence where the ISI is below the threshold.
+
+    Parameters
+    ----------
+    timestamps : pd.Series
+        Series of timestamps for a single node
+    isi_threshold : float, optional
+        Time difference threshold in milliseconds to identify bursts (default unit in bmtk)
+
+    Returns
+    -------
+    list, int
+        A list of burst start times and the total number of bursts found
+
+    Examples
+    --------
+    >>> test_cell = spikes_df[spikes_df['node_ids'] == 1]
+    >>> burst_starts, count = find_burst_times(test_cell['timestamps'])
+    """
+    if len(timestamps) < 2:
+        return [], 0
+
+    # Calculate ISIs
+    isi = timestamps.diff()
+    is_burst_instance = isi < isi_threshold
+
+    # Find where sequences of is_burst_instance start
+    # A burst starts if current is a burst instance but previous was NOT
+    # OR it's the very first burst instance in the series
+    burst_starts = []
+    in_burst = False
+
+    for i in range(1, len(timestamps)):
+        if is_burst_instance.iloc[i]:
+            if not in_burst:
+                # This is the start of a new burst sequence
+                # The burst actually starts at the PREVIOUS spike
+                burst_starts.append(timestamps.iloc[i - 1])
+                in_burst = True
+        else:
+            in_burst = False
+
+    return burst_starts, len(burst_starts)
 
 
 def find_highest_firing_cells(
