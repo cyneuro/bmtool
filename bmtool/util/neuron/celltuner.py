@@ -7,7 +7,7 @@ import click
 import neuron
 import numpy as np
 from clint.textui import colored
-from neuron import h
+from neuron import h, gui
 
 
 class Widget:
