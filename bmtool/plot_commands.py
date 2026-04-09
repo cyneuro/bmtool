@@ -4,22 +4,16 @@ import click
 import matplotlib.pyplot as plt
 from clint.textui import colored
 
-from .bmplot import (
-    cell_rotation_3d,
-    connection_matrix,
+from .bmplot.connections import (
     divergence_connection_matrix,
     edge_histogram_matrix,
     percent_connection_matrix,
+    plot_3d_cell_rotation,
     plot_3d_positions,
-    plot_basic_cell_info,
-    plot_I_clamps,
-    plot_inspikes,
-    plot_network_graph,
-    plot_report_default,
     probability_connection_matrix,
-    raster,
-    sim_setup,
+    total_connection_matrix,
 )
+from .bmplot.spikes import raster
 
 
 @click.group("plot")
@@ -100,7 +94,7 @@ def connection(ctx, title, save_file, sources, targets, sids, tids, no_prepend_p
 )
 @click.pass_context
 def connection_total(ctx, synfo):
-    connection_matrix(ctx.obj["config"], **ctx.obj["connection"], synaptic_info=synfo)
+    total_connection_matrix(ctx.obj["config"], **ctx.obj["connection"], synaptic_info=synfo)
     if ctx.obj["display"]:
         plt.show()
 
@@ -241,7 +235,8 @@ def connection_property_histogram_matrix(ctx, edge_property, report, time, time_
 )
 @click.pass_context
 def connection_network_graph(ctx, edge_property):
-    plot_network_graph(ctx.obj["config"], **ctx.obj["connection"], edge_property=edge_property)
+    # plot_network_graph(ctx.obj["config"], **ctx.obj["connection"], edge_property=edge_property)
+    click.echo("network-graph is currently disabled")
     if ctx.obj["display"]:
         plt.show()
 
@@ -301,16 +296,16 @@ def cell(ctx, title, save_file):
 def rotation_3d(
     ctx, populations, group_by, group, max_cells, quiver_length, arrow_length_ratio, init_vector
 ):
-    cell_rotation_3d(
+    plot_3d_cell_rotation(
         config=ctx.obj["config"],
         **ctx.obj["cell"],
-        populations=populations,
-        group_by=group_by,
+        sources=populations,
+        sids=group_by,
         group=group,
-        max_cells=max_cells,
+        subset=max_cells,
         quiver_length=quiver_length,
         arrow_length_ratio=arrow_length_ratio,
-        init_vector=init_vector,
+        # init_vector=init_vector,
     )
     if ctx.obj["display"]:
         plt.show()
@@ -340,9 +335,9 @@ def plot_positions(ctx, title, populations, group_by, save_file):
     plot_3d_positions(
         config=ctx.obj["config"],
         title=title,
-        populations=populations,
-        group_by=group_by,
-        save_file=save_file,
+        sources=populations,
+        sid=group_by,
+        # save_file=save_file,
     )
     if ctx.obj["display"]:
         plt.show()
@@ -359,7 +354,7 @@ def plot_positions(ctx, title, populations, group_by, save_file):
 )
 @click.pass_context
 def plot_raster(ctx, title, population, group_key):
-    raster(config=ctx.obj["config"], title=title, population=population, group_key=group_key)
+    raster(config=ctx.obj["config"], network_name=population, groupby=group_key)
     if ctx.obj["display"]:
         plt.show()
 
@@ -377,9 +372,10 @@ def plot_raster(ctx, title, population, group_key):
 @click.option("--gids", type=click.STRING, default=None, help="Cell numbers you want to plot")
 @click.pass_context
 def plot_report(ctx, report_name, variables, gids):
-    plot_report_default(
-        config=ctx.obj["config"], report_name=report_name, variables=variables, gids=gids
-    )
+    # plot_report_default(
+    #     config=ctx.obj["config"], report_name=report_name, variables=variables, gids=gids
+    # )
+    click.echo("report is currently disabled")
     if ctx.obj["display"]:
         plt.show()
 
@@ -393,8 +389,9 @@ def plot_report(ctx, report_name, variables, gids):
     help="Name of the biophysical network you want to probe for prob connection plot",
 )
 @click.pass_context
-def setup(ctx, network):
-    sim_setup(config_file=ctx.obj["config"], network=network)
+def setup_summary(ctx, network):
+    # sim_setup(config_file=ctx.obj["config"], network=network)
+    click.echo("summary is currently disabled")
     if ctx.obj["display"]:
         plt.close(1)
         plt.show(block=True)
@@ -403,7 +400,8 @@ def setup(ctx, network):
 @cli.command("iclamp", help="Plot just the I-clamps involved in the simulation.")
 @click.pass_context
 def I_clamp(ctx):
-    plot_I_clamps(fp=ctx.obj["config"])
+    # plot_I_clamps(fp=ctx.obj["config"])
+    click.echo("iclamp is currently disabled")
     if ctx.obj["display"]:
         plt.show()
 
@@ -411,13 +409,15 @@ def I_clamp(ctx):
 @cli.command("cells", help="Print out cell information including virtual cells.")
 @click.pass_context
 def Cells(ctx):
-    plot_basic_cell_info(config_file=ctx.obj["config"])
+    # plot_basic_cell_info(config_file=ctx.obj["config"])
+    click.echo("cells is currently disabled")
 
 
 @cli.command("input", help="Plot just the input spike trains involved in the simulation.")
 @click.pass_context
 def Spikes(ctx):
-    plot_inspikes(fp=ctx.obj["config"])
+    # plot_inspikes(fp=ctx.obj["config"])
+    click.echo("input is currently disabled")
     if ctx.obj["display"]:
         plt.show()
 

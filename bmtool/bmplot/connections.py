@@ -8,6 +8,7 @@ divergence, and gap junctions.
 See Also:
     https://stackoverflow.com/questions/458209/is-there-a-way-to-detach-matplotlib-plots-so-that-the-computation-can-continue
 """
+
 import re
 import statistics
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -149,7 +150,7 @@ def total_connection_matrix(
         title = "All Synapse .mod Files Used"
     if synaptic_info == "3":
         title = "All Synapse .json Files Used"
-    
+
     return plot_connection_info(
         text, num, source_labels, target_labels, title, syn_info=synaptic_info
     )
@@ -419,7 +420,7 @@ def probability_connection_matrix(
     st = fig.suptitle(tt, fontsize=14)
     fig.text(0.5, 0.04, "Target", ha="center")
     fig.text(0.04, 0.5, "Source", va="center", rotation="vertical")
-    
+
     return fig, axes
 
 
@@ -628,9 +629,7 @@ def divergence_connection_matrix(
         )
         return result_dict
     else:
-        return plot_connection_info(
-            syn_info, data, source_labels, target_labels, title
-        )
+        return plot_connection_info(syn_info, data, source_labels, target_labels, title)
 
 
 def gap_junction_matrix(
@@ -879,7 +878,7 @@ def connection_histogram(
         raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
-    
+
     sources_list = sources.split(",") if sources else []
     targets_list = targets.split(",") if targets else []
     if sids:
@@ -923,7 +922,8 @@ def connection_histogram(
         target_id = kwargs["target_id"]
         if source_id == source_cell and target_id == target_cell:
             temp = edges_data[
-                (edges_data[source_id_type] == source_id) & (edges_data[target_id_type] == target_id)
+                (edges_data[source_id_type] == source_id)
+                & (edges_data[target_id_type] == target_id)
             ]
             if not include_gap:
                 gap_col = temp["is_gap_junction"].fillna(False).astype(bool)
@@ -936,7 +936,10 @@ def connection_histogram(
                 label = "mean {:.2f} std {:.2f} median {:.2f}".format(
                     conn_mean, conn_std, conn_median
                 )
-            except (statistics.StatisticsError, ValueError):  # lazy fix for std not calculated with 1 node
+            except (
+                statistics.StatisticsError,
+                ValueError,
+            ):  # lazy fix for std not calculated with 1 node
                 conn_mean = statistics.mean(node_pairs.values)
                 conn_median = statistics.median(node_pairs.values)
                 label = "mean {:.2f} median {:.2f}".format(conn_mean, conn_median)
@@ -951,14 +954,14 @@ def connection_histogram(
         raise Exception("config not defined")
     if not sources or not targets:
         raise Exception("Sources or targets not defined")
-    
+
     # Create figure for the histogram
     fig, ax = plt.subplots()
-    
+
     # Wrapper to pass ax to the connection_pair_histogram function
     def relation_func_wrapper(**kwargs):
         return connection_pair_histogram(ax=ax, **kwargs)
-    
+
     util.relation_matrix(
         config,
         nodes,
@@ -971,7 +974,7 @@ def connection_histogram(
         relation_func=relation_func_wrapper,
         synaptic_info=synaptic_info,
     )
-    
+
     return fig, ax
 
 
@@ -1097,7 +1100,7 @@ def connection_distance(
     ax2.set_ylabel("Count")
     ax2.set_title("Distance from Source Node to Each Target Node")
     ax2.grid(True)
-    
+
     return (fig, ax), (fig2, ax2)
 
 
@@ -1113,7 +1116,6 @@ def edge_histogram_matrix(
     time_compare: Optional[int] = None,
     report: Optional[str] = None,
     title: Optional[str] = None,
-    
 ) -> Tuple[Any, Any]:
     """
     Generates a matrix of histograms showing the distribution of edge properties between populations.
@@ -1217,7 +1219,7 @@ def edge_histogram_matrix(
     fig.text(0.5, 0.04, "Target", ha="center")
     fig.text(0.04, 0.5, "Source", va="center", rotation="vertical")
     plt.draw()
-    
+
     return fig, axes
 
 
@@ -1299,7 +1301,7 @@ def distance_delay_plot(
     ax.set_xlabel("Distance")
     ax.set_ylabel("Delay")
     ax.set_title(f"Distance vs Delay for edge between {sid} and {tid}")
-    
+
     return fig, ax
 
 
@@ -1361,7 +1363,7 @@ def plot_synapse_location(
         )
 
     # Fix the validation logic - it was using 'or' instead of 'and'
-    #if syn_feature not in ["afferent_section_id", "afferent_section_pos"]:
+    # if syn_feature not in ["afferent_section_id", "afferent_section_pos"]:
     #    raise ValueError("Currently only syn features supported are afferent_section_id or afferent_section_pos")
 
     try:
@@ -1369,7 +1371,7 @@ def plot_synapse_location(
         util.load_templates_from_config(config)
     except Exception as e:
         raise RuntimeError(f"Failed to load templates from config: {str(e)}")
-    
+
     try:
         # Load node and edge data
         nodes, edges = util.load_nodes_edges_from_config(config)
@@ -1379,7 +1381,7 @@ def plot_synapse_location(
         target_nodes = nodes[target]
         source_nodes = nodes[source]
         edges = edges[f"{source}_to_{target}"]
-        
+
         # Find edges with NaN values in the specified feature
         nan_edges = edges[edges[syn_feature].isna()]
         # Print information about removed edges
@@ -1387,7 +1389,7 @@ def plot_synapse_location(
             unique_indices = sorted(list(set(nan_edges.index.tolist())))
             print(f"Removing {len(nan_edges)} edges with missing {syn_feature}")
             print(f"Unique indices removed: {unique_indices}")
-            
+
         # Filter out edges with NaN values in the specified feature
         edges = edges[edges[syn_feature].notna()]
 
@@ -1468,7 +1470,6 @@ def plot_synapse_location(
                     section_name = section_mapping.get(section_id, f"sec_{section_id}")
                     section_display.append(f"{section_name}:{percentage}%")
 
-
                 num_connections[source_idx, target_idx] = total_connections
                 text_data[source_idx, target_idx] = "\n".join(section_display)
 
@@ -1478,7 +1479,9 @@ def plot_synapse_location(
                 text_data[source_idx, target_idx] = "Feature info N/A"
 
     # Create the plot
-    title = f"Synaptic Distribution by {syn_feature.replace('_', ' ').title()}: {source} to {target}"
+    title = (
+        f"Synaptic Distribution by {syn_feature.replace('_', ' ').title()}: {source} to {target}"
+    )
     fig, ax = plot_connection_info(
         text=text_data,
         num=num_connections,
@@ -1497,7 +1500,6 @@ def plot_connection_info(
     target_labels: List[str],
     title: str,
     syn_info: str = "0",
-    
     return_dict: Optional[bool] = None,
 ) -> Union[Tuple, Dict, None]:
     """
@@ -1866,7 +1868,7 @@ def connector_percent_matrix(
     ax.set_yticklabels(populations, size=12, weight="semibold")
 
     plt.tight_layout()
-    
+
     return fig, ax
 
 
@@ -1875,7 +1877,6 @@ def plot_3d_positions(
     sources: Optional[str] = None,
     sid: Optional[str] = None,
     title: Optional[str] = None,
-    
     subset: Optional[int] = None,
 ) -> Tuple[Any, Any]:
     """
@@ -2008,7 +2009,6 @@ def plot_3d_cell_rotation(
     sources: Optional[List[str]] = None,
     sids: Optional[str] = None,
     title: Optional[str] = None,
-    
     quiver_length: Optional[float] = None,
     arrow_length_ratio: Optional[float] = None,
     group: Optional[str] = None,
