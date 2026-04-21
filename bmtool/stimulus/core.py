@@ -145,7 +145,8 @@ class StimulusBuilder:
         return rates
     
     def generate_background(self, output_path, network_name, population_params,
-                           groupby='pop_name', t_start=0.0, t_stop=10.0, 
+                           groupby='pop_name', distribution='lognormal', 
+                           t_start=0.0, t_stop=10.0, 
                            verbose=False, seed=None):
         """Generate background (spontaneous) activity for network nodes grouped by property.
         
@@ -159,7 +160,7 @@ class StimulusBuilder:
                 Keys should match values in the node property specified by groupby.
                 Each value is a dict with:
                     - 'mean_firing_rate' (float): Mean firing rate in Hz (required)
-                    - 'stdev' (float, optional): Standard deviation. If provided, uses lognormal distribution.
+                    - 'stdev' (float, optional): Standard deviation. If provided, uses distribution.
                                                 If omitted, uses constant firing rate.
                 Example:
                     {
@@ -169,21 +170,23 @@ class StimulusBuilder:
                     }
             groupby (str): Node property to group by (default: 'pop_name').
                           Will match against keys in population_params.
+            distribution (str): Distribution type ('lognormal' or 'normal', default: 'lognormal').
+                               Applies to all groups that have 'stdev' provided.
             t_start, t_stop (float): Time range for activity (seconds).
             verbose (bool): If True, print detailed information (default: False).
             seed (int, optional): Random seed for distribution sampling. Overrides instance psg_seed.
             
         Examples:
-            # Population-specific rates with mixed distributions
+            # Population-specific rates with normal distribution
             params = {
                 'PN': {'mean_firing_rate': 20.0, 'stdev': 2.0},
                 'PV': {'mean_firing_rate': 30.0},  # constant rate
-                'SST': {'mean_firing_rate': 15.0, 'stdev': 1.5}
             }
             sb.generate_background(
                 output_path='background.h5',
                 network_name='input',
                 population_params=params,
+                distribution='normal',
                 t_start=0.0, t_stop=15.0
             )
             
@@ -236,12 +239,12 @@ class StimulusBuilder:
             
             # Determine: constant vs distribution-based
             if stdev is not None:
-                # Use distribution (lognormal)
-                firing_rates = self._generate_firing_rates(len(nodes_in_group), mean_rate, stdev, 'lognormal')
+                # Use distribution
+                firing_rates = self._generate_firing_rates(len(nodes_in_group), mean_rate, stdev, distribution)
                 for node_id, rate in zip(nodes_in_group, firing_rates):
                     psg.add(node_ids=node_id, firing_rate=rate, times=times)
                 if verbose:
-                    print(f"  {group_key}: {len(nodes_in_group)} nodes, {mean_rate:.1f}±{stdev:.1f} Hz (lognormal)")
+                    print(f"  {group_key}: {len(nodes_in_group)} nodes, {mean_rate:.1f}±{stdev:.1f} Hz ({distribution})")
             else:
                 # Use constant firing rate
                 psg.add(node_ids=nodes_in_group.tolist(), firing_rate=mean_rate, times=times)
