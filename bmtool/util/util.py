@@ -62,11 +62,15 @@ class CellVarsFile(object):
         import h5py
 
         self._h5_handle = h5py.File(filename, "r")
-        self._h5_root = (
-            self._h5_handle[params["h5_root"]]
-            if "h5_root" in params
-            else self._h5_handle["/report/cortex"]
-        )
+        
+        if "h5_root" in params:
+            self._h5_root = self._h5_handle[params["h5_root"]]
+        elif "population" in params:
+            self._h5_root = self._h5_handle[f"/report/{params['population']}"]
+        else:
+            # Fallback to cortex if nothing else specified
+            self._h5_root = self._h5_handle["/report/cortex"]
+            
         self._var_data = {}
         self._var_units = {}
 
@@ -74,14 +78,14 @@ class CellVarsFile(object):
 
         # Look for variabl and mapping groups
         for var_name in self._h5_root.keys():
-            print(self._h5_root.keys())
             hf_grp = self._h5_root[var_name]
 
             if var_name == "data":
                 # According to the sonata format the /data table should be located at the root
-                var_name = self._h5_root["data"].attrs.get(
-                    "variable_name", CellVarsFile.VAR_UNKNOWN
-                )
+                var_name = self._h5_root["data"].attrs.get("variable_name")
+                if var_name is None:
+                    var_name = self._h5_root["data"].attrs.get("variable", CellVarsFile.VAR_UNKNOWN)
+                
                 self._var_data[var_name] = self._h5_root["data"]
                 self._var_units[var_name] = self._find_units(self._h5_root["data"])
 
@@ -168,7 +172,6 @@ class CellVarsFile(object):
         return self._mapping["element_pos"][bounds[0] : bounds[1]]
 
     def data(self, gid, var_name=VAR_UNKNOWN, time_window=None, compartments="origin"):
-        print(self.variables)
         if var_name not in self.variables:
             raise Exception("Unknown variable {}".format(var_name))
 
@@ -352,7 +355,7 @@ def load_nodes_from_paths(node_paths):
                     else:
                         # create new column with NaN if property does not exist
                         if prop not in nodes_df:
-                            nodes_df[prop] = np.nan
+                            nodes_df[prop] = pd.Series(dtype=object)
                         nodes_df.loc[group_node, prop] = group[prop][group_index]
                         prop_dtype[prop] = group[prop].dtype
             # convert to original data type if possible
