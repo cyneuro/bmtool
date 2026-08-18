@@ -519,8 +519,11 @@ class BlockRunner:
                 resolved_config = bmtk_config.from_json(original_sim_config)
                 original_circuit_config = resolved_config.get("network")
 
-                # Generate a unique circuit config for this case
-                new_circuit_path = os.path.join(os.getcwd(), f"circuit_config_{block.run_uuid}_{case_name}.json")
+                # Clone the circuit config using its actual filename and run details
+                original_circuit_name = os.path.splitext(os.path.basename(original_circuit_config))[0]
+                new_circuit_path = os.path.join(
+                    os.getcwd(), f"{original_circuit_name}_{block.run_uuid}_{case_name}.json"
+                )
                 circuit_configs[case_name] = new_circuit_path
 
                 # Clone and update the circuit config for this case
@@ -613,8 +616,11 @@ class BlockRunner:
                 resolved_config = bmtk_config.from_json(original_sim_config)
                 original_circuit_config = resolved_config.get("network")
 
-                # Generate a unique circuit config for this case
-                new_circuit_path = os.path.join(os.getcwd(), f"circuit_config_{block.run_uuid}_{case_name}.json")
+                # Clone the circuit config using its actual filename and run details
+                original_circuit_name = os.path.splitext(os.path.basename(original_circuit_config))[0]
+                new_circuit_path = os.path.join(
+                    os.getcwd(), f"{original_circuit_name}_{block.run_uuid}_{case_name}.json"
+                )
                 circuit_configs[case_name] = new_circuit_path
 
                 # Clone and update the circuit config for this case
