@@ -399,6 +399,194 @@ class CurrentClamp(SimulationBase):
         return self._convert_vectors_to_python()
 
 
+class SynapticInput(SimulationBase):
+    def __init__(
+        self,
+        cell_or_template,
+        post_init_function=None,
+        record_sec="soma",
+        record_loc=0.5,
+        threshold=None,
+        syn_sec="soma",
+        syn_loc=0.5,
+        frequency=20.0,
+        weight=0.01,
+        delay=100.0,
+        tstop=1000.0,
+        tau1=0.1,
+        tau2=10.0,
+        e=0.0,
+        noise=0.0,
+    ):
+        """
+        Initialize a synaptic input simulation using Exp2Syn driven by NetStim.
+
+        Parameters:
+        -----------
+        cell_or_template : NEURON cell object or str/callable
+            Either a pre-initialized NEURON cell object (NEW API),
+            or the name of a cell template located in HOC / a callable that creates a cell (LEGACY API).
+        post_init_function : str, optional
+            Function of the cell to be called after initialization. Only used with legacy API.
+        record_sec : str, int, or tuple, optional
+            Section to record from. Same format as CurrentClamp. Default is 'soma'.
+        record_loc : float, optional
+            Location (0-1) within section to record from. Default is 0.5.
+        threshold : float, optional
+            Spike threshold (mV). If specified, spikes are detected and counted.
+        syn_sec : str, int, or tuple, optional
+            Section to attach the Exp2Syn synapse. Same format as record_sec. Default is 'soma'.
+        syn_loc : float, optional
+            Location (0-1) within section for the synapse. Default is 0.5.
+        frequency : float, optional
+            Regular spike-train frequency in Hz. Default is 20.0.
+        weight : float, optional
+            NetCon weight (uS peak conductance increment for Exp2Syn). Default is 0.01.
+        delay : float, optional
+            Start time of the first NetStim spike (ms). Default is 100.0.
+        tstop : float, optional
+            Total simulation time (ms). Default is 1000.0.
+        tau1 : float, optional
+            Exp2Syn rise time constant (ms). Default is 0.1.
+        tau2 : float, optional
+            Exp2Syn decay time constant (ms). Default is 10.0.
+        e : float, optional
+            Exp2Syn reversal potential (mV). Default is 0.0 (excitatory).
+        noise : float, optional
+            NetStim noise (0 = regular train, 1 = Poisson). Default is 0.0.
+
+        Notes:
+        ------
+        Two approaches are supported:
+
+        1. Pass a pre-built cell object:
+            cell = SimpleSoma()
+            syn = SynapticInput(cell, frequency=20, weight=0.01)
+            t, v = syn.run()
+
+        2. Pass a template name (string) loaded into NEURON:
+            syn = SynapticInput('CP_Cell', frequency=20, weight=0.01)
+            t, v = syn.run()
+        """
+        if isinstance(cell_or_template, str) or (
+            callable(cell_or_template) and not hasattr(cell_or_template, "soma")
+        ):
+            create_cell = (
+                getattr(h, cell_or_template)
+                if isinstance(cell_or_template, str)
+                else cell_or_template
+            )
+            if callable(cell_or_template):
+                cell = cell_or_template()
+            else:
+                cell = create_cell()
+            if post_init_function:
+                eval(f"cell.{post_init_function}")
+        else:
+            cell = cell_or_template
+
+        super().__init__(
+            cell=cell,
+            record_sec=record_sec,
+            record_loc=record_loc,
+            inj_sec=syn_sec,
+            inj_loc=syn_loc,
+            threshold=threshold,
+        )
+
+        self.syn_sec = syn_sec
+        self.syn_loc = float(syn_loc)
+        self.frequency = float(frequency)
+        self.weight = float(weight)
+        self.delay = float(delay)
+        self.tstop = float(tstop)
+        self.tau1 = float(tau1)
+        self.tau2 = float(tau2)
+        self.e = float(e)
+        self.noise = float(noise)
+        # Compatibility with run_and_plot(plot_injection_only=True)
+        self.inj_delay = self.delay
+        self.inj_dur = max(0.0, self.tstop - self.delay)
+
+        self.syn = None
+        self.nstim = None
+        self.syn_nc = None
+
+        self._setup_experiment()
+
+    def _setup_experiment(self):
+        """
+        Set up Exp2Syn, NetStim, NetCon, and voltage recording.
+
+        Notes:
+        ------
+        Python references to syn, nstim, and syn_nc must be kept so NEURON
+        does not garbage-collect the point processes.
+        """
+        self.inj_seg, _ = get_target_site(self.cell, self.syn_sec, self.syn_loc, "synapse")
+        self.syn = h.Exp2Syn(self.inj_seg)
+        self.syn.tau1 = self.tau1
+        self.syn.tau2 = self.tau2
+        self.syn.e = self.e
+
+        self.nstim = h.NetStim()
+        self.nstim.start = self.delay
+        self.nstim.noise = self.noise
+        if self.frequency > 0:
+            self.nstim.interval = 1000.0 / self.frequency
+            remaining = max(0.0, self.tstop - self.delay)
+            self.nstim.number = max(0, int(np.floor(remaining / self.nstim.interval)) + 1)
+        else:
+            self.nstim.interval = 1e9
+            self.nstim.number = 0
+
+        self.syn_nc = h.NetCon(self.nstim, self.syn, 0, 0, self.weight)
+
+        self.rec_seg, self.rec_sec = get_target_site(
+            self.cell, self.record_sec, self.record_loc, "recording"
+        )
+        self._create_recording_vectors()
+        self._setup_spike_detection()
+
+        print(f"Synapse location: {self.inj_seg}")
+        print(f"Recording: {self.rec_seg}._ref_v")
+        print(
+            f"NetStim: {self.frequency:g} Hz, weight={self.weight:g} uS, "
+            f"number={int(self.nstim.number)}"
+        )
+
+    def _cleanup_stimuli(self):
+        """Remove synaptic stimulus objects so they do not accumulate across runs."""
+        super()._cleanup_stimuli()
+        self.syn = None
+        self.nstim = None
+        self.syn_nc = None
+
+    def run(self) -> Tuple[list, list]:
+        """
+        Run the synaptic input simulation and return recorded data.
+
+        Returns:
+        --------
+        tuple
+            (time_vector, voltage_vector) where:
+            - time_vector: List of time points (ms)
+            - voltage_vector: List of membrane potentials (mV) at those time points
+        """
+        print("Synaptic input simulation running...")
+        h.tstop = self.tstop
+        h.finitialize(h.v_init)
+        h.continuerun(self.tstop)
+
+        if self.threshold is not None:
+            self.nspks = len(self.tspk_vec)
+            print()
+            print(f"Number of spikes: {self.nspks:d}")
+            print()
+
+        return self._convert_vectors_to_python()
+
+
 class Passive(CurrentClamp):
     def __init__(
         self,
@@ -1406,6 +1594,60 @@ class Profiler:
 
         return time, amp
 
+    def synaptic_input(
+        self,
+        template_name: str,
+        post_init_function: str = None,
+        record_sec: str = "soma",
+        syn_sec: str = "soma",
+        syn_loc: float = 0.5,
+        plot: bool = True,
+        **kwargs,
+    ) -> Tuple[list, list]:
+        """
+        Run an Exp2Syn synaptic input simulation for the specified cell template.
+
+        Parameters
+        ==========
+        template_name: str or callable
+            name of the cell template located in hoc
+            or a function that creates and returns a cell object
+        post_init_function: str
+            function of the cell to be called after the cell has been initialized (like insert_mechs(123))
+        record_sec: str
+            section of the cell you want to record from (default: soma)
+        syn_sec: str
+            section of the cell to attach the Exp2Syn synapse (default: soma)
+        syn_loc: float
+            location (0-1) along syn_sec for the synapse (default: 0.5)
+        plot: bool
+            automatically plot the voltage response
+        **kwargs:
+            extra keyword arguments for SynapticInput() (frequency, weight, delay, tstop, ...)
+
+        Returns time (ms), membrane voltage (mV)
+        """
+        syn = SynapticInput(
+            template_name,
+            post_init_function=post_init_function,
+            record_sec=record_sec,
+            syn_sec=syn_sec,
+            syn_loc=syn_loc,
+            **kwargs,
+        )
+        time, amp = syn.run()
+
+        if plot:
+            plt.figure()
+            plt.plot(time, amp)
+            plt.title("Synaptic Input")
+            plt.xlabel("Time (ms)")
+            plt.ylabel("Membrane Potential (mV)")
+            self.last_figure = plt.gcf()
+            plt.show()
+
+        return time, amp
+
     def fi_curve(
         self,
         template_name: str,
@@ -1546,6 +1788,7 @@ class Profiler:
             options=[
                 "passive_properties",
                 "current_injection",
+                "synaptic_input",
                 "fi_curve",
                 "impedance_amplitude_profile",
             ],
@@ -1569,6 +1812,14 @@ class Profiler:
                 "inj_delay": 1500.0,
                 "inj_dur": 1000.0,
                 "tstop": 3000.0,
+            },
+            "synaptic_input": {
+                "frequency": 20.0,
+                "weight": 0.01,
+                "inj_delay": 100.0,
+                "tstop": 1000.0,
+                "syn_sec": "soma",
+                "syn_loc": 0.5,
             },
             "fi_curve": {
                 "i_start": -100.0,
@@ -1692,12 +1943,45 @@ class Profiler:
             style=slider_style,
         )
 
+        # Synaptic input specific
+        syn_defaults = method_defaults["synaptic_input"]
+        frequency_slider = widgets.FloatSlider(
+            value=syn_defaults["frequency"],
+            min=0.0,
+            max=200.0,
+            step=1.0,
+            description="Input Frequency (Hz):",
+            style=slider_style,
+        )
+        weight_slider = widgets.FloatSlider(
+            value=syn_defaults["weight"],
+            min=0.0,
+            max=10.0,
+            step=0.001,
+            description="Input Strength (uS):",
+            style=slider_style,
+        )
+        syn_loc_slider = widgets.FloatSlider(
+            value=syn_defaults["syn_loc"],
+            min=0.0,
+            max=1.0,
+            step=0.05,
+            description="Synapse Location:",
+            style=slider_style,
+        )
+
         # Sections
         record_sec_text = widgets.Text(
             value="soma", description="Record Section:", style=text_style, layout=text_layout
         )
         inj_sec_text = widgets.Text(
             value="soma", description="Injection Section:", style=text_style, layout=text_layout
+        )
+        syn_sec_text = widgets.Text(
+            value=syn_defaults["syn_sec"],
+            description="Synapse Section:",
+            style=text_style,
+            layout=text_layout,
         )
 
         # Post init function
@@ -1803,6 +2087,15 @@ class Profiler:
             layout=widgets.Layout(margin="0 0 0 10px"),
         )
 
+        syn_params_col1 = widgets.VBox(
+            [frequency_slider, weight_slider], layout=widgets.Layout(margin="0 10px 0 0")
+        )
+
+        syn_params_col2 = widgets.VBox(
+            [inj_delay_slider, tstop_slider, syn_loc_slider],
+            layout=widgets.Layout(margin="0 0 0 10px"),
+        )
+
         # Function to update slider values based on method defaults
         def update_slider_values(method):
             """Update slider values to match the defaults for the selected method"""
@@ -1840,6 +2133,16 @@ class Profiler:
                     if "tau_method" in defaults:
                         tau_method_dropdown.value = defaults["tau_method"]
 
+                elif method == "synaptic_input":
+                    if "frequency" in defaults:
+                        frequency_slider.value = defaults["frequency"]
+                    if "weight" in defaults:
+                        weight_slider.value = defaults["weight"]
+                    if "syn_sec" in defaults:
+                        syn_sec_text.value = defaults["syn_sec"]
+                    if "syn_loc" in defaults:
+                        syn_loc_slider.value = defaults["syn_loc"]
+
         # Function to update parameter visibility based on selected method
         def update_params(*args):
             method = method_dropdown.value
@@ -1849,14 +2152,26 @@ class Profiler:
 
             # Update parameter column visibility
             if method == "passive_properties":
+                inj_delay_slider.description = "Injection Delay (ms):"
+                section_row.children = [record_sec_text, inj_sec_text, post_init_text]
                 param_columns.children = [widgets.HBox([passive_params_col1, passive_params_col2])]
             elif method == "current_injection":
+                inj_delay_slider.description = "Injection Delay (ms):"
+                section_row.children = [record_sec_text, inj_sec_text, post_init_text]
                 param_columns.children = [
                     widgets.HBox([injection_params_col1, injection_params_col2])
                 ]
+            elif method == "synaptic_input":
+                inj_delay_slider.description = "Input Delay (ms):"
+                section_row.children = [record_sec_text, syn_sec_text, post_init_text]
+                param_columns.children = [widgets.HBox([syn_params_col1, syn_params_col2])]
             elif method == "fi_curve":
+                inj_delay_slider.description = "Injection Delay (ms):"
+                section_row.children = [record_sec_text, inj_sec_text, post_init_text]
                 param_columns.children = [widgets.HBox([fi_params_col1, fi_params_col2])]
             elif method == "impedance_amplitude_profile":
+                inj_delay_slider.description = "Injection Delay (ms):"
+                section_row.children = [record_sec_text, inj_sec_text, post_init_text]
                 param_columns.children = [widgets.HBox([zap_params_col1, zap_params_col2])]
 
         method_dropdown.observe(update_params, "value")
@@ -1876,9 +2191,11 @@ class Profiler:
 
                 kwargs = {
                     "record_sec": record_sec,
-                    "inj_sec": inj_sec,
                     "plot": True,  # Always plot results
                 }
+
+                if method != "synaptic_input":
+                    kwargs["inj_sec"] = inj_sec
 
                 if post_init:
                     kwargs["post_init_function"] = post_init
@@ -1901,6 +2218,17 @@ class Profiler:
                             "inj_delay": inj_delay_slider.value,
                             "inj_dur": inj_dur_slider.value,
                             "tstop": tstop_slider.value,
+                        }
+                    )
+                elif method == "synaptic_input":
+                    kwargs.update(
+                        {
+                            "frequency": frequency_slider.value,
+                            "weight": weight_slider.value,
+                            "delay": inj_delay_slider.value,
+                            "tstop": tstop_slider.value,
+                            "syn_sec": syn_sec_text.value,
+                            "syn_loc": syn_loc_slider.value,
                         }
                     )
                 elif method == "fi_curve":
@@ -1940,6 +2268,8 @@ class Profiler:
 
                     elif method == "current_injection":
                         result = self.current_injection(template, **kwargs)
+                    elif method == "synaptic_input":
+                        result = self.synaptic_input(template, **kwargs)
                     elif method == "fi_curve":
                         result = self.fi_curve(template, **kwargs)
                     elif method == "impedance_amplitude_profile":

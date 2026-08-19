@@ -6,6 +6,7 @@ The Single Cell module provides tools for analyzing and tuning biophysical cell 
 
 - **Passive Properties**: Calculate resting membrane potential, input resistance, and membrane time constant
 - **Current Injection**: Run current clamp simulations to observe spiking behavior
+- **Synaptic Input**: Drive a cell with an Exp2Syn synapse and a regular spike train
 - **FI Curves**: Generate frequency-current curves to characterize neuronal excitability
 - **ZAP Protocol**: Analyze frequency response characteristics using chirp current injections
 - **Cell Tuning**: Interactive interface for tuning cell parameters
@@ -56,6 +57,19 @@ sim = CurrentClamp('Cell_Cf', inj_amp=350., inj_delay=1500., inj_dur=1000.,
                    tstop=3000., threshold=-15.)
 X, Y = run_and_plot(sim, title='Current Injection', xlabel='Time (ms)',
                     ylabel='Membrane Potential (mV)', plot_injection_only=True)
+plt.show()
+```
+
+## Synaptic Input
+
+Drive a cell with an Exp2Syn synapse and a regular NetStim spike train:
+
+```python
+from bmtool.singlecell import SynapticInput
+sim = SynapticInput('Cell_Cf', frequency=20., weight=0.01, delay=100.,
+                    tstop=1000., syn_sec='soma', syn_loc=0.5)
+X, Y = run_and_plot(sim, title='Synaptic Input', xlabel='Time (ms)',
+                    ylabel='Membrane Potential (mV)')
 plt.show()
 ```
 

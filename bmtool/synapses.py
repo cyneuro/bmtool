@@ -189,28 +189,6 @@ class SynapseTuner:
         self.input_mode = False  # Add input_mode attribute
         self.last_figure = None  # Store reference to last generated figure
 
-        # Store original slider_vars for connection switching
-        self.original_slider_vars = slider_vars or list(self.synaptic_props.keys())
-
-        if slider_vars:
-            # Start by filtering based on keys in slider_vars
-            self.slider_vars = {
-                key: value for key, value in self.synaptic_props.items() if key in slider_vars
-            }
-            # Iterate over slider_vars and check for missing keys in self.synaptic_props
-            for key in slider_vars:
-                # If the key is missing from synaptic_props, get the value using getattr
-                if key not in self.synaptic_props:
-                    try:
-                        self._set_up_cell()
-                        self._set_up_synapse()
-                        value = getattr(self.syn, key)
-                        self.slider_vars[key] = value
-                    except AttributeError as e:
-                        print(f"Error accessing '{key}' in syn {self.syn}: {e}")
-        else:
-            self.slider_vars = self.synaptic_props
-
         h.tstop = self.general_settings["tstart"] + self.general_settings["tdur"]
         h.dt = self.general_settings["dt"]  # Time step (resolution) of the simulation in ms
         h.steps_per_ms = 1 / h.dt
@@ -223,6 +201,7 @@ class SynapseTuner:
         else:
             self.cell = self.hoc_cell
         self._set_up_synapse()
+        self.set_slider_vars(slider_vars)
 
         self.nstim = h.NetStim()
         self.nstim2 = h.NetStim()
@@ -245,6 +224,32 @@ class SynapseTuner:
         )
 
         self._set_up_recorders()
+
+    def set_slider_vars(self, slider_vars: Optional[List[str]] = None) -> None:
+        """
+        Set the list of synapse variables that should be exposed as sliders.
+
+        Parameters:
+        -----------
+        slider_vars : Optional[List[str]]
+            If provided, only these variables are considered for slider creation.
+            If None, all variables from current connection's spec_syn_param are considered.
+        """
+        if slider_vars:
+            self.original_slider_vars = list(slider_vars)
+            selected = set(slider_vars)
+            self.slider_vars = {k: v for k, v in self.synaptic_props.items() if k in selected}
+            for key in slider_vars:
+                if key in self.slider_vars:
+                    continue
+                if hasattr(self.syn, key):
+                    try:
+                        self.slider_vars[key] = getattr(self.syn, key)
+                    except Exception as e:
+                        print(f"Warning: could not read slider var '{key}' from synapse: {e}")
+        else:
+            self.original_slider_vars = list(self.synaptic_props.keys())
+            self.slider_vars = dict(self.synaptic_props)
 
     def _build_conn_type_settings_from_config(
         self, config_path: str, node_set: Optional[str] = None, network: Optional[str] = None
@@ -823,14 +828,41 @@ class SynapseTuner:
         - `_set_up_cell()` should be called before setting up the synapse.
         - Synapse location, type, and properties are specified within `spec_syn_param` and `spec_settings`.
         """
+        mechanism_name = self.conn["spec_settings"]["level_of_detail"]
+        mechanism_aliases = {
+            "exp2syn": "Exp2Syn",
+            "expsyn": "ExpSyn",
+            "alphasynapse": "AlphaSynapse",
+        }
+        resolved_name = mechanism_aliases.get(str(mechanism_name).lower(), mechanism_name)
+
+        mechanism_ctor = getattr(h, resolved_name, None)
+        if mechanism_ctor is None:
+            # Fall back to case-insensitive lookup for custom mechanisms
+            for attr in dir(h):
+                if attr.lower() == str(mechanism_name).lower():
+                    mechanism_ctor = getattr(h, attr)
+                    resolved_name = attr
+                    break
+
+        if mechanism_ctor is None:
+            raise Exception(
+                "Could not find synapse mechanism '{}' in NEURON. "
+                "Check model_template/level_of_detail spelling and that mechanisms are compiled/loaded.".format(
+                    mechanism_name
+                )
+            )
+
         try:
-            self.syn = getattr(h, self.conn["spec_settings"]["level_of_detail"])(
+            self.syn = mechanism_ctor(
                 list(self.cell.all)[self.conn["spec_settings"]["sec_id"]](
                     self.conn["spec_settings"]["sec_x"]
                 )
             )
-        except:
-            raise Exception("Make sure the mod file exist you are trying to load check spelling!")
+        except Exception as e:
+            raise Exception(
+                "Failed to instantiate synapse mechanism '{}': {}".format(resolved_name, e)
+            ) from e
         for key, value in self.conn["spec_syn_param"].items():
             if isinstance(value, (int, float)):
                 if hasattr(self.syn, key):
@@ -1036,7 +1068,7 @@ class SynapseTuner:
         }
         return output
 
-    def _plot_model(self, xlim):
+    def _plot_model(self, xlim, show=True):
         """
         Plots the results of the simulation, including synaptic current, soma voltage,
         and any additional recorded variables.
@@ -1109,8 +1141,9 @@ class SynapseTuner:
 
         # plt.tight_layout()
         fig.suptitle(f"Connection: {self.current_connection}")
-        self.last_figure = plt.gcf()
-        plt.show()
+        self.last_figure = fig
+        if show:
+            plt.show()
 
     def _set_drive_train(self, freq=50.0, delay=250.0):
         """
@@ -1319,7 +1352,7 @@ class SynapseTuner:
         for key, value in kwargs.items():
             setattr(self.syn, key, value)
 
-    def _simulate_model(self, input_frequency, delay, vclamp=None):
+    def _simulate_model(self, input_frequency, delay, vclamp=None, duration=None):
         """
         Runs the simulation with the specified input frequency, delay, and voltage clamp settings.
 
@@ -1351,11 +1384,10 @@ class SynapseTuner:
             # h.run()
         else:
             # Continuous input mode: ensure simulation runs long enough for the full stimulation duration
-            self.tstop = (
-                self.general_settings["tstart"] + self.w_duration.value + 300
-            )  # 300ms buffer time
+            stim_duration = duration if duration is not None else delay
+            self.tstop = self.general_settings["tstart"] + stim_duration + 300  # 300ms buffer time
             self.nstim.interval = 1000 / input_frequency
-            self.nstim.number = np.ceil(self.w_duration.value / 1000 * input_frequency + 1)
+            self.nstim.number = np.ceil(stim_duration / 1000 * input_frequency + 1)
             self.nstim2.number = 0
 
             h.finitialize(70 * mV)
@@ -1670,7 +1702,12 @@ class SynapseTuner:
                 if not self.input_mode:
                     self._simulate_model(w_input_freq.value, self.w_delay.value, w_vclamp.value)
                 else:
-                    self._simulate_model(w_input_freq.value, self.w_duration.value, w_vclamp.value)
+                    self._simulate_model(
+                        w_input_freq.value,
+                        self.w_delay.value,
+                        w_vclamp.value,
+                        duration=self.w_duration.value,
+                    )
                 amp = self._response_amplitude()
                 self._plot_model(
                     [self.general_settings["tstart"] - self.nstim.interval / 3, self.tstop]
@@ -1715,6 +1752,389 @@ class SynapseTuner:
 
         display(ui)
         update_ui()
+
+    def launch_tk_gui(self):
+        """
+        Launch a standalone Tkinter GUI for synapse tuning outside Jupyter.
+
+        This desktop GUI mirrors the core functionality of InteractiveTuner:
+        - Network and connection switching
+        - Dynamic synaptic parameter sliders
+        - Train and single-event simulations
+        - Embedded plot display
+        - STP metric readout and plot saving
+        """
+        import tkinter as tk
+        from tkinter import filedialog, messagebox, ttk
+
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        root = tk.Tk()
+        root.title("BMTool Synapse Tuner")
+        root.geometry("1400x900")
+        style = ttk.Style(root)
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+
+        freqs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 35, 50, 100, 200]
+        delays = [125, 250, 500, 1000, 2000, 4000]
+        durations = [100, 300, 500, 1000, 2000, 5000, 10000]
+
+        initial_network = self.current_network or (
+            self.available_networks[0] if self.available_networks else ""
+        )
+        if initial_network and initial_network != self.current_network:
+            try:
+                self._switch_network(initial_network)
+            except Exception:
+                pass
+
+        network_var = tk.StringVar(value=initial_network)
+        connection_var = tk.StringVar(value=self.current_connection)
+        freq_var = tk.DoubleVar(value=50.0)
+        delay_var = tk.DoubleVar(value=250.0)
+        duration_var = tk.DoubleVar(value=300.0)
+        input_mode_var = tk.BooleanVar(value=False)
+        vclamp_var = tk.BooleanVar(value=self.vclamp)
+        vclamp_amp_var = tk.DoubleVar(value=self.conn["spec_settings"].get("vclamp_amp", -70.0))
+        save_path_var = tk.StringVar(value="plot.png")
+        status_var = tk.StringVar(value="Ready")
+
+        slider_vars = {}
+        self.dynamic_sliders = {}
+        plot_canvas = None
+
+        root.columnconfigure(0, weight=0)
+        root.columnconfigure(1, weight=1)
+        root.rowconfigure(0, weight=1)
+
+        controls_frame = ttk.Frame(root, padding=8)
+        controls_frame.grid(row=0, column=0, sticky="nsew")
+        controls_frame.columnconfigure(0, weight=1)
+
+        plot_frame = ttk.LabelFrame(root, text="Response Plot", padding=8)
+        plot_frame.grid(row=0, column=1, sticky="nsew")
+        plot_frame.columnconfigure(0, weight=1)
+        plot_frame.rowconfigure(0, weight=1)
+
+        metrics_box = ttk.LabelFrame(controls_frame, text="Metrics", padding=6)
+        metrics_box.grid(row=6, column=0, sticky="ew", pady=(8, 0))
+        metrics_box.columnconfigure(0, weight=1)
+        metrics_text = tk.Text(metrics_box, height=8, width=56, wrap="word")
+        metrics_text.grid(row=0, column=0, sticky="ew")
+        metrics_scroll = ttk.Scrollbar(metrics_box, orient="vertical", command=metrics_text.yview)
+        metrics_scroll.grid(row=0, column=1, sticky="ns")
+        metrics_text.configure(yscrollcommand=metrics_scroll.set)
+        metrics_text.insert("1.0", "Run a simulation to see synaptic metrics.")
+        metrics_text.configure(state="disabled")
+
+        status_label = ttk.Label(controls_frame, textvariable=status_var, anchor="w")
+        status_label.grid(row=7, column=0, sticky="ew", pady=(6, 0))
+
+        slider_box = ttk.LabelFrame(controls_frame, text="Synapse Parameters", padding=6)
+        slider_box.grid(row=4, column=0, sticky="nsew", pady=(8, 8))
+        controls_frame.rowconfigure(4, weight=1)
+        slider_box.columnconfigure(0, weight=1)
+        slider_box.rowconfigure(0, weight=1)
+
+        slider_canvas = tk.Canvas(slider_box, borderwidth=0, highlightthickness=0, width=450)
+        slider_scrollbar = ttk.Scrollbar(
+            slider_box, orient="vertical", command=slider_canvas.yview
+        )
+        slider_inner = ttk.Frame(slider_canvas)
+        slider_inner.bind(
+            "<Configure>",
+            lambda e: slider_canvas.configure(scrollregion=slider_canvas.bbox("all")),
+        )
+        slider_canvas.create_window((0, 0), window=slider_inner, anchor="nw")
+        slider_canvas.configure(yscrollcommand=slider_scrollbar.set)
+        slider_canvas.grid(row=0, column=0, sticky="nsew")
+        slider_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        def on_mousewheel(event):
+            slider_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        slider_canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        def set_metrics(text):
+            metrics_text.configure(state="normal")
+            metrics_text.delete("1.0", "end")
+            metrics_text.insert("1.0", text)
+            metrics_text.configure(state="disabled")
+
+        def draw_current_figure():
+            nonlocal plot_canvas
+            if self.last_figure is None:
+                return
+            if plot_canvas is not None:
+                plot_canvas.get_tk_widget().destroy()
+            plot_canvas = FigureCanvasTkAgg(self.last_figure, master=plot_frame)
+            plot_canvas.draw()
+            plot_canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+
+        def slider_limits(value):
+            value = float(value)
+            if value == 0.0:
+                return 0.0, 1000.0, 1.0
+            max_value = abs(value) * 20.0
+            if value < 0:
+                return -max_value, max_value, max(abs(value) / 5.0, 1e-6)
+            return 0.0, max_value, max(abs(value) / 5.0, 1e-6)
+
+        def create_dynamic_sliders():
+            slider_vars.clear()
+            self.dynamic_sliders = {}
+            for widget in slider_inner.winfo_children():
+                widget.destroy()
+
+            row_index = 0
+            for key, value in self.slider_vars.items():
+                if not isinstance(value, (int, float)) or not hasattr(self.syn, key):
+                    continue
+                start, end, resolution = slider_limits(value)
+                ttk.Label(slider_inner, text=key).grid(row=row_index, column=0, sticky="w")
+                variable = tk.DoubleVar(value=float(value))
+                slider = tk.Scale(
+                    slider_inner,
+                    variable=variable,
+                    from_=start,
+                    to=end,
+                    orient="horizontal",
+                    resolution=resolution,
+                    length=320,
+                    showvalue=True,
+                )
+                slider.grid(row=row_index + 1, column=0, sticky="ew", pady=(0, 4))
+                slider_vars[key] = variable
+                row_index += 2
+            status_var.set(f"Loaded {len(slider_vars)} sliders for {self.current_connection}")
+
+        def apply_current_settings():
+            self.vclamp = bool(vclamp_var.get())
+            self.input_mode = bool(input_mode_var.get())
+
+            if self.vclamp:
+                self.conn["spec_settings"]["vclamp_amp"] = float(vclamp_amp_var.get())
+                self.general_settings["vclamp_amp"] = float(vclamp_amp_var.get())
+
+            if slider_vars:
+                self._set_syn_prop(**{name: var.get() for name, var in slider_vars.items()})
+
+        def format_metrics(ppr, induction, recovery, simple_ppr):
+            return (
+                f"Connection: {self.current_connection}\n"
+                f"PPR: {ppr:.4f}\n"
+                f"Induction: {induction:.4f}\n"
+                f"Recovery: {recovery:.4f}\n"
+                f"Simple PPR: {simple_ppr:.4f}"
+            )
+
+        def run_train():
+            try:
+                status_var.set("Running train simulation...")
+                apply_current_settings()
+                freq = float(freq_var.get())
+                delay = float(delay_var.get())
+                duration = float(duration_var.get())
+
+                if self.input_mode:
+                    self._simulate_model(freq, delay, self.vclamp, duration=duration)
+                else:
+                    self._simulate_model(freq, delay, self.vclamp)
+
+                amp = self._response_amplitude()
+                self._plot_model(
+                    [self.general_settings["tstart"] - self.nstim.interval / 3, self.tstop],
+                    show=False,
+                )
+                ppr, induction, recovery, simple_ppr = self._calc_ppr_induction_recovery(
+                    amp, print_math=False
+                )
+                set_metrics(format_metrics(ppr, induction, recovery, simple_ppr))
+                draw_current_figure()
+                status_var.set("Train simulation complete")
+            except Exception as exc:
+                status_var.set("Simulation failed")
+                messagebox.showerror("Simulation Error", str(exc))
+
+        def run_single_event():
+            try:
+                status_var.set("Running single-event simulation...")
+                apply_current_settings()
+                self.SingleEvent(plot_and_print=False)
+                self._plot_model(
+                    [
+                        self.general_settings["tstart"] - 5,
+                        self.general_settings["tstart"] + self.general_settings["tdur"],
+                    ],
+                    show=False,
+                )
+
+                syn_props = self._get_syn_prop(
+                    rise_interval=self.general_settings["rise_interval"], dt=h.dt
+                )
+                current = np.array(self.rec_vectors[self.current_name])
+                current = (current - syn_props["baseline"]) * 1000
+                current_integral = np.trapz(current, dx=h.dt)
+                set_metrics(
+                    "Connection: {}\nLatency: {:.4f} ms\nRise: {:.4f} ms\nDecay: {:.4f} ms\n"
+                    "Half-width: {:.4f} ms\nPeak: {:.4f} pA\nCurrent Integral: {:.4f} pA*ms".format(
+                        self.current_connection,
+                        syn_props["latency"],
+                        syn_props["rise_time"],
+                        syn_props["decay_time"],
+                        syn_props["half_width"],
+                        syn_props["amp"] * 1000,
+                        current_integral,
+                    )
+                )
+                draw_current_figure()
+                status_var.set("Single-event simulation complete")
+            except Exception as exc:
+                status_var.set("Simulation failed")
+                messagebox.showerror("Simulation Error", str(exc))
+
+        def update_mode_controls(*_):
+            if input_mode_var.get():
+                delay_menu.configure(state="disabled")
+                duration_menu.configure(state="readonly")
+            else:
+                delay_menu.configure(state="readonly")
+                duration_menu.configure(state="disabled")
+
+        def on_connection_change(*_):
+            new_connection = connection_var.get()
+            if new_connection == self.current_connection:
+                return
+            try:
+                self._switch_connection(new_connection)
+                vclamp_amp_var.set(self.conn["spec_settings"].get("vclamp_amp", -70.0))
+                create_dynamic_sliders()
+                status_var.set(f"Switched to connection: {new_connection}")
+            except Exception as exc:
+                messagebox.showerror("Connection Error", str(exc))
+
+        def on_network_change(*_):
+            if self.config is None or len(self.available_networks) <= 1:
+                return
+            new_network = network_var.get()
+            if not new_network or new_network == self.current_network:
+                return
+            try:
+                self._switch_network(new_network)
+                connection_values = sorted(list(self.conn_type_settings.keys()))
+                connection_menu["values"] = connection_values
+                if self.current_connection in connection_values:
+                    connection_var.set(self.current_connection)
+                elif connection_values:
+                    connection_var.set(connection_values[0])
+                vclamp_amp_var.set(self.conn["spec_settings"].get("vclamp_amp", -70.0))
+                create_dynamic_sliders()
+                status_var.set(f"Switched to network: {new_network}")
+            except Exception as exc:
+                messagebox.showerror("Network Error", str(exc))
+
+        def save_plot():
+            if self.last_figure is None:
+                messagebox.showwarning("Save Plot", "No plot available to save yet.")
+                return
+            output_path = save_path_var.get().strip()
+            if not output_path:
+                output_path = filedialog.asksaveasfilename(
+                    defaultextension=".png",
+                    filetypes=[("PNG Image", "*.png"), ("PDF", "*.pdf"), ("All Files", "*.*")],
+                )
+                if not output_path:
+                    return
+                save_path_var.set(output_path)
+
+            try:
+                self.last_figure.savefig(output_path)
+                status_var.set(f"Saved plot to: {output_path}")
+            except Exception as exc:
+                messagebox.showerror("Save Error", str(exc))
+
+        row = 0
+        if self.config is not None and len(self.available_networks) > 1:
+            ttk.Label(controls_frame, text="Network").grid(row=row, column=0, sticky="w")
+            network_menu = ttk.Combobox(
+                controls_frame,
+                textvariable=network_var,
+                values=self.available_networks,
+                state="readonly",
+            )
+            network_menu.grid(row=row + 1, column=0, sticky="ew", pady=(0, 6))
+            network_menu.bind("<<ComboboxSelected>>", on_network_change)
+            row += 2
+
+        ttk.Label(controls_frame, text="Connection").grid(row=row, column=0, sticky="w")
+        connection_menu = ttk.Combobox(
+            controls_frame,
+            textvariable=connection_var,
+            values=sorted(list(self.conn_type_settings.keys())),
+            state="readonly",
+        )
+        connection_menu.grid(row=row + 1, column=0, sticky="ew", pady=(0, 6))
+        connection_menu.bind("<<ComboboxSelected>>", on_connection_change)
+        row += 2
+
+        sim_controls = ttk.Frame(controls_frame)
+        sim_controls.grid(row=row, column=0, sticky="ew")
+        sim_controls.columnconfigure(1, weight=1)
+        sim_controls.columnconfigure(3, weight=1)
+
+        ttk.Label(sim_controls, text="Input Freq (Hz)").grid(row=0, column=0, sticky="w")
+        freq_menu = ttk.Combobox(sim_controls, textvariable=freq_var, values=freqs, state="readonly")
+        freq_menu.grid(row=0, column=1, sticky="ew", padx=(6, 12))
+
+        ttk.Label(sim_controls, text="Delay (ms)").grid(row=0, column=2, sticky="w")
+        delay_menu = ttk.Combobox(
+            sim_controls, textvariable=delay_var, values=delays, state="readonly"
+        )
+        delay_menu.grid(row=0, column=3, sticky="ew")
+
+        ttk.Label(sim_controls, text="Duration (ms)").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        duration_menu = ttk.Combobox(
+            sim_controls, textvariable=duration_var, values=durations, state="readonly"
+        )
+        duration_menu.grid(row=1, column=1, sticky="ew", padx=(6, 12), pady=(6, 0))
+
+        vclamp_frame = ttk.Frame(controls_frame)
+        vclamp_frame.grid(row=row + 1, column=0, sticky="ew", pady=(8, 4))
+        ttk.Checkbutton(vclamp_frame, text="Voltage Clamp", variable=vclamp_var).grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Checkbutton(vclamp_frame, text="Continuous Input", variable=input_mode_var).grid(
+            row=0, column=1, sticky="w", padx=(8, 8)
+        )
+        ttk.Label(vclamp_frame, text="V_clamp (mV)").grid(row=0, column=2, sticky="w")
+        ttk.Entry(vclamp_frame, textvariable=vclamp_amp_var, width=10).grid(
+            row=0, column=3, sticky="w", padx=(6, 0)
+        )
+
+        button_frame = ttk.Frame(controls_frame)
+        button_frame.grid(row=row + 2, column=0, sticky="ew")
+        ttk.Button(button_frame, text="Run Train", command=run_train).grid(
+            row=0, column=0, sticky="ew"
+        )
+        ttk.Button(button_frame, text="Single Event", command=run_single_event).grid(
+            row=0, column=1, sticky="ew", padx=(6, 0)
+        )
+
+        save_frame = ttk.Frame(controls_frame)
+        save_frame.grid(row=row + 3, column=0, sticky="ew", pady=(8, 4))
+        save_frame.columnconfigure(0, weight=1)
+        ttk.Entry(save_frame, textvariable=save_path_var).grid(row=0, column=0, sticky="ew")
+        ttk.Button(save_frame, text="Save Plot", command=save_plot).grid(
+            row=0, column=1, sticky="ew", padx=(6, 0)
+        )
+
+        create_dynamic_sliders()
+        update_mode_controls()
+        input_mode_var.trace_add("write", update_mode_controls)
+        root.mainloop()
 
     def stp_frequency_response(
         self,

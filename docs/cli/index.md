@@ -30,3 +30,8 @@ The CLI is organized into three main groups:
 - **[plot](plot.md)**: Visualization tools for network simulations (raster plots, connections, positions).
 - **[util](cell.md)**: Utility tools for cell tuning, characterization, and building.
 - **debug**: Debugging utilities for simulation configurations.
+
+Within `util`, additional subgroups include:
+
+- **[cell](cell.md)**: Single-cell tuning and characterization workflows.
+- **[synapse](synapse.md)**: Desktop GUI tools for synapse tuning from config-driven models.

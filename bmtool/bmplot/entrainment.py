@@ -13,23 +13,27 @@ from bmtool.analysis import entrainment as bmentr
 from bmtool.analysis import spikes as bmspikes
 from bmtool.analysis.lfp import get_lfp_power
 
-
 def calculate_trial_statistics(
     data: np.ndarray,
+    weights: np.ndarray,
     error_type: str = "ci",
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Calculate mean and error statistics across trials.
+    Calculate weighted mean and error statistics across trials.
 
-    Computes trial-averaged statistics with proper handling of NaN values. Supports
+    Computes trial-averaged statistics with weighting by spike counts. Supports
     three error types: 95% confidence intervals (via t-distribution), standard error
-    of the mean (SEM), and standard deviation (SD).
+    of the mean (SEM), and standard deviation (SD). All calculations use weighted
+    statistics based on spike counts per trial.
 
     Parameters
     ----------
     data : np.ndarray
         2D array of shape (n_trials, n_values) containing trial-wise data.
         Can contain NaN values which are ignored in calculations.
+    weights : np.ndarray
+        2D array of shape (n_trials, n_values) containing weights for each trial/value.
+        Typically spike counts. NaN in data will zero out corresponding weights.
     error_type : str, optional
         Type of error to compute: "ci" for 95% confidence interval, "sem" for
         standard error of the mean, or "std" for standard deviation (default: "ci").
@@ -37,28 +41,30 @@ def calculate_trial_statistics(
     Returns
     -------
     Tuple[np.ndarray, np.ndarray]
-        - mean_values : 1D array of mean values across trials (one per value).
+        - mean_values : 1D array of weighted mean values across trials (one per value).
         - error_values : 1D array of error bounds/bars corresponding to each mean.
-          For "ci", represents the half-width of the 95% confidence interval.
-          For "sem" and "std", represents the error magnitude.
+          For "ci", represents the half-width of the 95% confidence interval based on weighted variance.
+          For "sem" and "std", represents the error magnitude based on weighted statistics.
 
     Raises
     ------
     ValueError
         If error_type is not 'ci', 'sem', or 'std'.
         If data is not 2D or is empty.
+        If weights shape does not match data shape.
 
     Notes
     -----
-    - NaN values are ignored using numpy's nanmean and nanstd functions.
-    - For "ci", uses the t-distribution with degrees of freedom = min(valid_counts) - 1.
-    - Confidence intervals are computed at 95% (α = 0.05, two-tailed).
-    - If fewer than 2 valid trials exist for a value, error is set to NaN.
+    - Weighted mean: sum(w_i * x_i) / sum(w_i)
+    - Weighted variance: sum(w_i * (x_i - mean)^2) / sum(w_i)
+    - Trials with NaN values have their weights set to 0.
+    - For "ci", uses effective sample size for degrees of freedom calculation.
 
     Examples
     --------
     >>> data = np.array([[1, 2, 3], [1.1, 2.2, 3.1], [0.9, 1.9, 3.2]])  # 3 trials, 3 values
-    >>> mean, error = calculate_trial_statistics(data, error_type='ci')
+    >>> weights = np.array([[100, 100, 100], [5, 5, 5], [80, 80, 80]])  # spike counts
+    >>> mean, error = calculate_trial_statistics(data, weights, error_type='ci')
     >>> print(mean, error)
     """
     if error_type not in ["ci", "sem", "std"]:
@@ -69,27 +75,36 @@ def calculate_trial_statistics(
 
     if data.ndim != 2 or data.size == 0:
         raise ValueError("data must be a non-empty 2D array of shape (n_trials, n_values).")
+    
+    if weights.shape != data.shape:
+        raise ValueError(f"weights shape {weights.shape} must match data shape {data.shape}.")
 
-    # Calculate mean across trials, ignoring NaNs
     with np.errstate(invalid="ignore", divide="ignore"):
-        mean_values = np.nanmean(data, axis=0)
-
-        # Count valid trials per value (trials without NaN)
-        valid_counts = np.sum(~np.isnan(data), axis=0)
-
-        # Calculate standard deviation across trials, ignoring NaNs
-        std_values = np.nanstd(data, axis=0, ddof=1)
-
+        # Mask weights where data is NaN
+        weights_masked = weights.copy().astype(float)
+        weights_masked[np.isnan(data)] = 0
+        
+        # Calculate weighted mean: sum(w_i * x_i) / sum(w_i)
+        weighted_sum = np.nansum(data * weights_masked, axis=0)
+        weight_sum = np.nansum(weights_masked, axis=0)
+        mean_values = weighted_sum / np.maximum(weight_sum, 1)  # Avoid division by zero
+        
+        # Calculate weighted variance: sum(w_i * (x_i - mean)^2) / sum(w_i)
+        weighted_sq_diff = np.nansum(weights_masked * (data - mean_values)**2, axis=0)
+        weighted_variance = weighted_sq_diff / np.maximum(weight_sum, 1)
+        std_values = np.sqrt(weighted_variance)
+        
+        # Count non-zero weights per value for effective sample size
+        valid_weights = np.sum(weights_masked > 0, axis=0)
+        
         if error_type == "ci":
             # Calculate 95% confidence interval using t-distribution
-            # SEM = std / sqrt(n_valid)
-            sem_values = std_values / np.sqrt(np.maximum(valid_counts, 1))
-
-            # Find the minimum valid count to use a conservative t-value
-            # (all values use the same t-value for consistency)
-            min_valid = np.min(valid_counts[valid_counts > 1])
-
+            # Use effective sample size (conservative: minimum valid weights)
+            min_valid = np.min(valid_weights[valid_weights > 1]) if np.any(valid_weights > 1) else 1
+            
             if min_valid > 1:
+                # SEM based on weighted variance
+                sem_values = std_values / np.sqrt(min_valid)
                 # Two-tailed t-distribution at 95% confidence level
                 t_value = stats.t.ppf(0.975, min_valid - 1)
                 error_values = t_value * sem_values
@@ -98,12 +113,13 @@ def calculate_trial_statistics(
                 error_values = np.full_like(mean_values, np.nan)
 
         elif error_type == "sem":
-            # Standard error of the mean
-            sem_values = std_values / np.sqrt(np.maximum(valid_counts, 1))
+            # Standard error of the mean based on weighted variance
+            min_valid = np.min(valid_weights[valid_weights > 1]) if np.any(valid_weights > 1) else 1
+            sem_values = std_values / np.sqrt(np.maximum(min_valid, 1))
             error_values = sem_values
 
         else:  # error_type == "std"
-            # Standard deviation (no division by sqrt(n))
+            # Weighted standard deviation
             error_values = std_values
 
     return mean_values, error_values
@@ -368,8 +384,8 @@ def plot_trial_avg_spike_power_correlation(
             lfp_data, freq, fs, filter_method, lowcut=lowcut, highcut=highcut, bandwidth=bandwidth
         )
 
-    # Storage: dict of pop_name -> list of trial_correlations per frequency
-    all_correlations = {pop: {freq: [] for freq in frequencies} for pop in pop_names}
+    # Storage: dict of pop_name -> dict of freq -> (list of correlations, list of spike counts)
+    all_correlations = {pop: {freq: ([], []) for freq in frequencies} for pop in pop_names}
 
     # Process each trial
     for trial_idx, (start_time, end_time) in enumerate(time_windows):
@@ -394,6 +410,7 @@ def plot_trial_avg_spike_power_correlation(
                 continue
 
             pop_spike_rate = trial_spike_rate.sel(population=pop, type=type_name)
+            spike_count = len(trial_spikes[trial_spikes["pop_name"] == pop])  # Spike count for this pop/trial
 
             for freq in frequencies:
                 try:
@@ -415,7 +432,9 @@ def plot_trial_avg_spike_power_correlation(
                     # Compute correlation
                     corr, _ = stats.spearmanr(trial_sr, trial_lfp)
                     if not np.isnan(corr):
-                        all_correlations[pop][freq].append(corr)
+                        corr_list, weight_list = all_correlations[pop][freq]
+                        corr_list.append(corr)
+                        weight_list.append(spike_count)  # Store spike count as weight
 
                 except Exception as e:
                     print(
@@ -428,15 +447,17 @@ def plot_trial_avg_spike_power_correlation(
     results = {pop: {} for pop in pop_names}
     for pop in pop_names:
         for freq in frequencies:
-            if len(all_correlations[pop][freq]) > 0:
-                freq_data = np.array(all_correlations[pop][freq])
+            corr_list, weight_list = all_correlations[pop][freq]
+            if len(corr_list) > 0:
+                freq_data = np.array(corr_list).reshape(-1, 1)
+                freq_weights = np.array(weight_list).reshape(-1, 1)
                 mean_corr, error_corr = calculate_trial_statistics(
-                    freq_data.reshape(-1, 1), error_type=error_type
+                    freq_data, weights=freq_weights, error_type=error_type
                 )
                 results[pop][freq] = {
                     "mean": mean_corr[0],
                     "error": error_corr[0],
-                    "n_trials": len(freq_data),
+                    "n_trials": len(corr_list),
                 }
 
     # Create plot
@@ -905,10 +926,12 @@ def plot_trial_avg_entrainment(
 
     # Collect all PPC/PLV values across trials for each population
     all_plv_data = {}  # Dictionary to store results for each population
+    all_spike_counts = {}  # Track spike counts for weighting
 
     # Initialize storage for each population
     for pop_name in pop_names:
         all_plv_data[pop_name] = []  # Will be shape (n_trials, n_freqs)
+        all_spike_counts[pop_name] = []  # Will be shape (n_trials,)
 
     # Loop through all pulse groups to collect data
     for trial_idx in range(len(time_windows)):
@@ -926,6 +949,7 @@ def plot_trial_avg_entrainment(
 
         # Process each population
         pop_spike_data = {}
+        pop_spike_counts = {}  # Track spike counts for this trial
         for pop_name in pop_names:
             # Get spikes for this population
             pop_spikes = network_spikes[network_spikes["pop_name"] == pop_name]
@@ -934,6 +958,7 @@ def plot_trial_avg_entrainment(
                 print(f"Warning: No spikes found for population {pop_name} in trial {trial_idx}")
                 # Add NaN values for this trial/population
                 plv_lists[pop_name] = [np.nan] * len(freqs)
+                pop_spike_counts[pop_name] = 0  # Track 0 spikes
                 continue
 
             # Filter to get the top firing cells
@@ -942,14 +967,18 @@ def plot_trial_avg_entrainment(
                 pop_spikes, upper_quantile=firing_quantile
             )
 
-            if len(pop_spikes) == 0:
+            spike_count = len(pop_spikes)  # Record spike count for this population/trial
+            
+            if spike_count == 0:
                 print(
                     f"Warning: No high-firing spikes found for population {pop_name} in trial {trial_idx}"
                 )
                 plv_lists[pop_name] = [np.nan] * len(freqs)
+                pop_spike_counts[pop_name] = 0  # Track 0 spikes
                 continue
 
             pop_spike_data[pop_name] = pop_spikes
+            pop_spike_counts[pop_name] = spike_count
 
         # Calculate PPC/PLV for each frequency and each population
         for freq_idx, freq in enumerate(freqs):
@@ -1001,9 +1030,11 @@ def plot_trial_avg_entrainment(
         for pop_name in pop_names:
             if pop_name in plv_lists and len(plv_lists[pop_name]) == len(freqs):
                 all_plv_data[pop_name].append(plv_lists[pop_name])
+                all_spike_counts[pop_name].append(pop_spike_counts.get(pop_name, 0))
             else:
                 # Fill with NaNs if data is missing
                 all_plv_data[pop_name].append([np.nan] * len(freqs))
+                all_spike_counts[pop_name].append(0)  # 0 weight for failed trial
 
     # Convert to numpy arrays and calculate statistics
     mean_plv = {}
@@ -1011,10 +1042,14 @@ def plot_trial_avg_entrainment(
 
     for pop_name in pop_names:
         all_plv_data[pop_name] = np.array(all_plv_data[pop_name])  # Shape: (n_trials, n_freqs)
+        spike_weights = np.array(all_spike_counts[pop_name])[:, np.newaxis]  # Shape: (n_trials, 1) for broadcasting
+        
+        # Broadcast weights to match data shape
+        spike_weights = np.broadcast_to(spike_weights, all_plv_data[pop_name].shape)
 
-        # Use helper function to calculate trial statistics
+        # Use helper function to calculate weighted trial statistics
         mean_plv[pop_name], error_plv[pop_name] = calculate_trial_statistics(
-            all_plv_data[pop_name], error_type=error_type
+            all_plv_data[pop_name], weights=spike_weights, error_type=error_type
         )
 
     # Create the combined plot
@@ -1271,9 +1306,10 @@ def plot_trial_avg_spike_rate_plv(
 
     # Get sampling frequency
     fs = spike_rate.fs
+    dt = 1000 / fs  # Time step in milliseconds
 
-    # Storage for PLV data: dict of pair -> list of trials -> list of freqs
-    all_plv_data = {f"{p1}-{p2}": [] for p1, p2 in pop_pairs}
+    # Storage for PLV data and weights: dict of pair -> (list of trials, list of weights)
+    all_plv_data = {f"{p1}-{p2}": ([], []) for p1, p2 in pop_pairs}
 
     # Loop through each trial window
     for trial_idx, (start_time, end_time) in enumerate(time_windows):
@@ -1284,11 +1320,15 @@ def plot_trial_avg_spike_rate_plv(
             if trial_data.time.size == 0:
                 print(f"Warning: No data in trial {trial_idx} for window ({start_time}, {end_time})")
                 for pair_key in all_plv_data.keys():
-                    all_plv_data[pair_key].append([np.nan] * len(freqs))
+                    data_list, weight_list = all_plv_data[pair_key]
+                    data_list.append([np.nan] * len(freqs))
+                    weight_list.append(0)  # 0 weight for empty trial
                 continue
 
             # Calculate PLV for each population pair at each frequency
             trial_plv_values = {}
+            trial_spike_count_proxies = {}  # Proxy for spike count: sum of spike rates
+            
             for pop1, pop2 in pop_pairs:
                 pair_key = f"{pop1}-{pop2}"
                 trial_plv_values[pair_key] = []
@@ -1303,7 +1343,13 @@ def plot_trial_avg_spike_rate_plv(
                             f"Warning: Insufficient data for {pair_key} in trial {trial_idx}"
                         )
                         trial_plv_values[pair_key] = [np.nan] * len(freqs)
+                        trial_spike_count_proxies[pair_key] = 0
                         continue
+
+                    # Compute spike count proxy: integral of spike rates (sum * dt)
+                    # Use average of both populations' spike rates
+                    spike_count_proxy = (np.sum(sr1) + np.sum(sr2)) / 2 * dt
+                    trial_spike_count_proxies[pair_key] = spike_count_proxy
 
                     # Calculate PLV for each frequency
                     for freq in freqs:
@@ -1326,29 +1372,38 @@ def plot_trial_avg_spike_rate_plv(
                 except Exception as e:
                     print(f"Warning: Error processing {pair_key} in trial {trial_idx}: {e}")
                     trial_plv_values[pair_key] = [np.nan] * len(freqs)
+                    trial_spike_count_proxies[pair_key] = 0
 
             # Store trial results
             for pair_key in all_plv_data.keys():
+                data_list, weight_list = all_plv_data[pair_key]
                 if pair_key in trial_plv_values and len(trial_plv_values[pair_key]) == len(freqs):
-                    all_plv_data[pair_key].append(trial_plv_values[pair_key])
+                    data_list.append(trial_plv_values[pair_key])
+                    weight_list.append(trial_spike_count_proxies.get(pair_key, 0))
                 else:
-                    all_plv_data[pair_key].append([np.nan] * len(freqs))
+                    data_list.append([np.nan] * len(freqs))
+                    weight_list.append(0)  # 0 weight for failed trial
 
         except Exception as e:
             print(f"Warning: Error processing trial {trial_idx}: {e}")
             for pair_key in all_plv_data.keys():
-                all_plv_data[pair_key].append([np.nan] * len(freqs))
+                data_list, weight_list = all_plv_data[pair_key]
+                data_list.append([np.nan] * len(freqs))
+                weight_list.append(0)
 
     # Convert to numpy arrays and calculate statistics
     mean_plv = {}
     error_plv = {}
 
     for pair_key in all_plv_data.keys():
-        all_plv_data[pair_key] = np.array(all_plv_data[pair_key])  # Shape: (n_trials, n_freqs)
+        data_list, weight_list = all_plv_data[pair_key]
+        data_array = np.array(data_list)  # Shape: (n_trials, n_freqs)
+        weight_array = np.array(weight_list)[:, np.newaxis]  # Shape: (n_trials, 1) for broadcasting
+        weight_array = np.broadcast_to(weight_array, data_array.shape)
 
-        # Use helper function to calculate trial statistics
+        # Use helper function to calculate weighted trial statistics
         mean_plv[pair_key], error_plv[pair_key] = calculate_trial_statistics(
-            all_plv_data[pair_key], error_type=error_type
+            data_array, weights=weight_array, error_type=error_type
         )
 
     # Create plot
