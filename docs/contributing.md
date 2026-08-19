@@ -98,7 +98,15 @@ mkdocs build
 
 ## Testing
 
-Tests for BMTool are a work in progress. When contributing, please ensure your changes don't break existing functionality.
+Unit tests live in `tests/` and are run with pytest. The first suite covers helpers that do not require NEURON or BMTK.
+
+```bash
+pip install -e ".[test]"
+pip install numpy pandas scipy h5py
+pytest
+```
+
+CI runs `pytest tests -m unit` after installing the package with `--no-deps` so GitHub Actions does not need NEURON. Add unit tests for new pure-Python helpers when practical.
 
 ## Code Style
 

@@ -37,6 +37,28 @@ This will automatically run code formatting and linting checks before each commi
 
 Pre-commit hooks will ensure your code meets our style guidelines. If any checks fail, fix the issues and commit again.
 
+## Testing
+
+Unit tests live in `tests/` and run with pytest. They cover helpers that do **not** require NEURON or BMTK (connector math, stimulus generators, and package imports).
+
+Install test dependencies and run the suite:
+
+```bash
+pip install -e ".[test]"
+pip install numpy pandas scipy h5py
+pytest
+```
+
+To run the same lightweight install used in CI (skips NEURON/BMTK):
+
+```bash
+pip install pytest pytest-cov numpy pandas scipy h5py
+pip install -e . --no-deps
+pytest tests -m unit
+```
+
+When contributing, add tests for new pure-Python helpers when practical. Simulation-level tests that need NEURON are not part of this first suite.
+
 ## Questions?
 
 - Open an [issue](https://github.com/cyneuro/bmtool/issues)

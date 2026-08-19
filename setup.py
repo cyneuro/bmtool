@@ -52,7 +52,13 @@ setup(
             "ruff>=0.1.0",
             "pyright>=1.1.0",
             "pre-commit>=3.0.0",
-        ]
+            "pytest>=7.0.0",
+            "pytest-cov>=4.0.0",
+        ],
+        "test": [
+            "pytest>=7.0.0",
+            "pytest-cov>=4.0.0",
+        ],
     },
     entry_points={"console_scripts": ["bmtool = bmtool.manage:cli"]},
 )
