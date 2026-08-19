@@ -1467,7 +1467,7 @@ class SynapseTuner:
         )
 
         # Voltage clamp amplitude input
-        default_vclamp_amp = getattr(self.conn["spec_settings"], "vclamp_amp", -70.0)
+        default_vclamp_amp = self.conn["spec_settings"].get("vclamp_amp", -70.0)
         w_vclamp_amp = widgets.FloatText(
             value=default_vclamp_amp,
             description="V_clamp (mV):",
