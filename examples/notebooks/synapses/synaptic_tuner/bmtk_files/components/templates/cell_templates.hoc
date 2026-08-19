@@ -1,0 +1,118 @@
+begintemplate WBInhCell
+	
+	public NumSoma
+	NumSoma = 1
+
+	public soma
+	create soma[NumSoma]
+
+	public all, somatic, basal, apical, axonal
+	objref all, somatic, basal, apical, axonal
+	
+
+	proc init() {
+
+		all = new SectionList()
+		somatic = new SectionList()
+		basal = new SectionList()
+		apical = new SectionList()
+		axonal = new SectionList()
+
+		for i=0,NumSoma soma[i] {
+			all.append()
+			somatic.append()
+		} 
+
+		/////// geometrical properties //////
+		soma[0] {
+			nseg=1	// create only one segment in the soma
+			//L=1.492		// (micrometer)
+			//diam=1	// (micrometer)
+	    }
+
+		/////// biophysical properties //////
+		soma[0] {
+			cm = 1		// (microF/cm2)
+			// gives leak conductance of .03 mS/cm2
+			insert leak
+			eleak = -65 // (mV)
+			gbar_leak = .1e-3 // (siemens/cm2)
+			
+			/////////////////////////////////////////////////////////////////////////
+			// Use insert command to insert more channels here
+
+			///Spiking
+			insert na_wb
+			ena = 55
+			gbar_na_wb = .035 // (siemens/cm2)
+
+			insert k_wb
+			ek = -90
+			gbar_k_wb = .009 // (siemens/cm2)
+			
+
+			/////////////////////////////////////////////////////////////////////////
+		}
+		define_shape()
+	}
+endtemplate WBInhCell
+
+
+begintemplate RTMExcCell
+	
+	public NumSoma
+	NumSoma = 1
+
+	public soma
+	create soma[NumSoma]
+
+	public all, somatic, basal, apical, axonal
+	objref all, somatic, basal, apical, axonal
+	
+
+	proc init() {
+
+		all = new SectionList()
+		somatic = new SectionList()
+		basal = new SectionList()
+		apical = new SectionList()
+		axonal = new SectionList()
+
+		for i=0,NumSoma soma[i] {
+			all.append()
+			somatic.append()
+		} 
+
+		/////// geometrical properties //////
+		soma[0] {
+			nseg=1	// create only one segment in the soma
+			//L=1.492		// (micrometer)
+			//diam=1	// (micrometer)
+	    }
+
+		/////// biophysical properties //////
+		soma[0] {
+			cm = 1		// (microF/cm2)
+			// gives leak conductance of .03 mS/cm2
+			insert leak
+			eleak = -67 // (mV)
+			gbar_leak = .1e-3 // (siemens/cm2)
+			
+			/////////////////////////////////////////////////////////////////////////
+			// Use insert command to insert more channels here
+
+			///Spiking
+			insert na_rtm
+			ena = 50
+			gbar_na_rtm = .1 // (siemens/cm2)
+
+			insert k_rtm
+			ek = -100
+			gbar_k_rtm = .08 // (siemens/cm2)
+			
+
+			/////////////////////////////////////////////////////////////////////////
+		}
+		define_shape()
+	}
+endtemplate RTMExcCell
