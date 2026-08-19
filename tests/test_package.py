@@ -25,3 +25,10 @@ def test_stimulus_generators_import_without_bmtk():
 
     assert callable(generators.get_stim_cycle)
     assert callable(generators.get_fr_short)
+
+
+def test_stimulus_builder_import_requires_bmtk():
+    import bmtool.stimulus as stimulus
+
+    with pytest.raises(ModuleNotFoundError, match="bmtk"):
+        stimulus.StimulusBuilder

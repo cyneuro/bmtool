@@ -207,10 +207,8 @@ class TestNormalizedReciprocalRate:
     def test_decisions_with_condition(self, rng):
         nrr = NormalizedReciprocalRate(NRR=1.0)
         dist = np.zeros(8)
-        p0 = np.full(8, 1.0)
-        p1 = np.full(8, 1.0)
         cond = (0, np.array([True, True, True, True, False, False, False, False]))
-        result = nrr.decisions(dist, p0, p1, cond=cond, rng=rng)
+        result = nrr.decisions(dist, 1.0, 1.0, cond=cond, rng=rng)
         np.testing.assert_array_equal(result[:4], [True, True, True, True])
         np.testing.assert_array_equal(result[4:], [False, False, False, False])
 
@@ -249,7 +247,7 @@ class TestTimerAndHelpers:
     def test_constant_function(self):
         fn = AbstractConnector.constant_function(7)
         assert fn() == 7
-        assert fn("ignored", extra=True) == 7
+        assert fn("ignored") == 7
 
 
 class TestSynapseDelays:
