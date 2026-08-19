@@ -237,6 +237,128 @@ def cell(
 cli.add_command(cell)
 
 
+@click.group("synapse", help="Access utilities for tuning synapses")
+@click.pass_context
+def synapse(ctx):
+    return
+
+
+@synapse.command("tune", help="Launch a desktop GUI for chemical synapse tuning")
+@click.option(
+    "--config",
+    type=click.Path(),
+    default=None,
+    help='Configuration file to use, defaults to util-level config or "./simulation_config.json"',
+)
+@click.option(
+    "--network",
+    type=click.STRING,
+    default=None,
+    help="Optional network name from config to initialize first",
+)
+@click.option(
+    "--connection",
+    type=click.STRING,
+    default=None,
+    help="Optional connection name from config to initialize first",
+)
+@click.option(
+    "--current-name",
+    type=click.STRING,
+    default="i",
+    help="Synaptic current variable name to record (default: i)",
+)
+@click.option(
+    "--other-vars",
+    type=click.STRING,
+    default=None,
+    help="Comma-separated list of additional synapse variables to record",
+)
+@click.option(
+    "--slider-vars",
+    type=click.STRING,
+    default=None,
+    help="Comma-separated synapse variables to expose as sliders",
+)
+@click.option(
+    "--select-sliders/--no-select-sliders",
+    default=True,
+    help="Prompt for slider variable selection at launch (default: enabled)",
+)
+@click.pass_context
+def synapse_tune(
+    ctx, config, network, connection, current_name, other_vars, slider_vars, select_sliders
+):
+    if not check_neuron_installed():
+        raise click.ClickException("Python NEURON is required for synapse tuning.")
+
+    from bmtool.synapses import SynapseTuner
+
+    config_path = config or ctx.obj.get("config") or "./simulation_config.json"
+    config_path = os.path.abspath(os.path.expanduser(config_path)).replace("\\", "/")
+
+    if not os.path.exists(config_path):
+        raise click.ClickException(f"Config file not found: {config_path}")
+
+    other_vars_to_record = None
+    if other_vars:
+        other_vars_to_record = [v.strip() for v in other_vars.split(",") if v.strip()]
+
+    try:
+        tuner = SynapseTuner(
+            config=config_path,
+            network=network,
+            connection=connection,
+            current_name=current_name,
+            other_vars_to_record=other_vars_to_record,
+        )
+    except Exception as exc:
+        raise click.ClickException(f"Failed to initialize SynapseTuner: {exc}") from exc
+
+    available_slider_vars = []
+    for key, value in tuner.synaptic_props.items():
+        if isinstance(value, (int, float)) and hasattr(tuner.syn, key):
+            available_slider_vars.append(key)
+
+    selected_slider_vars = available_slider_vars
+    if slider_vars:
+        requested = [v.strip() for v in slider_vars.split(",") if v.strip()]
+        selected_slider_vars = [v for v in requested if v in available_slider_vars]
+        missing = [v for v in requested if v not in available_slider_vars]
+        if missing:
+            click.echo(
+                colored.red(
+                    "Skipping unavailable slider vars for this connection: " + ", ".join(missing)
+                )
+            )
+        if not selected_slider_vars:
+            click.echo(
+                colored.red(
+                    "No requested slider vars are available; defaulting to all available variables."
+                )
+            )
+            selected_slider_vars = available_slider_vars
+    elif select_sliders and available_slider_vars:
+        selected = questionary.checkbox(
+            "Select synapse variables to expose as sliders:",
+            choices=available_slider_vars,
+            default=available_slider_vars,
+        ).ask()
+        if selected:
+            selected_slider_vars = selected
+
+    tuner.set_slider_vars(selected_slider_vars)
+
+    click.echo(colored.green("Launching Synapse Tuner desktop GUI..."))
+    try:
+        tuner.launch_tk_gui()
+    except Exception as exc:
+        raise click.ClickException(f"Failed to launch SynapseTuner GUI: {exc}") from exc
+
+
+cli.add_command(synapse)
+
+
 class Builder:
     def __init__(self):
         self.title = ""

@@ -83,6 +83,7 @@ nav:
       - Overview: cli/index.md
       - Plotting: cli/plot.md
       - Cell Utilities: cli/cell.md
+      - Synapse Utilities: cli/synapse.md
   - Examples:
       - Single Cell:
           - Overview: examples/single-cell.md

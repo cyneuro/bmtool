@@ -70,6 +70,16 @@ This page provides API reference documentation for the Single Cell module, which
         - get_impedance
         - execute
 
+## Synaptic Input
+
+::: bmtool.singlecell.SynapticInput
+    options:
+      show_root_heading: true
+      heading_level: 3
+      members:
+        - __init__
+        - run
+
 ## Cell Profiler
 
 ::: bmtool.singlecell.Profiler
@@ -81,6 +91,7 @@ This page provides API reference documentation for the Single Cell module, which
         - load_templates
         - passive_properties
         - current_injection
+        - synaptic_input
         - fi_curve
         - impedance_amplitude_profile
 
