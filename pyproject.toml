@@ -39,3 +39,24 @@ reportMissingImports = true
 reportMissingTypeStubs = false
 pythonVersion = "3.8"
 pythonPlatform = "All"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "unit: fast tests that do not require NEURON or BMTK",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["bmtool"]
+omit = [
+    "bmtool/util/neuron/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
