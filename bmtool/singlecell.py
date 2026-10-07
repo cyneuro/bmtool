@@ -417,6 +417,7 @@ class SynapticInput(SimulationBase):
         tau2=10.0,
         e=0.0,
         noise=0.0,
+        duration=None,
     ):
         """
         Initialize a synaptic input simulation using Exp2Syn driven by NetStim.
@@ -454,6 +455,10 @@ class SynapticInput(SimulationBase):
             Exp2Syn reversal potential (mV). Default is 0.0 (excitatory).
         noise : float, optional
             NetStim noise (0 = regular train, 1 = Poisson). Default is 0.0.
+        duration : float, optional
+            Duration of the input train in ms, measured from delay. Events occur
+            through the end of this interval. If None, input continues through
+            tstop. Default is None.
 
         Notes:
         ------
@@ -504,9 +509,19 @@ class SynapticInput(SimulationBase):
         self.tau2 = float(tau2)
         self.e = float(e)
         self.noise = float(noise)
+        self.duration = None if duration is None else float(duration)
+        if self.duration is not None and (
+            not np.isfinite(self.duration) or self.duration < 0
+        ):
+            raise ValueError("duration must be a finite, non-negative number")
         # Compatibility with run_and_plot(plot_injection_only=True)
         self.inj_delay = self.delay
-        self.inj_dur = max(0.0, self.tstop - self.delay)
+        available_duration = max(0.0, self.tstop - self.delay)
+        self.inj_dur = (
+            available_duration
+            if self.duration is None
+            else min(self.duration, available_duration)
+        )
 
         self.syn = None
         self.nstim = None
@@ -534,8 +549,12 @@ class SynapticInput(SimulationBase):
         self.nstim.noise = self.noise
         if self.frequency > 0:
             self.nstim.interval = 1000.0 / self.frequency
-            remaining = max(0.0, self.tstop - self.delay)
-            self.nstim.number = max(0, int(np.floor(remaining / self.nstim.interval)) + 1)
+            if self.delay > self.tstop:
+                self.nstim.number = 0
+            else:
+                self.nstim.number = (
+                    int(np.floor(self.inj_dur / self.nstim.interval)) + 1
+                )
         else:
             self.nstim.interval = 1e9
             self.nstim.number = 0
@@ -1817,6 +1836,7 @@ class Profiler:
                 "frequency": 20.0,
                 "weight": 0.01,
                 "inj_delay": 100.0,
+                "duration": 900.0,
                 "tstop": 1000.0,
                 "syn_sec": "soma",
                 "syn_loc": 0.5,
@@ -2092,7 +2112,7 @@ class Profiler:
         )
 
         syn_params_col2 = widgets.VBox(
-            [inj_delay_slider, tstop_slider, syn_loc_slider],
+            [inj_delay_slider, inj_dur_slider, tstop_slider, syn_loc_slider],
             layout=widgets.Layout(margin="0 0 0 10px"),
         )
 
@@ -2109,6 +2129,8 @@ class Profiler:
                     inj_delay_slider.value = defaults["inj_delay"]
                 if "inj_dur" in defaults:
                     inj_dur_slider.value = defaults["inj_dur"]
+                elif "duration" in defaults:
+                    inj_dur_slider.value = defaults["duration"]
                 if "tstop" in defaults:
                     tstop_slider.value = defaults["tstop"]
 
@@ -2153,24 +2175,29 @@ class Profiler:
             # Update parameter column visibility
             if method == "passive_properties":
                 inj_delay_slider.description = "Injection Delay (ms):"
+                inj_dur_slider.description = "Injection Duration (ms):"
                 section_row.children = [record_sec_text, inj_sec_text, post_init_text]
                 param_columns.children = [widgets.HBox([passive_params_col1, passive_params_col2])]
             elif method == "current_injection":
                 inj_delay_slider.description = "Injection Delay (ms):"
+                inj_dur_slider.description = "Injection Duration (ms):"
                 section_row.children = [record_sec_text, inj_sec_text, post_init_text]
                 param_columns.children = [
                     widgets.HBox([injection_params_col1, injection_params_col2])
                 ]
             elif method == "synaptic_input":
                 inj_delay_slider.description = "Input Delay (ms):"
+                inj_dur_slider.description = "Input Duration (ms):"
                 section_row.children = [record_sec_text, syn_sec_text, post_init_text]
                 param_columns.children = [widgets.HBox([syn_params_col1, syn_params_col2])]
             elif method == "fi_curve":
                 inj_delay_slider.description = "Injection Delay (ms):"
+                inj_dur_slider.description = "Injection Duration (ms):"
                 section_row.children = [record_sec_text, inj_sec_text, post_init_text]
                 param_columns.children = [widgets.HBox([fi_params_col1, fi_params_col2])]
             elif method == "impedance_amplitude_profile":
                 inj_delay_slider.description = "Injection Delay (ms):"
+                inj_dur_slider.description = "Injection Duration (ms):"
                 section_row.children = [record_sec_text, inj_sec_text, post_init_text]
                 param_columns.children = [widgets.HBox([zap_params_col1, zap_params_col2])]
 
@@ -2226,6 +2253,7 @@ class Profiler:
                             "frequency": frequency_slider.value,
                             "weight": weight_slider.value,
                             "delay": inj_delay_slider.value,
+                            "duration": inj_dur_slider.value,
                             "tstop": tstop_slider.value,
                             "syn_sec": syn_sec_text.value,
                             "syn_loc": syn_loc_slider.value,
