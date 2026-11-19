@@ -265,6 +265,34 @@ def read_netcon_report(h5_file_path, population: str) -> Optional[NetconReport]:
     return NetconReport(times, data, m["trg_ids"][()].astype(int), m["src_ids"][()].astype(int))
 
 
+def sample_index(times, t):
+    """
+    Index of the first report sample at or after ``t`` (same units as ``times``), or the last sample if ``t`` is
+    past the end. ``t`` may be a scalar or an array.
+    """
+    times = np.asarray(times)
+    k = np.minimum(np.searchsorted(times, t), len(times) - 1)
+    return int(k) if np.ndim(k) == 0 else k
+
+
+def relative_to_initial(data, zero_initial: str = "one", dtype=np.float64) -> np.ndarray:
+    """
+    Report values divided by their first sample (e.g. W / W0), shape (time, synapse).
+
+    ``zero_initial``: what to divide by where the first sample is 0 -- ``'one'`` (leave the column unscaled) or
+    ``'nan'`` (the column becomes NaN).
+    """
+    a = np.asarray(data[:, :], dtype=dtype)
+    a0 = a[0].copy()
+    if zero_initial == "one":
+        a0[a0 == 0] = 1
+    elif zero_initial == "nan":
+        a0 = np.where(a0 == 0, np.nan, a0)
+    else:
+        raise ValueError(f"zero_initial must be 'one' or 'nan', not {zero_initial!r}")
+    return a / a0
+
+
 def weight_change_by_group(
     report: NetconReport,
     labels: np.ndarray,
@@ -287,7 +315,7 @@ def weight_change_by_group(
     w0 = np.asarray(report.data[0, :], dtype=float)
     rows = []
     for name, t_ms in t_marks.items():
-        k = min(int(np.searchsorted(report.times, t_ms)), len(report.times) - 1)
+        k = sample_index(report.times, t_ms)
         rel = np.asarray(report.data[k, :], dtype=float) / np.where(w0 == 0, np.nan, w0)
         for lab in np.unique(labels):
             msk = labels == lab

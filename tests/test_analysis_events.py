@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 import pytest
 
 from bmtool.analysis import events as ev
@@ -140,3 +141,12 @@ class TestRepa:
         assert (md.n_blocks == 4).all()
         driven = md.loc[md.node_id < 4, "max_z_difference"]
         assert driven.min() > md.loc[md.node_id >= 4, "max_z_difference"].max()
+
+
+def test_baseline_zscore_sd_offset():
+    x = xr.DataArray(np.array([[1.0, 3.0, 5.0], [2.0, 2.0, 2.0]]), dims=("node_id", "time"))
+    z = ev.baseline_zscore(x, np.array([True, True, False]), sd_offset=1.0)
+    np.testing.assert_allclose(z.values[0], (x.values[0] - 2.0) / (1.0 + 1.0))
+    np.testing.assert_allclose(z.values[1], [0.0, 0.0, 0.0])
+    with pytest.raises(ValueError):
+        ev.baseline_zscore(x, [0, 1], sd_floor=1.0, sd_offset=1.0)

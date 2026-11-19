@@ -209,6 +209,7 @@ def baseline_zscore(
     baseline,
     dim: str = "time",
     sd_floor: Optional[float] = None,
+    sd_offset: Optional[float] = None,
 ) -> xr.DataArray:
     """
     z-score each node against its own baseline samples along ``dim``.
@@ -222,14 +223,24 @@ def baseline_zscore(
     sd_floor : float, optional
         Lower bound for the baseline SD (e.g. the Poisson SD of a 1 Hz cell for one bin). Without a floor, nodes
         with zero baseline SD get NaN.
+    sd_offset : float, optional
+        Added to the baseline SD instead (``(x - mean) / (sd + sd_offset)``, e.g. 1 Hz so silent cells stay finite).
+        Cannot be combined with ``sd_floor``.
     """
+    if sd_floor is not None and sd_offset is not None:
+        raise ValueError("give sd_floor or sd_offset, not both")
     axis = x.get_axis_num(dim)
     vals = x.values
     base = np.take(vals, np.where(np.asarray(baseline))[0] if np.asarray(baseline).dtype == bool
                    else np.asarray(baseline), axis=axis)
     mu = base.mean(axis, keepdims=True)  # plain numpy (no NaN skipping), same dtype as the input
     sd = base.std(axis, keepdims=True)
-    sd = np.maximum(sd, sd_floor) if sd_floor is not None else np.where(sd == 0, np.nan, sd)
+    if sd_offset is not None:
+        sd = sd + sd_offset
+    elif sd_floor is not None:
+        sd = np.maximum(sd, sd_floor)
+    else:
+        sd = np.where(sd == 0, np.nan, sd)
     return x.copy(data=(vals - mu) / sd).assign_attrs({**x.attrs, "units": "z"})
 
 
