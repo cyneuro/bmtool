@@ -1,7 +1,8 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
 
 import h5py
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from ..util.util import load_nodes_from_config
@@ -232,3 +233,92 @@ def load_synapse_report(
     )
 
     return ds
+
+
+# ----------------------------------------------------------------------------- array-level report access
+class NetconReport(NamedTuple):
+    """A BMTK netcon (synapse variable) report: ``data`` is the lazy h5 dataset (time x synapse)."""
+
+    times: np.ndarray
+    data: object
+    target_ids: np.ndarray
+    source_ids: np.ndarray
+
+
+def read_netcon_report(h5_file_path, population: str) -> Optional[NetconReport]:
+    """
+    Open a BMTK netcon report (e.g. a weight or calcium variable) without loading the data.
+
+    Returns ``NetconReport(times_ms, data, target_ids, source_ids)`` or None if the file does not exist. ``data`` is
+    the h5 dataset (rows = time samples), so slices are read on demand.
+    """
+    from pathlib import Path
+
+    if not Path(h5_file_path).exists():
+        return None
+    f = h5py.File(h5_file_path, "r")
+    g = f["report"][population]
+    m = g["mapping"]
+    t0, _t1, dt = m["time"][()]
+    data = g["data"]
+    times = t0 + dt * np.arange(data.shape[0])
+    return NetconReport(times, data, m["trg_ids"][()].astype(int), m["src_ids"][()].astype(int))
+
+
+def weight_change_by_group(
+    report: NetconReport,
+    labels: np.ndarray,
+    t_marks: Dict[str, float],
+    ltp_ratio: float = 1.1,
+    ltd_ratio: float = 0.9,
+) -> pd.DataFrame:
+    """
+    Relative weight change W(t)/W(0) - 1 per synapse group at named times (ms).
+
+    The sample used for each mark is the first one at or after the mark (or the last sample). Synapses with
+    W(0) = 0 are ignored. Also returns the fraction of synapses with W(t)/W(0) > ``ltp_ratio`` and < ``ltd_ratio``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: group, mark, time_ms, mean_change, frac_ltp, frac_ltd, n.
+    """
+    labels = np.asarray(labels)
+    w0 = np.asarray(report.data[0, :], dtype=float)
+    rows = []
+    for name, t_ms in t_marks.items():
+        k = min(int(np.searchsorted(report.times, t_ms)), len(report.times) - 1)
+        rel = np.asarray(report.data[k, :], dtype=float) / np.where(w0 == 0, np.nan, w0)
+        for lab in np.unique(labels):
+            msk = labels == lab
+            rows.append({"group": lab, "mark": name, "time_ms": float(report.times[k]),
+                         "mean_change": float(np.nanmean(rel[msk]) - 1.0),
+                         "frac_ltp": float(np.nanmean(rel[msk] > ltp_ratio)),
+                         "frac_ltd": float(np.nanmean(rel[msk] < ltd_ratio)), "n": int(msk.sum())})
+    return pd.DataFrame(rows)
+
+
+def band_fractions(
+    values: np.ndarray,
+    times: np.ndarray,
+    columns: np.ndarray,
+    windows: Sequence[Tuple[float, float]],
+    low: float,
+    high: float,
+) -> Optional[Dict[str, float]]:
+    """
+    Fractions of samples of the selected synapse ``columns`` that fall in ``[low, high)`` and at or above ``high``,
+    and the 99th percentile divided by ``high``, over all samples inside ``windows`` (ms, half-open). Typical use:
+    time spent by a calcium variable in the LTD and LTP zones of a calcium-threshold plasticity rule.
+
+    ``values`` is a (time x synapse) array (already scaled to the units of ``low``/``high``). Returns None if no
+    sample falls inside the windows.
+    """
+    msk = np.zeros(len(times), bool)
+    for a, b in windows:
+        msk |= (times >= a) & (times < b)
+    if not msk.any():
+        return None
+    x = values[np.ix_(msk, np.asarray(columns))]
+    return {"frac_between": float(np.mean((x >= low) & (x < high))), "frac_above": float(np.mean(x >= high)),
+            "p99_over_high": float(np.percentile(x, 99) / high)}

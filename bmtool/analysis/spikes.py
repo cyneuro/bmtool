@@ -706,3 +706,48 @@ def find_highest_firing_cells(
     # Combine all high firing spikes into one DataFrame
     result_df = pd.concat(df_list, ignore_index=True)
     return result_df
+
+
+# ----------------------------------------------------------------------------- inter-spike intervals
+def window_isis(spike_times, windows) -> List[np.ndarray]:
+    """
+    Inter-spike intervals (same units as the input) of one node inside each window ``[start, stop)``; windows with
+    fewer than two spikes are skipped, so intervals never span two windows.
+    """
+    spike_times = np.asarray(spike_times, dtype=float)
+    out = []
+    for a, b in windows:
+        t = spike_times[(spike_times >= a) & (spike_times < b)]
+        if len(t) > 1:
+            out.append(np.diff(t))
+    return out
+
+
+def isi_local_variation(isis: List[np.ndarray]) -> float:
+    """
+    Mean local coefficient of variation CV2 (Holt et al. 1996): the mean over consecutive ISI pairs of
+    2|I_{k+1} - I_k| / (I_{k+1} + I_k), pooled over the ISI lists. ~1 for Poisson firing, < 1 for regular firing,
+    > 1 for clustered firing. NaN if no pair exists.
+    """
+    parts = [2 * np.abs(i[1:] - i[:-1]) / (i[1:] + i[:-1]) for i in isis if len(i) > 1]
+    return float(np.mean(np.concatenate(parts))) if parts else np.nan
+
+
+def short_isi_clusters(isis: List[np.ndarray], short: float) -> Tuple[int, int]:
+    """
+    Clustering of short ISIs (< ``short``) within each ISI list: the number of short-after-short ISI pairs, and the
+    number of spikes in runs of at least three spikes separated by short ISIs.
+    """
+    pairs = in_runs = 0
+    for i in isis:
+        s = np.asarray(i) < short
+        pairs += int(np.sum(s[:-1] & s[1:]))
+        run = 0
+        for x in list(s) + [False]:
+            if x:
+                run += 1
+            else:
+                if run >= 2:
+                    in_runs += run + 1
+                run = 0
+    return pairs, in_runs

@@ -23,6 +23,7 @@ setup(
         "matplotlib",
         "networkx",
         "numpy",
+        "scipy>=1.7",
         "pandas",
         "questionary",
         "pynmodlt",
