@@ -223,13 +223,14 @@ def baseline_zscore(
         Lower bound for the baseline SD (e.g. the Poisson SD of a 1 Hz cell for one bin). Without a floor, nodes
         with zero baseline SD get NaN.
     """
-    base = x.isel({dim: np.asarray(baseline)})
-    mu = base.mean(dim)
-    sd = base.std(dim)
-    sd = np.maximum(sd, sd_floor) if sd_floor is not None else sd.where(sd != 0)
-    z = (x - mu) / sd
-    z.attrs = {**x.attrs, "units": "z"}
-    return z
+    axis = x.get_axis_num(dim)
+    vals = x.values
+    base = np.take(vals, np.where(np.asarray(baseline))[0] if np.asarray(baseline).dtype == bool
+                   else np.asarray(baseline), axis=axis)
+    mu = base.mean(axis, keepdims=True)  # plain numpy (no NaN skipping), same dtype as the input
+    sd = base.std(axis, keepdims=True)
+    sd = np.maximum(sd, sd_floor) if sd_floor is not None else np.where(sd == 0, np.nan, sd)
+    return x.copy(data=(vals - mu) / sd).assign_attrs({**x.attrs, "units": "z"})
 
 
 # ----------------------------------------------------------------------------- per-cell classification

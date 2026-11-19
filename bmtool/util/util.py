@@ -360,7 +360,11 @@ def load_nodes_from_paths(node_paths):
                         prop_dtype[prop] = group[prop].dtype
             # convert to original data type if possible
             for prop, dtype in prop_dtype.items():
-                nodes_df[prop] = nodes_df[prop].astype(dtype, errors="ignore")
+                col = nodes_df[prop]
+                if np.dtype(dtype) == np.bool_ and col.isna().any():
+                    # nodes in groups that do not define this flag are False (bool(NaN) would make them True)
+                    col = col.fillna(False)
+                nodes_df[prop] = col.astype(dtype, errors="ignore")
 
         return population, nodes_df
 
