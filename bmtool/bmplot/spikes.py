@@ -22,6 +22,12 @@ def raster(
     tstop: Optional[float] = None,
     color_map: Optional[Dict[str, str]] = None,
     dot_size: float = 0.3,
+    group_order: Optional[List[str]] = None,
+    alpha: Union[float, Dict[str, float]] = 1.0,
+    marker: str = "o",
+    scatter_kwargs: Optional[Dict] = None,
+    group_labels: bool = False,
+    style: Optional[str] = "whitegrid",
 ) -> Axes:
     """
     Plots a raster plot of neural spikes, with different colors for each population.
@@ -48,6 +54,21 @@ def raster(
         Dictionary specifying colors for each population. Keys should be population names, and values should be color values.
     dot_size: float, optional
         Size of the dot to display on the scatterplot
+    group_order : list, optional
+        Order in which groups are plotted (bottom to top of the y axis). Groups missing from the spikes are skipped.
+        Default: the sorted order of the groupby column.
+    alpha : float or dict, optional
+        Marker opacity, either one value or a value per group (groups not in the dict use 1.0). Default 1.0.
+    marker : str, optional
+        Matplotlib marker. Default 'o'; '|' gives classic tick rasters.
+    scatter_kwargs : dict, optional
+        Extra keyword arguments passed to ``ax.scatter`` (e.g. ``linewidths``, ``rasterized``).
+    group_labels : bool, optional
+        Requires ``sortby``. Label the y axis with one tick per group at its centre ("<group> (n)", n = cells with
+        spikes), draw a thin line between groups and skip the legend. Default False.
+    style : str or None, optional
+        Seaborn style applied before plotting (this changes matplotlib rcParams globally). None leaves the current
+        style untouched. Default 'whitegrid'.
 
     Returns:
     -------
@@ -60,8 +81,11 @@ def raster(
     - Each unique population from groupby in `spikes_df` will be represented by a different color if `color_map` is not specified.
     - If `color_map` is provided, it should contain colors for all unique `pop_name` values in `spikes_df`.
     """
+    if group_labels and not sortby:
+        raise ValueError("group_labels=True requires sortby (rows are then numbered consecutively per group)")
     # Initialize axes if none provided
-    sns.set_style("whitegrid")
+    if style is not None:
+        sns.set_style(style)
     if ax is None:
         _, ax = plt.subplots(1, 1)
 
@@ -113,8 +137,14 @@ def raster(
     # Plot each population with its specified or generated color
     legend_handles = []
     y_offset = 0  # Track y-position offset for stacking populations
-    
-    for pop_name, group in spikes_df.groupby(groupby):
+    ticks = []
+    scatter_kwargs = scatter_kwargs or {}
+
+    groups = dict(list(spikes_df.groupby(groupby)))
+    order = list(groups) if group_order is None else [g for g in group_order if g in groups]
+    for pop_name in order:
+        group = groups[pop_name]
+        a = alpha.get(pop_name, 1.0) if isinstance(alpha, dict) else alpha
         if sortby:
             # Sort by the specified column, putting NaN values at the end
             group_sorted = group.sort_values(by=sortby, na_position='last')
@@ -130,19 +160,30 @@ def raster(
         else:
             y_positions = group['node_ids']
             
-        ax.scatter(group["timestamps"], y_positions, color=color_map[pop_name], s=dot_size)
+        ax.scatter(group["timestamps"], y_positions, color=color_map[pop_name], s=dot_size, alpha=a,
+                   marker=marker, **scatter_kwargs)
         # Dummy scatter for consistent legend appearance
-        handle = ax.scatter([], [], color=color_map[pop_name], label=pop_name, s=20)
+        handle = ax.scatter([], [], color=color_map[pop_name], label=pop_name, s=20, marker=marker)
         legend_handles.append(handle)
-        
+
         # Update y_offset for next population if sortby is used
         if sortby:
-            y_offset += len(unique_nodes_sorted)
+            n = len(unique_nodes_sorted)
+            ticks.append((y_offset + (n - 1) / 2, f"{pop_name} ({n})"))
+            y_offset += n
+            if group_labels:
+                ax.axhline(y_offset - 0.5, color="0.6", lw=0.4)
 
     # Label axes
     ax.set_xlabel("Time")
-    ax.set_ylabel("Node ID")
-    ax.legend(handles=legend_handles, title="Population", loc="upper right", framealpha=0.9)
+    if group_labels:
+        ax.set_yticks([t for t, _ in ticks])
+        ax.set_yticklabels([lab for _, lab in ticks])
+        ax.set_ylim(-0.5, y_offset - 0.5)
+        ax.grid(False, axis="y")
+    else:
+        ax.set_ylabel("Node ID")
+        ax.legend(handles=legend_handles, title="Population", loc="upper right", framealpha=0.9)
 
     return ax
 
