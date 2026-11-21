@@ -10,7 +10,7 @@ Conventions
 - Cell-by-event and cell-by-time results are ``xarray.DataArray`` objects with a ``node_id`` dimension.
 """
 
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -52,7 +52,11 @@ def _row_index(ids: np.ndarray, node_ids: np.ndarray) -> Tuple[np.ndarray, np.nd
     sorted_ids = node_ids[order]
     pos = np.searchsorted(sorted_ids, ids)
     pos_c = np.clip(pos, 0, len(sorted_ids) - 1)
-    ok = (pos < len(sorted_ids)) & (sorted_ids[pos_c] == ids) if len(sorted_ids) else np.zeros(len(ids), bool)
+    ok = (
+        (pos < len(sorted_ids)) & (sorted_ids[pos_c] == ids)
+        if len(sorted_ids)
+        else np.zeros(len(ids), bool)
+    )
     return order[pos_c], ok
 
 
@@ -140,7 +144,9 @@ def bin_spikes(
     )
 
 
-def event_aligned(binned: xr.DataArray, onsets: Sequence[float], window: Tuple[float, float]) -> xr.DataArray:
+def event_aligned(
+    binned: xr.DataArray, onsets: Sequence[float], window: Tuple[float, float]
+) -> xr.DataArray:
     """
     Cut a binned (node_id, time) array into event-aligned segments.
 
@@ -160,13 +166,17 @@ def event_aligned(binned: xr.DataArray, onsets: Sequence[float], window: Tuple[f
         k = int(round((t0 + window[0] - edges[0]) / bs))
         if k < 0 or k + n > binned.sizes["time"]:
             raise ValueError(f"event at {t0} ms: window {window} runs past the binned range")
-        segs.append(binned.values[:, k:k + n])
+        segs.append(binned.values[:, k : k + n])
     lag = window[0] + bs * np.arange(n)
     return xr.DataArray(
         np.stack(segs, axis=1),
         dims=("node_id", "event", "lag"),
-        coords={"node_id": binned["node_id"].values, "event": np.arange(len(onsets)),
-                "onset": ("event", np.asarray(onsets, float)), "lag": lag},
+        coords={
+            "node_id": binned["node_id"].values,
+            "event": np.arange(len(onsets)),
+            "onset": ("event", np.asarray(onsets, float)),
+            "lag": lag,
+        },
         attrs=dict(binned.attrs),
     )
 
@@ -192,16 +202,27 @@ def peth(
     """
     lefts = np.arange(window[0], window[1] - bin_size + 1e-9 * abs(bin_size), bin_size)
     counts = np.stack(
-        [count_spikes_in_windows(spike_df, onsets, (lo, lo + bin_size), node_ids).sum("event").values
-         for lo in lefts],
+        [
+            count_spikes_in_windows(spike_df, onsets, (lo, lo + bin_size), node_ids)
+            .sum("event")
+            .values
+            for lo in lefts
+        ],
         axis=1,
     )
     nodes = _node_ids(np.asarray(spike_df["node_ids"]).astype(np.int64), node_ids)
     hz = counts / (len(onsets) * bin_size / 1000.0)
     lag = lefts + bin_size / 2
     if per_node:
-        return xr.DataArray(hz, dims=("node_id", "lag"), coords={"node_id": nodes, "lag": lag}, attrs={"units": "Hz"})
-    return xr.DataArray(hz.sum(0) / len(nodes), dims=("lag",), coords={"lag": lag}, attrs={"units": "Hz per node"})
+        return xr.DataArray(
+            hz,
+            dims=("node_id", "lag"),
+            coords={"node_id": nodes, "lag": lag},
+            attrs={"units": "Hz"},
+        )
+    return xr.DataArray(
+        hz.sum(0) / len(nodes), dims=("lag",), coords={"lag": lag}, attrs={"units": "Hz per node"}
+    )
 
 
 def baseline_zscore(
@@ -231,8 +252,13 @@ def baseline_zscore(
         raise ValueError("give sd_floor or sd_offset, not both")
     axis = x.get_axis_num(dim)
     vals = x.values
-    base = np.take(vals, np.where(np.asarray(baseline))[0] if np.asarray(baseline).dtype == bool
-                   else np.asarray(baseline), axis=axis)
+    base = np.take(
+        vals,
+        np.where(np.asarray(baseline))[0]
+        if np.asarray(baseline).dtype == bool
+        else np.asarray(baseline),
+        axis=axis,
+    )
     mu = base.mean(axis, keepdims=True)  # plain numpy (no NaN skipping), same dtype as the input
     sd = base.std(axis, keepdims=True)
     if sd_offset is not None:
@@ -321,12 +347,20 @@ def population_response_z(
         return np.nan
     bon = onsets if baseline_onsets is None else baseline_onsets
     nb = int(round((baseline_window[1] - baseline_window[0]) / bin_size))
-    base_bins = np.concatenate([
-        count_spikes_in_windows(spike_df, bon, (baseline_window[0] + k * bin_size,
-                                                baseline_window[0] + (k + 1) * bin_size), node_ids).values.sum(0)
-        for k in range(nb)])
+    base_bins = np.concatenate(
+        [
+            count_spikes_in_windows(
+                spike_df,
+                bon,
+                (baseline_window[0] + k * bin_size, baseline_window[0] + (k + 1) * bin_size),
+                node_ids,
+            ).values.sum(0)
+            for k in range(nb)
+        ]
+    )
     resp = count_spikes_in_windows(spike_df, onsets, window, node_ids).values.sum(0) * (
-        bin_size / (window[1] - window[0]))
+        bin_size / (window[1] - window[0])
+    )
     sd = base_bins.std()
     return float((resp.mean() - base_bins.mean()) / sd) if sd > 0 else np.nan
 
@@ -365,8 +399,10 @@ def population_rate_change(
 ) -> float:
     """Mean per-node rate increase (Hz) in ``window`` over ``baseline_window`` (windows in ms)."""
     r, r0, _ = _pop_rates(spike_df, onsets, window, baseline_window, node_ids, baseline_onsets)
-    return float(r.mean() / ((window[1] - window[0]) / 1000.0)
-                 - r0.mean() / ((baseline_window[1] - baseline_window[0]) / 1000.0))
+    return float(
+        r.mean() / ((window[1] - window[0]) / 1000.0)
+        - r0.mean() / ((baseline_window[1] - baseline_window[0]) / 1000.0)
+    )
 
 
 def response_auc(x: xr.DataArray, window: Tuple[float, float], dim: str = "lag") -> xr.DataArray:
@@ -400,31 +436,53 @@ def repa_zscores(
     """
     onsets = np.asarray(onsets, float)
     base_on = onsets[np.asarray(baseline_events, dtype=int)]
-    base = np.concatenate([
-        count_spikes_in_windows(spike_df, base_on, (lo, lo + bin_size), node_ids).values
-        for lo in np.arange(-baseline_duration, 0.0, bin_size)], axis=1)
+    base = np.concatenate(
+        [
+            count_spikes_in_windows(spike_df, base_on, (lo, lo + bin_size), node_ids).values
+            for lo in np.arange(-baseline_duration, 0.0, bin_size)
+        ],
+        axis=1,
+    )
     mu, sigma = base.mean(1), base.std(1)
     lefts = np.arange(response_window[0], response_window[1], bin_size)
-    resp = np.stack([count_spikes_in_windows(spike_df, onsets, (lo, lo + bin_size), node_ids).values
-                     for lo in lefts], axis=2)  # node, event, bin
+    resp = np.stack(
+        [
+            count_spikes_in_windows(spike_df, onsets, (lo, lo + bin_size), node_ids).values
+            for lo in lefts
+        ],
+        axis=2,
+    )  # node, event, bin
     with np.errstate(invalid="ignore", divide="ignore"):
-        z = np.where(sigma[:, None, None] > 0, (resp - mu[:, None, None]) / sigma[:, None, None], 0.0).mean(2)
+        z = np.where(
+            sigma[:, None, None] > 0, (resp - mu[:, None, None]) / sigma[:, None, None], 0.0
+        ).mean(2)
     nodes = count_spikes_in_windows(spike_df, onsets[:1], (0, 1), node_ids)["node_id"].values
-    return xr.DataArray(z, dims=("node_id", "event"),
-                        coords={"node_id": nodes, "event": np.arange(len(onsets)), "onset": ("event", onsets),
-                                "mu": ("node_id", mu), "sigma": ("node_id", sigma)})
+    return xr.DataArray(
+        z,
+        dims=("node_id", "event"),
+        coords={
+            "node_id": nodes,
+            "event": np.arange(len(onsets)),
+            "onset": ("event", onsets),
+            "mu": ("node_id", mu),
+            "sigma": ("node_id", sigma),
+        },
+    )
 
 
 def _blocks(values, block_size, partial=True):
     n = len(values) // block_size
-    out = [values[k * block_size:(k + 1) * block_size] for k in range(n)]
+    out = [values[k * block_size : (k + 1) * block_size] for k in range(n)]
     if partial and len(values) > n * block_size:
-        out.append(values[n * block_size:])
+        out.append(values[n * block_size :])
     return out
 
 
 def repa_max_block_difference(
-    z: xr.DataArray, baseline_events: Sequence[int], conditioning_events: Sequence[int], block_size: int = 4
+    z: xr.DataArray,
+    baseline_events: Sequence[int],
+    conditioning_events: Sequence[int],
+    block_size: int = 4,
 ) -> pd.DataFrame:
     """
     Repa Fig. 4: per node, mean z of each conditioning block (``block_size`` trials; a remainder forms a last
@@ -436,9 +494,15 @@ def repa_max_block_difference(
     for i, node in enumerate(z["node_id"].values):
         zb_mean = np.mean(zb[i])
         diffs = [np.mean(b) - zb_mean for b in _blocks(list(zc[i]), block_size)]
-        rows.append({"node_id": node, "z_avg_baseline": zb_mean,
-                     "max_z_difference": max(diffs) if diffs else np.nan,
-                     "z_diff_per_block": diffs, "n_blocks": len(diffs)})
+        rows.append(
+            {
+                "node_id": node,
+                "z_avg_baseline": zb_mean,
+                "max_z_difference": max(diffs) if diffs else np.nan,
+                "z_diff_per_block": diffs,
+                "n_blocks": len(diffs),
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -476,6 +540,13 @@ def repa_plastic_cells(
             if early != 0:
                 persistence = late / early
             cell_type = "long_lasting" if persistence >= persistence_threshold else "transient"
-        rows.append({"node_id": node, "is_plastic": plastic, "n_sig_blocks": n_sig,
-                     "persistence": persistence, "cell_type": cell_type})
+        rows.append(
+            {
+                "node_id": node,
+                "is_plastic": plastic,
+                "n_sig_blocks": n_sig,
+                "persistence": persistence,
+                "cell_type": cell_type,
+            }
+        )
     return pd.DataFrame(rows)

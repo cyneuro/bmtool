@@ -1,7 +1,12 @@
 import numpy as np
 import pytest
 
-from bmtool.analysis.netcon_reports import NetconReport, relative_to_initial, sample_index, weight_change_by_group
+from bmtool.analysis.netcon_reports import (
+    NetconReport,
+    relative_to_initial,
+    sample_index,
+    weight_change_by_group,
+)
 
 
 def test_sample_index_scalar_and_array():

@@ -9,7 +9,9 @@ def _write_net(tmp_path):
     """Two node groups; only group 0 defines the bool flag ``tone``, both define ``x``."""
     h5 = tmp_path / "net_nodes.h5"
     csv = tmp_path / "net_node_types.csv"
-    pd.DataFrame({"node_type_id": [100, 101], "pop_name": ["PN", "PV"]}).to_csv(csv, sep=" ", index=False)
+    pd.DataFrame({"node_type_id": [100, 101], "pop_name": ["PN", "PV"]}).to_csv(
+        csv, sep=" ", index=False
+    )
     with h5py.File(h5, "w") as f:
         g = f.create_group("nodes/net")
         g["node_id"] = np.arange(5)

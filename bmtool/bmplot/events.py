@@ -10,7 +10,13 @@ import numpy as np
 import xarray as xr
 from scipy import stats
 
-__all__ = ["add_event_shading", "plot_peth", "plot_event_heatmap", "plot_paired_bars", "plot_node_differences"]
+__all__ = [
+    "add_event_shading",
+    "plot_peth",
+    "plot_event_heatmap",
+    "plot_paired_bars",
+    "plot_node_differences",
+]
 
 
 def add_event_shading(
@@ -24,7 +30,9 @@ def add_event_shading(
 ) -> plt.Axes:
     """Shade ``[start, stop)`` spans (e.g. tones, shocks) behind the data; only the first span gets ``label``."""
     for k, (a, b) in enumerate(zip(starts, stops)):
-        ax.axvspan(a, b, color=color, alpha=alpha, lw=0, zorder=zorder, label=label if k == 0 else None)
+        ax.axvspan(
+            a, b, color=color, alpha=alpha, lw=0, zorder=zorder, label=label if k == 0 else None
+        )
     return ax
 
 
@@ -50,8 +58,14 @@ def plot_peth(
         add_event_shading(ax, [a for a, _ in events], [b for _, b in events], color=event_color)
     line = ax.plot(lag, peth.values, color=color, label=label)[0]
     if error is not None:
-        ax.fill_between(lag, peth.values - error.values, peth.values + error.values, color=line.get_color(),
-                        alpha=0.25, lw=0)
+        ax.fill_between(
+            lag,
+            peth.values - error.values,
+            peth.values + error.values,
+            color=line.get_color(),
+            alpha=0.25,
+            lw=0,
+        )
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     return ax
@@ -81,8 +95,15 @@ def plot_event_heatmap(
         lim = np.nanpercentile(np.abs(vals), 99) if vals.size else 1.0
         vmin, vmax = -lim, lim
     step = lag[1] - lag[0] if len(lag) > 1 else 1.0
-    im = ax.imshow(vals, aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax, interpolation="nearest",
-                   extent=(lag[0] - step / 2, lag[-1] + step / 2, len(vals), 0))
+    im = ax.imshow(
+        vals,
+        aspect="auto",
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        interpolation="nearest",
+        extent=(lag[0] - step / 2, lag[-1] + step / 2, len(vals), 0),
+    )
     plt.colorbar(im, ax=ax, label=colorbar_label)
     ax.set_xlabel("time from event onset (ms)")
     ax.set_ylabel("node (sorted)" if sort_window is not None else "node")
@@ -123,11 +144,20 @@ def plot_paired_bars(
     ax.bar([0, 1], m, color=list(colors), width=0.7)
     ax.errorbar([0, 1], m, yerr=err, fmt="none", ecolor="0.2", capsize=3, lw=1)
     top = max(m[0] + err[1, 0], m[1] + err[1, 1])
-    ax.text(0.5, top * 1.05 if top > 0 else top + 0.05, "p<1e-4" if p < 1e-4 else f"p={p:.2g}", ha="center",
-            va="bottom")
+    lo, hi = ax.get_ylim()
+    span = max(hi, top) - min(lo, 0.0)
+    y_txt = top + 0.04 * span
+    ax.text(0.5, y_txt, "p<1e-4" if p < 1e-4 else f"p={p:.2g}", ha="center", va="bottom")
+    # headroom so the p-value label stays inside the axes and clear of the title
+    ax.set_ylim(lo, max(hi, y_txt + 0.12 * span))
     ax.set_xticks([0, 1], list(labels))
     ax.set_ylabel(stat)
-    return ax, {"before": float(m[0]), "after": float(m[1]), "p": p, "frac_up": float(np.mean(b > a))}
+    return ax, {
+        "before": float(m[0]),
+        "after": float(m[1]),
+        "p": p,
+        "frac_up": float(np.mean(b > a)),
+    }
 
 
 def plot_node_differences(

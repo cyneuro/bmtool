@@ -54,9 +54,20 @@ def bootstrap_ci(
     ``x``). Returns (statistic, low, high).
     """
     x = np.asarray(x, dtype=float)
-    res = stats.bootstrap((x,), lambda a, axis: statistic(a, axis=axis), n_resamples=n_resamples,
-                          confidence_level=confidence, method=method, random_state=seed, vectorized=True)
-    return float(statistic(x)), float(res.confidence_interval.low), float(res.confidence_interval.high)
+    res = stats.bootstrap(
+        (x,),
+        lambda a, axis: statistic(a, axis=axis),
+        n_resamples=n_resamples,
+        confidence_level=confidence,
+        method=method,
+        random_state=seed,
+        vectorized=True,
+    )
+    return (
+        float(statistic(x)),
+        float(res.confidence_interval.low),
+        float(res.confidence_interval.high),
+    )
 
 
 def trajectory_pca(

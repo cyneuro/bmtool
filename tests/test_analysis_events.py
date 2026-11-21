@@ -2,8 +2,8 @@
 
 import numpy as np
 import pandas as pd
-import xarray as xr
 import pytest
+import xarray as xr
 
 from bmtool.analysis import events as ev
 
@@ -20,7 +20,8 @@ def poisson_df(rng, n_nodes, t_stop, rate_hz, extra=None):
         t = np.sort(rng.uniform(0, t_stop, rng.poisson(rate_hz * t_stop / 1000)))
         if extra is not None:
             t = np.sort(np.concatenate([t, extra(n, rng)]))
-        ids.append(np.full(len(t), n)); ts.append(t)
+        ids.append(np.full(len(t), n))
+        ts.append(t)
     return df(np.concatenate(ids), np.concatenate(ts))
 
 
@@ -36,8 +37,18 @@ class TestCounts:
         d = poisson_df(rng, 20, 5000, 10)
         on = rng.uniform(500, 4000, 7)
         c = ev.count_spikes_in_windows(d, on, (-100, 250), node_ids=np.arange(20)).values
-        ref = np.array([[np.sum((d.timestamps[d.node_ids == n] >= o - 100) & (d.timestamps[d.node_ids == n] < o + 250))
-                         for o in on] for n in range(20)])
+        ref = np.array(
+            [
+                [
+                    np.sum(
+                        (d.timestamps[d.node_ids == n] >= o - 100)
+                        & (d.timestamps[d.node_ids == n] < o + 250)
+                    )
+                    for o in on
+                ]
+                for n in range(20)
+            ]
+        )
         np.testing.assert_array_equal(c, ref)
 
 
@@ -69,6 +80,7 @@ class TestBinning:
 
     def test_baseline_zscore_floor_and_nan(self):
         import xarray as xr
+
         x = xr.DataArray(np.array([[1.0, 1.0, 5.0], [0.0, 2.0, 4.0]]), dims=("node_id", "time"))
         z = ev.baseline_zscore(x, [True, True, False])
         assert np.isnan(z.values[0]).all()  # zero baseline SD
@@ -79,7 +91,9 @@ class TestBinning:
 
 class TestClassify:
     def test_poisson_up_down_none(self):
-        cls, p = ev.classify_response([40, 2, 5, 0], [10, 30, 5, 0], resp_duration=1.0, base_duration=1.0)
+        cls, p = ev.classify_response(
+            [40, 2, 5, 0], [10, 30, 5, 0], resp_duration=1.0, base_duration=1.0
+        )
         assert list(cls) == ["Up", "Down", "None", "None"]
         assert np.isnan(p[3]) and p[0] < 1e-3
 
@@ -89,7 +103,9 @@ class TestClassify:
         assert cls[0] == "Up"
 
     def test_ranksum_two_d(self, rng):
-        resp = rng.poisson(5, (2, 30)); base = rng.poisson(5, (2, 30)); resp[0] += 5
+        resp = rng.poisson(5, (2, 30))
+        base = rng.poisson(5, (2, 30))
+        resp[0] += 5
         cls, _ = ev.classify_response(resp, base, test="ranksum")
         assert cls[0] == "Up"
 
@@ -110,30 +126,60 @@ class TestPopulation:
         assert ev.population_rate_change(d, on, (0, 100), (-100, 0), [0]) == pytest.approx(10.0)
 
     def test_response_z_positive_for_driven_population(self, rng):
-        d = poisson_df(rng, 30, 20000, 5, extra=lambda n, r: np.concatenate(
-            [o + r.uniform(0, 100, 3) for o in np.arange(2000, 19000, 2000)]))
-        z = ev.population_response_z(d, np.arange(2000, 19000, 2000.0), (0, 100), (-500, 0), 50.0, np.arange(30))
+        d = poisson_df(
+            rng,
+            30,
+            20000,
+            5,
+            extra=lambda n, r: np.concatenate(
+                [o + r.uniform(0, 100, 3) for o in np.arange(2000, 19000, 2000)]
+            ),
+        )
+        z = ev.population_response_z(
+            d, np.arange(2000, 19000, 2000.0), (0, 100), (-500, 0), 50.0, np.arange(30)
+        )
         assert z > 3
 
     def test_response_auc(self):
         import xarray as xr
-        x = xr.DataArray(np.array([[1.0, 2.0, 3.0, 4.0]]), dims=("node_id", "lag"), coords={"lag": [0, 10, 20, 30]})
+
+        x = xr.DataArray(
+            np.array([[1.0, 2.0, 3.0, 4.0]]),
+            dims=("node_id", "lag"),
+            coords={"lag": [0, 10, 20, 30]},
+        )
         np.testing.assert_allclose(ev.response_auc(x, (10, 30)).values, [2.5 * 20])
 
 
 class TestRepa:
     def test_matches_reference_loop(self, rng):
         on = np.arange(1000.0, 1000.0 + 24 * 1500, 1500)
-        d = poisson_df(rng, 8, on[-1] + 2000, 8, extra=lambda n, r: np.concatenate(
-            [o + r.uniform(0, 200, 2 if (k >= 8 and n < 4) else 0) for k, o in enumerate(on)]))
+        d = poisson_df(
+            rng,
+            8,
+            on[-1] + 2000,
+            8,
+            extra=lambda n, r: np.concatenate(
+                [o + r.uniform(0, 200, 2 if (k >= 8 and n < 4) else 0) for k, o in enumerate(on)]
+            ),
+        )
         z = ev.repa_zscores(d, on, baseline_events=range(8), node_ids=np.arange(8))
         # reference: the per-node loop of the original notebook helper
         for n in range(8):
             t = d.timestamps[d.node_ids == n].values
-            base = [np.sum((t >= b) & (t < b + 10)) for o in on[:8] for b in np.arange(o - 200, o, 10)]
+            base = [
+                np.sum((t >= b) & (t < b + 10)) for o in on[:8] for b in np.arange(o - 200, o, 10)
+            ]
             mu, sd = np.mean(base), np.std(base)
-            ref = [np.mean([(np.sum((t >= o + b) & (t < o + b + 10)) - mu) / sd if sd > 0 else 0.0
-                            for b in np.arange(0, 200, 10)]) for o in on]
+            ref = [
+                np.mean(
+                    [
+                        (np.sum((t >= o + b) & (t < o + b + 10)) - mu) / sd if sd > 0 else 0.0
+                        for b in np.arange(0, 200, 10)
+                    ]
+                )
+                for o in on
+            ]
             np.testing.assert_allclose(z.values[n], ref, atol=1e-12)
         pl = ev.repa_plastic_cells(z, range(8), range(8, 24))
         assert pl.loc[pl.node_id < 4, "is_plastic"].all()
